@@ -75,12 +75,16 @@
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Управление</h1>
             <div class="admin-section">
-                <button onclick="adminStartNewRound()" style="width:100%; padding:12px; background:#4CAF50; color:white; border:none; border-radius:10px; font-weight:bold; margin-bottom:10px;">🚀 НОВЫЙ РАУНД (24ч)</button>
+                <button onclick="adminStartNewRound()" style="width:100%; padding:12px; background:#4CAF50; color:white; border:none; border-radius:10px; font-weight:bold; margin-bottom:10px;">🚀 СЛЕДУЮЩИЙ РАУНД (+1)</button>
+                <button onclick="adminResetRounds()" style="width:100%; padding:10px; background:#FF9800; color:white; border:none; border-radius:10px; font-weight:bold; margin-bottom:10px;">🔄 СБРОСИТЬ СЧЕТЧИК (на 1)</button>
+                
                 <h4 style="margin:10px 0 5px 0;">🎟 Билеты (№ — Ник):</h4>
                 <div id="admin-tickets-list" style="font-size:11px; background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:15px; max-height:150px; overflow-y:auto; border:1px solid #ddd;"></div>
+                
                 <button onclick="openAdminModal()" style="width:100%; padding:10px; background:#2196F3; color:white; border:none; border-radius:10px; font-weight:bold;">➕ Добавить игрока</button>
                 <div id="active-players" style="margin-top:15px;"></div>
-                <button onclick="adminFullReset()" style="width:100%; padding:10px; background:#f44336; color:white; border:none; border-radius:10px; font-size:12px; margin-top:20px;">⚠️ СБРОС ИГРЫ</button>
+                
+                <button onclick="adminFullReset()" style="width:100%; padding:10px; background:#f44336; color:white; border:none; border-radius:10px; font-size:12px; margin-top:20px;">⚠️ ПОЛНЫЙ СБРОС ИГРЫ</button>
             </div>
         </div>
 
@@ -199,33 +203,22 @@
             }, 1000);
         }
 
-        // --- ЛОГИКА УНИКАЛЬНОГО ХОДА ---
         async function roll() {
             const btn = document.getElementById('dice-btn'); 
-            btn.disabled = true; // Блокируем сразу для защиты от дабл-клика
-
+            btn.disabled = true;
             const boardSnap = await db.ref('board').once('value');
             const boardData = boardSnap.val() || {};
             let free = []; for(let i=0; i<50; i++) if(!boardData[i]) free.push(i);
-            
-            // ЖЕСТКАЯ ПРОВЕРКА УНИКАЛЬНОСТИ ЗАДАНИЙ В БАЗЕ
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
-            let used = userSnap.val() || [];
-            let avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
-
-            if(avail.length === 0) return alert("Вы выполнили все задания!");
-            if(free.length === 0) return alert("На поле нет свободных мест!");
-
+            let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
+            if(avail.length === 0 || free.length === 0) return alert("Ошибка!");
             const ticketRes = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             const ticket = ticketRes.snapshot.val();
             const cell = free[Math.floor(Math.random()*free.length)];
             const taskIdx = avail[Math.floor(Math.random()*avail.length)];
-
-            // Сохраняем ход
             await db.ref('board/'+cell).set({ owner: myIndex, taskIdx, ticket });
             used.push(taskIdx);
             await db.ref(`whitelist/${currentUserId}`).update({ used_tasks: used, last_round: currentRoundNum });
-            
             showTaskInfo(cell);
         }
 
@@ -244,30 +237,28 @@
 
         async function showTaskInfo(i) {
             const s = await db.ref('board/'+i).once('value');
-            if(!s.exists()) return;
             const d = s.val(), t = tasks[d.taskIdx];
             document.getElementById('mTitle').innerText = "Задание билета №" + d.ticket;
-            let h = `<div style="background:#fff5cc; padding:8px; border-radius:10px; margin-bottom:10px; font-weight:bold; color:#d48806; font-size:14px;">Клетка: ${i+1}</div>`;
+            let h = `<div style="background:#fff5cc; padding:8px; border-radius:10px; margin-bottom:10px; font-weight:bold; color:#d48806;">Клетка: ${i+1}</div>`;
             if(t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px;" onclick="zoomImg('${t.img}')">`;
-            if(t.text) h += `<p style="font-size:15px; line-height:1.4;">${t.text}</p>`;
+            if(t.text) h += `<p style="font-size:15px;">${t.text}</p>`;
             document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
         }
 
-        // --- КОЛЕСО И ОСТАЛЬНОЕ ---
         function syncWheelEvent() {
             db.ref('wheel_event').on('value', snap => {
                 const data = snap.val(); if (!data) return;
                 const canvas = document.getElementById('wheel-canvas');
                 canvas.style.transform = `rotate(${data.rotation}deg)`;
-                document.getElementById('winner-display').innerText = "Колесо крутится...";
+                document.getElementById('winner-display').innerText = "Вращение...";
                 setTimeout(() => {
                     if (wheelTickets.length === 0) return;
                     const segments = wheelTickets.length;
                     const actualDeg = (360 - (data.rotation % 360)) % 360;
                     const winnerIdx = Math.floor(actualDeg / (360 / segments));
                     const winner = wheelTickets[winnerIdx];
-                    document.getElementById('winner-display').innerHTML = `🎉 Победитель: Билет №${winner.num}<br><small>${winner.owner}</small>`;
+                    document.getElementById('winner-display').innerHTML = `🎉 Билет №${winner.num}<br><small>${winner.owner}</small>`;
                 }, 4000);
             });
         }
@@ -319,24 +310,32 @@
         async function adminStartNewRound() {
             const s = await db.ref('current_round/number').once('value');
             db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + 86400000 });
-            alert("Раунд обновлен! Кнопки броска снова активны.");
+            alert("Раунд обновлен!");
+        }
+
+        async function adminResetRounds() {
+            if(!confirm("Сбросить номер раунда на 1? Все игроки смогут снова сделать ход.")) return;
+            await db.ref('current_round').set({ number: 1, endTime: Date.now() + 86400000 });
+            const whitelistSnap = await db.ref('whitelist').once('value');
+            whitelistSnap.forEach(user => { db.ref(`whitelist/${user.key}`).update({ last_round: 0 }); });
+            alert("Счетчик сброшен на №1!");
         }
 
         function adminFullReset() {
-            if(!confirm("Удалить всё поле и билеты?")) return;
+            if(!confirm("Удалить всё поле и прогресс?")) return;
             db.ref('board').remove(); db.ref('ticket_counter').set(0); db.ref('wheel_event').remove(); db.ref('current_round').remove();
             db.ref('whitelist').once('value', s => s.forEach(u => db.ref('whitelist/'+u.key).update({used_tasks:[], last_round:0})));
         }
 
-        function zoomImg(src) { document.getElementById('zoomed-img').src = src; document.getElementById('zoom-overlay').style.display = 'flex'; }
-        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
         function openAdminModal() { document.getElementById('admin-modal').style.display='block'; document.getElementById('overlay').style.display='block'; }
         function closeAdminModal() { document.getElementById('admin-modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value; if(!id) return;
             db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*players.length), used_tasks: [], last_round: 0 }).then(closeAdminModal);
         }
-        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
+        function zoomImg(src) { document.getElementById('zoomed-img').src = src; document.getElementById('zoom-overlay').style.display = 'flex'; }
+        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
