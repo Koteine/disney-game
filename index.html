@@ -20,6 +20,12 @@
         .p1 { background: #e1f5fe !important; border-color: #03a9f4; } /* Мастер Кисточки */
         .p2 { background: #f3e5f5 !important; border-color: #9c27b0; } /* Эльф Раскрасок */
         .p3 { background: #e8f5e9 !important; border-color: #4caf50; } /* Леди Палитра */
+
+<div id="admin-panel" style="display: none; margin-top: 20px;">
+    <button onclick="resetGame()" style="background: #ff4081; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">
+        🔄 Сбросить поле (Только для Хозяйки)
+    </button>
+</div>
         
         .owner-tag { position: absolute; bottom: 4px; font-size: 9px; text-transform: uppercase; color: #333; }
         
@@ -160,6 +166,33 @@
                 cell.onclick = null;
             }
         });
+
+        // Твой ID из бота (вставь сюда своё число без кавычек)
+const adminId = 341995937; 
+
+// Проверяем, кто открыл приложение
+const user = window.Telegram.WebApp.initDataUnsafe.user;
+
+if (user && user.id === adminId) {
+    // Если ID совпал, показываем секретную панель
+    document.getElementById('admin-panel').style.display = 'block';
+}
+        
+        function resetGame() {
+    // Спрашиваем подтверждение, чтобы не сбросить случайно
+    if (confirm("Вы точно хотите стереть все закрашенные клетки и начать новую игру?")) {
+        // Эта строчка удаляет все данные из папки 'board' в твоем Firebase
+        firebase.database().ref('board').remove()
+        .then(() => {
+            alert("Поле очищено! Можно начинать новый раунд ✨");
+            location.reload(); // Перезагружаем страницу, чтобы обнулить всё локально
+        })
+        .catch((error) => {
+            console.error("Ошибка при очистке: ", error);
+        });
+    }
+}
+        
     </script>
 </body>
 </html>
