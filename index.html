@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Smart Edition</title>
+    <title>Disney Battle: Professional Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -28,7 +28,7 @@
         #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
         .admin-section { margin-top: 10px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; background: #fff; }
-        .user-list { text-align: left; font-size: 12px; max-height: 200px; overflow-y: auto; margin-top: 10px; }
+        .user-list { text-align: left; font-size: 12px; max-height: 250px; overflow-y: auto; margin-top: 10px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
@@ -57,9 +57,15 @@
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Админка</h1>
             <div class="admin-section">
-                <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%;">➕ Добавить игрока</button>
-                <div id="active-players" class="user-list"></div>
-                <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:11px; margin-top:20px; cursor:pointer;">⚠️ Сбросить поле и историю заданий</button>
+                <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold;">➕ Добавить игрока</button>
+                
+                <div id="active-players" class="user-list" style="margin-top:20px; border-top:1px solid #eee; padding-top:10px;"></div>
+                
+                <div style="margin-top:30px; display:flex; flex-direction:column; gap:10px;">
+                    <button onclick="adminClearBoard()" style="background:#fff; color:#ff007f; border:1px solid #ff007f; padding:10px; border-radius:10px; font-size:12px;">🧹 Очистить только поле</button>
+                    <button onclick="adminResetTaskHistory()" style="background:#fff; color:#ff007f; border:1px solid #ff007f; padding:10px; border-radius:10px; font-size:12px;">🔄 Сбросить историю заданий у всех</button>
+                    <button onclick="adminFullReset()" style="color:red; background:none; border:none; font-size:11px; margin-top:10px; cursor:pointer; text-decoration:underline;">⚠️ ПОЛНЫЙ СБРОС ВСЕГО</button>
+                </div>
             </div>
         </div>
 
@@ -150,7 +156,7 @@
                     initRandomizer();
                 } else {
                     document.getElementById('auth-screen').style.display = 'block';
-                    document.getElementById('auth-status').innerText = "Доступ закрыт. Отправь ID админу.";
+                    document.getElementById('auth-status').innerText = "Доступ закрыт. Отправь ID админу @Koteine.";
                     document.getElementById('display-id').innerText = currentUserId;
                 }
             });
@@ -205,30 +211,29 @@
             const btn = document.getElementById('dice-btn');
             btn.disabled = true;
 
-            // 1. Получаем список использованных заданий ИМЕННО ЭТИМ игроком
             const userSnap = await db.ref('whitelist/' + currentUserId + '/used_tasks').once('value');
-            const usedByMe = userSnap.val() || [];
+            let usedByMe = userSnap.val() || [];
 
-            // 2. Ищем свободные клетки на поле
             const boardSnap = await db.ref('board').once('value');
             const boardData = boardSnap.val() || {};
             let freeCells = [];
             for(let i=0; i<50; i++) if(!boardData[i]) freeCells.push(i);
 
-            if(freeCells.length === 0) return alert("Поле заполнено!");
+            if(freeCells.length === 0) {
+                btn.disabled = false;
+                return alert("Поле заполнено!");
+            }
 
-            // 3. Фильтруем задания: только те, что игрок еще не видел
             let availableTasks = tasks.map((t, i) => i).filter(idx => !usedByMe.includes(idx));
 
             if(availableTasks.length === 0) {
-                alert("Ты выполнил все доступные задания в пуле!");
+                alert("У тебя закончились уникальные задания!");
                 btn.disabled = false; return;
             }
 
             const rolledCell = freeCells[Math.floor(Math.random() * freeCells.length)];
             const randomTaskIdx = availableTasks[Math.floor(Math.random() * availableTasks.length)];
 
-            // 4. Сохраняем: клетку в общий борд, а ID задания в личную историю
             await db.ref('board/' + rolledCell).set({ owner: myIndex, taskIdx: randomTaskIdx });
             usedByMe.push(randomTaskIdx);
             await db.ref('whitelist/' + currentUserId + '/used_tasks').set(usedByMe);
@@ -239,12 +244,12 @@
 
         async function showTaskInfo(cellIdx) {
             const snap = await db.ref('board/' + cellIdx).once('value');
-            if (!snap.exists()) return alert("Эта клетка еще свободна!");
+            if (!snap.exists()) return alert("Клетка свободна!");
             
             const taskIdx = snap.val().taskIdx;
             const task = tasks[taskIdx] || { text: "Задание не найдено" };
             
-            document.getElementById('mTitle').innerText = "Задание к номеру " + (cellIdx + 1);
+            document.getElementById('mTitle').innerText = "Задание №" + (cellIdx + 1);
             let h = task.img ? `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">` : "";
             h += `<p>${task.text}</p>`;
             document.getElementById('mText').innerHTML = h;
@@ -253,6 +258,7 @@
         }
 
         function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
+        
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
@@ -265,36 +271,62 @@
         
         function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value;
+            if(!id) return alert("Введите ID!");
             db.ref('whitelist').once('value', (snap) => {
                 const usedIndices = [];
                 snap.forEach(c => usedIndices.push(c.val().charIndex));
                 const available = players.map((_, i) => i).filter(i => !usedIndices.includes(i));
                 const idx = available[Math.floor(Math.random() * available.length)];
-                db.ref('whitelist/' + id).update({ charIndex: idx, used_tasks: [] }).then(() => {
-                    alert("Добавлен!"); closeAdminModal();
+                db.ref('whitelist/' + id).set({ charIndex: idx, used_tasks: [] }).then(() => {
+                    alert("Игрок добавлен!"); closeAdminModal();
                 });
             });
         }
 
         function updateAdminPlayerList() {
             db.ref('whitelist').on('value', (snap) => {
-                let h = "";
+                let h = "<b>Список участников:</b><br>";
+                if (!snap.exists()) h += "Пусто";
                 snap.forEach(c => {
-                    h += `<div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                        <span>${c.key} (${players[c.val().charIndex].n})</span>
-                        <button onclick="db.ref('whitelist/${c.key}').remove()" style="color:red;">X</button>
+                    const p = players[c.val().charIndex];
+                    const usedCount = c.val().used_tasks ? c.val().used_tasks.length : 0;
+                    h += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:#f9f9f9; padding:5px; border-radius:5px;">
+                        <div style="text-align:left;">
+                            <span style="font-size:10px; color:gray;">${c.key}</span><br>
+                            <b>${p ? p.n : '???'}</b>
+                            <div style="font-size:9px; color:#ff007f;">Решено: ${usedCount}</div>
+                        </div>
+                        <button onclick="kickPlayer('${c.key}')" style="color:red; background:none; border:1px solid red; border-radius:5px; padding:2px 8px; font-size:10px;">Удалить</button>
                     </div>`;
                 });
                 document.getElementById('active-players').innerHTML = h;
             });
         }
 
-        function adminResetGame() {
-            if(confirm("Сбросить всё?")) {
+        function kickPlayer(id) {
+            if(confirm("Удалить игрока " + id + "?")) db.ref('whitelist/' + id).remove();
+        }
+
+        function adminClearBoard() {
+            if(confirm("Очистить только поле? История заданий сохранится.")) db.ref('board').remove();
+        }
+
+        function adminResetTaskHistory() {
+            if(confirm("Сбросить историю заданий ВСЕМ?")) {
+                db.ref('whitelist').once('value', snap => {
+                    snap.forEach(c => db.ref('whitelist/' + c.key + '/used_tasks').remove());
+                    alert("История очищена");
+                });
+            }
+        }
+
+        function adminFullReset() {
+            if(confirm("ПОЛНЫЙ СБРОС? Поле и история будут удалены.")) {
                 db.ref('board').remove();
                 db.ref('whitelist').once('value', snap => {
                     snap.forEach(c => db.ref('whitelist/' + c.key + '/used_tasks').remove());
                 });
+                alert("Данные обнулены");
             }
         }
 
