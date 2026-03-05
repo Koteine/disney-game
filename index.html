@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Final Edition</title>
+    <title>Disney Battle: Wheel Fix</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -65,7 +65,7 @@
 
         <div id="tab-wheel" class="tab-content">
             <h1>🎡 Фортуна</h1>
-            <div id="winner-display" style="font-size:18px; font-weight:bold; color:#ff007f; min-height:45px;">Удачи!</div>
+            <div id="winner-display" style="font-size:16px; font-weight:bold; color:#ff007f; min-height:45px;">Участников в колесе: 0</div>
             <div id="wheel-container">
                 <img id="wheel-pointer" src="https://cdn-icons-png.flaticon.com/512/3585/3585837.png">
                 <canvas id="wheel-canvas" width="300" height="300"></canvas>
@@ -78,14 +78,11 @@
             <div class="admin-section">
                 <button onclick="adminStartNewRound()" style="width:100%; padding:10px; background:#4CAF50; color:white; border:none; border-radius:10px; margin-bottom:10px;">🚀 СЛЕДУЮЩИЙ РАУНД</button>
                 <button onclick="adminResetRounds()" style="width:100%; padding:10px; background:#FF9800; color:white; border:none; border-radius:10px; margin-bottom:10px;">🔄 СБРОСИТЬ РАУНДЫ НА 1</button>
-                
                 <h4 style="margin: 10px 0 5px 0;">🎟 Список билетов:</h4>
                 <div id="admin-tickets-list" class="admin-list-box">Нет занятых клеток</div>
-
                 <button onclick="openAdminModal()" style="width:100%; padding:10px; background:#2196F3; color:white; border:none; border-radius:10px; margin-top:10px;">➕ Добавить игрока</button>
                 <h4 style="margin: 15px 0 5px 0;">👥 Участники (ID):</h4>
                 <div id="active-players" class="admin-list-box">Загрузка списка...</div>
-                
                 <button onclick="adminFullReset()" style="width:100%; padding:8px; background:#f44336; color:white; border:none; border-radius:10px; margin-top:20px; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС</button>
             </div>
         </div>
@@ -187,15 +184,9 @@
                 }
                 document.getElementById('status-fill').style.width = (count/50*100) + '%';
                 document.getElementById('status-text').innerText = `Занято клеток: ${count} из 50`;
-                
-                // Обновление текстового списка билетов в админке
                 if (currentUserId === ADMIN_ID) {
                     const listDiv = document.getElementById('admin-tickets-list');
-                    if (ticketList.length > 0) {
-                        listDiv.innerHTML = ticketList.map(t => `<b>🎟 Билет ${t.ticket}</b> — ${t.name}`).join('<br>');
-                    } else {
-                        listDiv.innerHTML = "Нет занятых клеток";
-                    }
+                    listDiv.innerHTML = ticketList.length > 0 ? ticketList.map(t => `<b>🎟 Билет ${t.ticket}</b> — ${t.name}`).join('<br>') : "Нет занятых клеток";
                 }
             });
         }
@@ -250,26 +241,38 @@
             el.classList.add('active');
             if(id === 'tab-wheel') {
                 db.ref('board').once('value', s => {
-                    const tickets = []; s.forEach(c => tickets.push({ num: c.val().ticket, owner: players[c.val().owner].n }));
-                    drawWheel(tickets);
+                    const allTickets = [];
+                    s.forEach(c => {
+                        const cell = c.val();
+                        // РАЗДЕЛЯЕМ БИЛЕТЫ (если там "1 и 2")
+                        const nums = cell.ticket.toString().split(' и ');
+                        nums.forEach(n => allTickets.push({ num: n.trim(), owner: players[cell.owner].n }));
+                    });
+                    document.getElementById('winner-display').innerText = "Билетов в колесе: " + allTickets.length;
+                    drawWheel(allTickets);
                 });
             }
         }
 
         function drawWheel(tickets) {
-            const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d'), segments = tickets.length || 1, angle = 2 * Math.PI / segments;
+            const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
+            const segments = tickets.length || 1, angle = 2 * Math.PI / segments;
             ctx.clearRect(0,0,300,300);
             tickets.forEach((t, i) => {
                 ctx.beginPath(); ctx.moveTo(150,150); ctx.arc(150,150,140, i*angle, (i+1)*angle);
                 ctx.fillStyle = i % 2 === 0 ? '#ffb2d9' : '#ff007f'; ctx.fill();
                 ctx.save(); ctx.translate(150,150); ctx.rotate(i*angle + angle/2);
-                ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText(t.num, 90, 5); ctx.restore();
+                ctx.fillStyle = "white"; 
+                // Подстройка размера шрифта под количество билетов
+                const fontSize = segments > 20 ? '8px' : '10px';
+                ctx.font = `bold ${fontSize} Arial`; 
+                ctx.fillText(t.num, 85, 5); ctx.restore();
             });
         }
         
         function adminTriggerSpin() {
             const canvas = document.getElementById('wheel-canvas');
-            const newRotation = 1440 + Math.floor(Math.random() * 3600);
+            const newRotation = 3600 + Math.floor(Math.random() * 3600);
             canvas.style.transform = `rotate(${newRotation}deg)`;
         }
 
