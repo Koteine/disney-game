@@ -391,9 +391,24 @@
             document.getElementById('new-user-id').value = "";
         }
 
-        function syncAdminList() {
+      function syncAdminList() {
             db.ref('whitelist').on('value', snap => {
-                let h = "<b>ID в базе:</b><br>"; snap.forEach(u => { h += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${players[u.val().charIndex].n}</span><button onclick="kick('${u.key}')" style="color:red;border:none;background:none">✕</button></div>`; });
+                let h = "<b>Список художников:</b><br>"; 
+                snap.forEach(u => { 
+                    const userData = u.val();
+                    const userTgId = u.key; // Ключ в whitelist — это и есть Telegram ID
+                    const charName = players[userData.charIndex]?.n || "Неизвестный";
+                    const charColor = charColors[userData.charIndex] || "#333";
+
+                    h += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
+                        <span style="text-align:left;">
+                            <b style="color:${charColor}">${charName}</b><br>
+                            <code style="color:#888; font-size:10px;">ID: ${userTgId}</code>
+                        </span>
+                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
+                    </div>`; 
+                });
                 document.getElementById('active-players').innerHTML = h;
             });
         }
@@ -414,6 +429,7 @@
     </script>
 </body>
 </html>
+
 
 
 
