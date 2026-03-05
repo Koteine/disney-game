@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Professional Edition</title>
+    <title>Disney Battle: Rounds Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -14,84 +14,82 @@
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 11px; color: #888; cursor: pointer; display: flex; flex-direction: column; align-items: center; flex: 1; }
         .nav-item.active { color: #ff007f; font-weight: bold; }
-        .nav-icon { font-size: 20px; margin-bottom: 2px; }
+        
+        /* Сетка и ячейки */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; }
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
         .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; overflow: hidden; white-space: nowrap; }
-        #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; }
-        #dice-btn:disabled { background: #ccc; box-shadow: none; }
-        .random-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 20px; }
-        .num-btn { padding: 12px 0; border: 1px solid #ffb2d9; background: white; border-radius: 10px; font-weight: bold; color: #ff007f; }
-        .num-btn.used { background: #eee; color: #bbb; border-color: #ddd; }
+
+        /* Таймер и кнопка */
+        #round-info { font-size: 14px; font-weight: bold; color: #ff007f; margin-top: 10px; }
+        #round-timer { background: white; border: 2px solid #ff007f; border-radius: 15px; padding: 8px; margin: 5px auto 15px; max-width: 150px; font-size: 20px; font-weight: bold; color: #ff007f; }
+        .timer-expired { border-color: #ccc !important; color: #ccc !important; }
+        
+        #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; transition: 0.2s; }
+        #dice-btn:disabled { background: #ccc; box-shadow: none; transform: translateY(4px); opacity: 0.6; }
+
+        /* Модалки и зум */
         #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
+        #zoom-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; justify-content: center; align-items: center; }
+        #zoom-overlay img { max-width: 95%; max-height: 95%; border-radius: 10px; }
+
         .admin-section { margin-top: 10px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; background: #fff; }
-        .user-list { text-align: left; font-size: 12px; max-height: 250px; overflow-y: auto; margin-top: 10px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
-    <div id="auth-screen" style="display:none; padding-top: 50px;">
-        <h2>Загрузка... ⏳</h2>
-        <p id="auth-status">Минутку, готовим игру.</p>
-        <p id="display-id" style="font-size:10px; color:gray;"></p>
-    </div>
-
-    <div id="game-ui" style="display:none;">
+    <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
-            <p>Вы: <b id="my-name-display" style="color:#ff007f;"></b></p>
-            <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
-            <p id="status">Твой ход!</p>
+            <div id="round-info">Загрузка раунда...</div>
+            <div id="round-timer">00:00:00</div>
+            <p style="font-size: 12px;">Вы: <b id="my-name-display" style="color:#ff007f;"></b></p>
+            <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
 
-        <div id="tab-random" class="tab-content">
-            <h1>📜 Номера заданий</h1>
-            <div class="random-grid" id="random-grid"></div>
-        </div>
-
         <div id="tab-admin" class="tab-content">
-            <h1>⚙️ Админка</h1>
+            <h1>⚙️ Управление</h1>
             <div class="admin-section">
+                <button onclick="adminStartNewRound()" style="background:#4CAF50; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold; margin-bottom:10px;">🚀 НАЧАТЬ РАУНД (24ч)</button>
+                <button onclick="adminEndRound()" style="background:#ff9800; color:white; border:none; padding:10px; border-radius:12px; width:100%; font-weight:bold; margin-bottom:20px;">⏹ ЗАВЕРШИТЬ РАУНД</button>
                 <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold;">➕ Добавить игрока</button>
-                
-                <div id="active-players" class="user-list" style="margin-top:20px; border-top:1px solid #eee; padding-top:10px;"></div>
-                
-                <div style="margin-top:30px; display:flex; flex-direction:column; gap:10px;">
-                    <button onclick="adminClearBoard()" style="background:#fff; color:#ff007f; border:1px solid #ff007f; padding:10px; border-radius:10px; font-size:12px;">🧹 Очистить только поле</button>
-                    <button onclick="adminResetTaskHistory()" style="background:#fff; color:#ff007f; border:1px solid #ff007f; padding:10px; border-radius:10px; font-size:12px;">🔄 Сбросить историю заданий у всех</button>
-                    <button onclick="adminFullReset()" style="color:red; background:none; border:none; font-size:11px; margin-top:10px; cursor:pointer; text-decoration:underline;">⚠️ ПОЛНЫЙ СБРОС ВСЕГО</button>
-                </div>
+                <div id="active-players" style="text-align:left; font-size:12px; margin-top:15px;"></div>
+                <hr>
+                <button onclick="adminClearBoard()" style="width:100%; margin-top:10px; background:none; border:1px solid #ccc; padding:5px; font-size:10px;">Очистить поле</button>
             </div>
         </div>
 
         <nav class="nav-bar">
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
-            <button class="nav-item" onclick="switchTab('tab-random', this)"><span>🎲 Номера</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>
 
-    <div id="overlay"></div>
+    <div id="overlay" onclick="closeModal()"></div>
     <div id="modal">
-        <h2 id="mTitle" style="font-size:18px;"></h2>
+        <h2 id="mTitle" style="font-size:18px; margin-top:0;"></h2>
         <div id="mText"></div>
-        <button onclick="closeModal()" style="margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; padding:12px;">Понятно!</button>
+        <button onclick="closeModal()" style="margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; padding:12px; font-weight:bold;">ПРИНЯТО!</button>
+    </div>
+
+    <div id="zoom-overlay" onclick="this.style.display='none'">
+        <img id="zoomed-img" src="">
     </div>
 
     <div id="admin-modal">
         <h3>Новый участник</h3>
-        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; border-radius:10px;">
-        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#ff007f; color:white; border:none; border-radius:12px; width:100%; margin-top:15px;">ДОБАВИТЬ</button>
+        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; border-radius:10px; border:1px solid #ddd;">
+        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#4CAF50; color:white; border:none; border-radius:12px; width:100%; margin-top:15px; font-weight:bold;">ДОБАВИТЬ</button>
         <button onclick="closeAdminModal()" style="margin-top:10px; background:none; border:none; color:gray; width:100%;">Отмена</button>
     </div>
 
     <script>
-        const JSON_URL = 'https://raw.githubusercontent.com/Koteine/disney-game/refs/heads/main/tasks.json';
+        const JSON_URL = 'tasks.json'; 
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -102,33 +100,14 @@
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
         let tasks = [];
         let myIndex = null;
+        let roundEndTime = 0;
+        let currentRoundNum = 0;
 
         const players = [
-            { n: "Межгалактический почеркушка", c: "p0" }, { n: "Марсианин ищет синий", c: "p1" },
-            { n: "Краска вытекла", c: "p2" }, { n: "Паста «Красный жуть»", c: "p3" },
-            { n: "Баклажан с претензией", c: "p4" }, { n: "Кусь за контур", c: "p5" },
-            { n: "Квадратный корень из краски", c: "p6" }, { n: "Крадущийся ленивец", c: "p7" },
-            { n: "Графон на ультрах", c: "p8" }, { n: "Пиксельный Мазок", c: "p9" },
-            { n: "Залипаю в контур", c: "p10" }, { n: "Ван Гог на минималках", c: "p0" },
-            { n: "Штрих-пунктирный заяц", c: "p1" }, { n: "Королева градиента", c: "p2" },
-            { n: "Акварельный маньяк", c: "p3" }, { n: "Мастер мокрой кисти", c: "p4" },
-            { n: "Ластик-мститель", c: "p5" }, { n: "Карандашный барон", c: "p6" },
-            { n: "Гуашевый монстр", c: "p7" }, { n: "Тень отца Гамлета", c: "p8" },
-            { n: "Блестящий штришок", c: "p9" }, { n: "Фломастерный ниндзя", c: "p10" },
-            { n: "Укротитель палитры", c: "p0" }, { n: "Цветовая галлюцинация", c: "p1" },
-            { n: "Призрак мольберта", c: "p2" }, { n: "Эскизный сомелье", c: "p3" },
-            { n: "Золотое сечение", c: "p4" }, { n: "Масляный магнат", c: "p5" },
-            { n: "Пастельный демон", c: "p6" }, { n: "Великий комбинатор охры", c: "p7" },
-            { n: "Холст в клеточку", c: "p8" }, { n: "Угольный детектив", c: "p9" },
-            { n: "За гранью белил", c: "p10" }, { n: "Сангина на выгуле", c: "p0" },
-            { n: "Кислотный этюд", c: "p1" }, { n: "Размытый акцент", c: "p2" },
-            { n: "Композиция Х", c: "p3" }, { n: "Клякса судьбы", c: "p4" },
-            { n: "Трафаретный герой", c: "p5" }, { n: "Абстрактный злыдень", c: "p6" },
-            { n: "Линерный король", c: "p7" }, { n: "Скетчбук с секретами", c: "p8" },
-            { n: "Прозрачная лессировка", c: "p9" }, { n: "Брызги шампанского", c: "p10" },
-            { n: "Набросок в тумане", c: "p0" }, { n: "Яркий блик", c: "p1" },
-            { n: "Точка схода", c: "p2" }, { n: "Растушёвка реальности", c: "p3" },
-            { n: "Перфекционист холста", c: "p4" }, { n: "Оживший натюрморт", c: "p5" }
+            { n: "Ван Гог на минималках", c: "p0" }, { n: "Мастер мокрой кисти", c: "p1" },
+            { n: "Блестящий штришок", c: "p2" }, { n: "Королева градиента", c: "p3" },
+            { n: "Карандашный барон", c: "p4" }, { n: "Укротитель палитры", c: "p5" },
+            { n: "Ластик-мститель", c: "p6" }, { n: "Гуашевый монстр", c: "p7" }
         ];
 
         async function init() {
@@ -136,129 +115,139 @@
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
                 checkAccess();
-            } catch (e) {
-                document.getElementById('auth-status').innerText = "Ошибка загрузки JSON!";
-            }
+                syncRound();
+                initGrid();
+            } catch (e) { alert("Ошибка загрузки данных."); }
         }
 
         function checkAccess() {
             db.ref('whitelist/' + currentUserId).on('value', (s) => {
                 if (s.exists() || currentUserId === ADMIN_ID) {
                     myIndex = s.exists() ? s.val().charIndex : 0;
-                    document.getElementById('auth-screen').style.display = 'none';
-                    document.getElementById('game-ui').style.display = 'block';
-                    document.getElementById('my-name-display').innerText = players[myIndex].n;
+                    document.getElementById('my-name-display').innerText = players[myIndex]?.n || "Админ";
                     if (currentUserId === ADMIN_ID) {
                         document.getElementById('nav-admin-btn').style.display = 'flex';
                         updateAdminPlayerList();
                     }
-                    initGrid();
-                    initRandomizer();
                 } else {
-                    document.getElementById('auth-screen').style.display = 'block';
-                    document.getElementById('auth-status').innerText = "Доступ закрыт. Отправь ID админу @Koteine.";
-                    document.getElementById('display-id').innerText = currentUserId;
+                    document.body.innerHTML = "<h1>Доступ закрыт</h1><p>Ваш ID: "+currentUserId+"</p>";
                 }
             });
         }
 
-        function initGrid() {
-            const gridDiv = document.getElementById('grid');
-            gridDiv.innerHTML = "";
-            for(let i=0; i<50; i++) {
-                let div = document.createElement('div');
-                div.className = 'cell'; div.id = 'cell-' + i;
-                div.innerHTML = `<div>${i+1}</div>`;
-                gridDiv.appendChild(div);
-            }
-            syncBoard();
-        }
-
-        function syncBoard() {
-            db.ref('board').on('value', (snap) => {
-                const data = snap.val() || {};
-                for(let i=0; i<50; i++) {
-                    const cell = document.getElementById('cell-' + i);
-                    if (data[i]) {
-                        const p = players[data[i].owner];
-                        cell.className = 'cell ' + (p ? p.c : '');
-                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p ? p.n.split(' ')[0] : '...'}</div>`;
-                        cell.onclick = () => showTaskInfo(i);
-                    } else {
-                        cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
-                        cell.onclick = null;
-                    }
+        function syncRound() {
+            db.ref('current_round').on('value', (snap) => {
+                const data = snap.val();
+                const btn = document.getElementById('dice-btn');
+                if (data && data.endTime) {
+                    roundEndTime = data.endTime;
+                    currentRoundNum = data.number;
+                    document.getElementById('round-info').innerText = "РАУНД №" + currentRoundNum;
+                    startTimer();
+                } else {
+                    roundEndTime = 0;
+                    document.getElementById('round-info').innerText = "ОЖИДАНИЕ РАУНДА";
+                    document.getElementById('round-timer').innerText = "00:00:00";
+                    btn.disabled = true;
                 }
             });
         }
 
-        function initRandomizer() {
-            const rGrid = document.getElementById('random-grid');
-            db.ref('board').on('value', (snap) => {
-                const data = snap.val() || {};
-                rGrid.innerHTML = "";
-                for(let i=0; i<50; i++) {
-                    let btn = document.createElement('button');
-                    btn.className = 'num-btn' + (data[i] ? ' used' : '');
-                    btn.innerText = i + 1;
-                    btn.onclick = () => showTaskInfo(i);
-                    rGrid.appendChild(btn);
+        function startTimer() {
+            const timerDiv = document.getElementById('round-timer');
+            const btn = document.getElementById('dice-btn');
+            
+            const itv = setInterval(async () => {
+                const now = Date.now();
+                const diff = roundEndTime - now;
+
+                if (diff <= 0) {
+                    clearInterval(itv);
+                    timerDiv.innerText = "00:00:00";
+                    timerDiv.classList.add('timer-expired');
+                    btn.disabled = true;
+                } else {
+                    timerDiv.classList.remove('timer-expired');
+                    const h = Math.floor(diff / 3600000);
+                    const m = Math.floor((diff % 3600000) / 60000);
+                    const s = Math.floor((diff % 60000) / 1000);
+                    timerDiv.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                    
+                    // Проверка: делал ли уже ход в этом раунде
+                    const moveSnap = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
+                    btn.disabled = (moveSnap.val() === currentRoundNum);
                 }
-            });
+            }, 1000);
         }
 
         async function roll() {
             const btn = document.getElementById('dice-btn');
             btn.disabled = true;
 
-            const userSnap = await db.ref('whitelist/' + currentUserId + '/used_tasks').once('value');
-            let usedByMe = userSnap.val() || [];
-
             const boardSnap = await db.ref('board').once('value');
             const boardData = boardSnap.val() || {};
             let freeCells = [];
             for(let i=0; i<50; i++) if(!boardData[i]) freeCells.push(i);
 
-            if(freeCells.length === 0) {
-                btn.disabled = false;
-                return alert("Поле заполнено!");
-            }
+            if(freeCells.length === 0) return alert("Поле заполнено!");
 
-            let availableTasks = tasks.map((t, i) => i).filter(idx => !usedByMe.includes(idx));
+            const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
+            let used = userSnap.val() || [];
+            let availTasks = tasks.map((_, i) => i).filter(i => !used.includes(i));
 
-            if(availableTasks.length === 0) {
-                alert("У тебя закончились уникальные задания!");
-                btn.disabled = false; return;
-            }
+            if(availTasks.length === 0) return alert("Задания закончились!");
 
-            const rolledCell = freeCells[Math.floor(Math.random() * freeCells.length)];
-            const randomTaskIdx = availableTasks[Math.floor(Math.random() * availableTasks.length)];
+            const cell = freeCells[Math.floor(Math.random() * freeCells.length)];
+            const taskIdx = availTasks[Math.floor(Math.random() * availTasks.length)];
 
-            await db.ref('board/' + rolledCell).set({ owner: myIndex, taskIdx: randomTaskIdx });
-            usedByMe.push(randomTaskIdx);
-            await db.ref('whitelist/' + currentUserId + '/used_tasks').set(usedByMe);
+            await db.ref('board/' + cell).set({ owner: myIndex, taskIdx: taskIdx });
+            used.push(taskIdx);
+            await db.ref(`whitelist/${currentUserId}`).update({ used_tasks: used, last_round: currentRoundNum });
 
-            showTaskInfo(rolledCell);
-            btn.disabled = false;
+            showTaskInfo(cell);
         }
 
-        async function showTaskInfo(cellIdx) {
-            const snap = await db.ref('board/' + cellIdx).once('value');
-            if (!snap.exists()) return alert("Клетка свободна!");
-            
-            const taskIdx = snap.val().taskIdx;
-            const task = tasks[taskIdx] || { text: "Задание не найдено" };
-            
-            document.getElementById('mTitle').innerText = "Задание №" + (cellIdx + 1);
-            let h = task.img ? `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">` : "";
-            h += `<p>${task.text}</p>`;
+        function initGrid() {
+            const gridDiv = document.getElementById('grid');
+            db.ref('board').on('value', (snap) => {
+                const data = snap.val() || {};
+                gridDiv.innerHTML = "";
+                for(let i=0; i<50; i++) {
+                    let div = document.createElement('div');
+                    div.className = 'cell' + (data[i] ? ' ' + players[data[i].owner].c : '');
+                    div.innerHTML = `<div>${i+1}</div>`;
+                    if(data[i]) {
+                        div.innerHTML += `<div class="owner-tag">${players[data[i].owner].n.split(' ')[0]}</div>`;
+                        div.onclick = () => showTaskInfo(i);
+                    }
+                    gridDiv.appendChild(div);
+                }
+            });
+        }
+
+        async function showTaskInfo(idx) {
+            const snap = await db.ref('board/' + idx).once('value');
+            if(!snap.exists()) return;
+            const task = tasks[snap.val().taskIdx];
+            document.getElementById('mTitle').innerText = "Клетка №" + (idx + 1);
+            let h = "";
+            if(task.img) h += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;" onclick="zoomImg('${task.img}')">`;
+            if(task.text) h += `<p style="margin:0; font-size:14px;">${task.text}</p>`;
             document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display = 'block';
             document.getElementById('overlay').style.display = 'block';
         }
 
-        function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
-        
+        function zoomImg(src) {
+            document.getElementById('zoomed-img').src = src;
+            document.getElementById('zoom-overlay').style.display = 'flex';
+        }
+
+        function closeModal() { 
+            document.getElementById('modal').style.display = 'none'; 
+            document.getElementById('overlay').style.display = 'none'; 
+        }
+
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
@@ -266,69 +255,41 @@
             el.classList.add('active');
         }
 
-        function openAdminModal() { document.getElementById('admin-modal').style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
-        function closeAdminModal() { document.getElementById('admin-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
-        
-        function saveNewUserRandomly() {
-            const id = document.getElementById('new-user-id').value;
-            if(!id) return alert("Введите ID!");
-            db.ref('whitelist').once('value', (snap) => {
-                const usedIndices = [];
-                snap.forEach(c => usedIndices.push(c.val().charIndex));
-                const available = players.map((_, i) => i).filter(i => !usedIndices.includes(i));
-                const idx = available[Math.floor(Math.random() * available.length)];
-                db.ref('whitelist/' + id).set({ charIndex: idx, used_tasks: [] }).then(() => {
-                    alert("Игрок добавлен!"); closeAdminModal();
-                });
-            });
+        // --- ADMIN ---
+        async function adminStartNewRound() {
+            const s = await db.ref('current_round/number').once('value');
+            const num = (s.val() || 0) + 1;
+            await db.ref('current_round').set({ number: num, endTime: Date.now() + 86400000 });
+            alert("Раунд №" + num + " запущен на 24 часа!");
+        }
+
+        function adminEndRound() {
+            if(confirm("Завершить раунд досрочно?")) db.ref('current_round/endTime').set(0);
         }
 
         function updateAdminPlayerList() {
             db.ref('whitelist').on('value', (snap) => {
                 let h = "<b>Список участников:</b><br>";
-                if (!snap.exists()) h += "Пусто";
                 snap.forEach(c => {
-                    const p = players[c.val().charIndex];
-                    const usedCount = c.val().used_tasks ? c.val().used_tasks.length : 0;
-                    h += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:#f9f9f9; padding:5px; border-radius:5px;">
-                        <div style="text-align:left;">
-                            <span style="font-size:10px; color:gray;">${c.key}</span><br>
-                            <b>${p ? p.n : '???'}</b>
-                            <div style="font-size:9px; color:#ff007f;">Решено: ${usedCount}</div>
-                        </div>
-                        <button onclick="kickPlayer('${c.key}')" style="color:red; background:none; border:1px solid red; border-radius:5px; padding:2px 8px; font-size:10px;">Удалить</button>
+                    h += `<div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <span>${players[c.val().charIndex]?.n || c.key}</span>
+                        <button onclick="kick('${c.key}')" style="color:red; border:none; background:none;">✕</button>
                     </div>`;
                 });
                 document.getElementById('active-players').innerHTML = h;
             });
         }
 
-        function kickPlayer(id) {
-            if(confirm("Удалить игрока " + id + "?")) db.ref('whitelist/' + id).remove();
+        function openAdminModal() { document.getElementById('admin-modal').style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
+        function closeAdminModal() { document.getElementById('admin-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
+        function saveNewUserRandomly() {
+            const id = document.getElementById('new-user-id').value;
+            if(!id) return;
+            const idx = Math.floor(Math.random() * players.length);
+            db.ref('whitelist/' + id).set({ charIndex: idx, used_tasks: [], last_round: 0 }).then(closeAdminModal);
         }
-
-        function adminClearBoard() {
-            if(confirm("Очистить только поле? История заданий сохранится.")) db.ref('board').remove();
-        }
-
-        function adminResetTaskHistory() {
-            if(confirm("Сбросить историю заданий ВСЕМ?")) {
-                db.ref('whitelist').once('value', snap => {
-                    snap.forEach(c => db.ref('whitelist/' + c.key + '/used_tasks').remove());
-                    alert("История очищена");
-                });
-            }
-        }
-
-        function adminFullReset() {
-            if(confirm("ПОЛНЫЙ СБРОС? Поле и история будут удалены.")) {
-                db.ref('board').remove();
-                db.ref('whitelist').once('value', snap => {
-                    snap.forEach(c => db.ref('whitelist/' + c.key + '/used_tasks').remove());
-                });
-                alert("Данные обнулены");
-            }
-        }
+        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/' + id).remove(); }
+        function adminClearBoard() { if(confirm("Очистить всё поле?")) db.ref('board').remove(); }
 
         init();
     </script>
