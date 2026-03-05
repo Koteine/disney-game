@@ -174,7 +174,7 @@
     <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
 
     <script>
-        const JSON_URL = 'tasks.json';
+       const JSON_URL = 'tasks.json';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -201,8 +201,6 @@
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('th-user').style.display = 'table-cell';
-                document.getElementById('th-status').style.display = 'table-cell';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
                 syncAdminList();
             }
@@ -229,46 +227,45 @@
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
                 }
-               function updateTicketsTable() {
-    const body = document.getElementById('tickets-body');
-    const isAdmin = (currentUserId === ADMIN_ID);
-    
-    // Показываем колонку "Игрок" только админу
-    document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
-
-    // Сортируем: сначала новые раунды, потом по номеру билета
-    const sortedData = allTicketsData.sort((a, b) => b.round - a.round || b.ticket - a.ticket);
-
-    body.innerHTML = sortedData.map(t => {
-        // Фильтр: игрок видит только своё, админ — всё
-        if (!isAdmin && t.owner !== myIndex) return '';
-
-        const task = tasks[t.taskIdx] || { text: "Золотая клетка / Ловушка" };
-        const statusClass = t.excluded ? 'row-excluded' : '';
-        
-        return `
-            <tr class="${statusClass}">
-                <td>${t.round}</td>
-                <td>${t.cell}</td>
-                ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
-                <td><b>${t.ticket}</b></td>
-                <td>
-                    <button onclick="viewTaskDetails(${t.cell-1})" style="background:none; border:none; font-size:14px;">
-                        ${isAdmin ? '👁️' : '📝'}
-                    </button>
-                </td>
-            </tr>`;
-    }).join('');
-}
-
-// Новая функция для просмотра деталей задания из таблицы
-function viewTaskDetails(cellIdx) {
-    db.ref('board/' + cellIdx).once('value', s => {
-        if (s.exists()) showCell(cellIdx, s.val());
-    });
-}
+                updateTicketsTable();
             });
             db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
+        }
+
+        function updateTicketsTable() {
+            const body = document.getElementById('tickets-body');
+            const isAdmin = (currentUserId === ADMIN_ID);
+            
+            if(document.getElementById('th-user-name')) {
+                document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
+            }
+
+            const sortedData = allTicketsData.sort((a, b) => b.round - a.round || b.ticket - a.ticket);
+
+            body.innerHTML = sortedData.map(t => {
+                if (!isAdmin && t.owner !== myIndex) return '';
+                const statusClass = t.excluded ? 'row-excluded' : '';
+                
+                return `
+                    <tr class="${statusClass}">
+                        <td>${t.round}</td>
+                        <td>${t.cell}</td>
+                        ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
+                        <td><b>${t.ticket}</b></td>
+                        <td>
+                            <div style="display:flex; gap:5px; justify-content:center;">
+                                <button onclick="viewTaskDetails(${t.cell-1})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>
+                                ${isAdmin ? `<button onclick="db.ref('board/${t.cell-1}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
+                            </div>
+                        </td>
+                    </tr>`;
+            }).join('');
+        }
+
+        function viewTaskDetails(cellIdx) {
+            db.ref('board/' + cellIdx).once('value', s => {
+                if (s.exists()) showCell(cellIdx, s.val());
+            });
         }
 
         function updateTimerDisplay() {
@@ -349,16 +346,6 @@ function viewTaskDetails(cellIdx) {
             document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
         }
 
-        function updateTicketsTable() {
-            const body = document.getElementById('tickets-body'), isAdmin = (currentUserId === ADMIN_ID);
-            body.innerHTML = allTicketsData.sort((a,b)=>b.round-a.round).map(t => `
-                <tr class="${t.excluded ? 'row-excluded' : ''}">
-                    ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
-                    <td><b>${t.ticket}</b></td>
-                    ${isAdmin ? `<td><button onclick="db.ref('board/${t.cell-1}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:16px;">${t.excluded ? '❌' : '✅'}</button></td>` : ''}
-                </tr>`).join('');
-        }
-
         function drawWheel() {
             const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
             const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) t.ticket.toString().split(' и ').forEach(n => tickets.push({ num: n.trim(), owner: t.owner })); });
@@ -427,5 +414,6 @@ function viewTaskDetails(cellIdx) {
     </script>
 </body>
 </html>
+
 
 
