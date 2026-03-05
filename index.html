@@ -69,9 +69,45 @@
     </div>
 
     <script>
-        // Инициализация Telegram
+      // Инициализация Telegram
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Расширить на весь экран
+        tg.ready(); // Сообщаем Телеграму, что приложение готово
+        tg.expand();
 
-        const firebaseConfig = {
-            databaseURL: "
+        const ADMIN_ID = 341995937;
+        const adminPanel = document.getElementById('admin-panel');
+
+        // 1. Проверка через Telegram
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            if (tg.initDataUnsafe.user.id === ADMIN_ID) {
+                adminPanel.style.display = 'block';
+            }
+        }
+
+        // 2. Секретный вход для браузера (на случай, если ТГ не передал ID)
+        // Кликните по заголовку "Disney Battle" 5 раз быстро, чтобы кнопка появилась
+        let titleClicks = 0;
+        document.querySelector('h1').onclick = () => {
+            titleClicks++;
+            if (titleClicks >= 5) {
+                adminPanel.style.display = 'block';
+                alert("Админ-панель разблокирована по секретному нажатию!");
+            }
+        };
+
+        // Исправленная функция сброса
+        function adminResetGame() {
+            const confirmAction = confirm("Вы точно хотите полностью обновить игру и очистить поле?");
+            if (confirmAction) {
+                db.ref('board').set(null) // .set(null) работает надежнее чем .remove() в некоторых случаях
+                .then(() => {
+                    alert("Игра успешно сброшена!");
+                    location.reload();
+                })
+                .catch(e => {
+                    console.error(e);
+                    alert("Ошибка: " + e.message);
+                });
+            }
+        }
+
