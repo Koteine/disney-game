@@ -4,73 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Disney Battle</title>
+    
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+    <script>
+        // 2. ОПРЕДЕЛЯЕМ ФУНКЦИИ СРАЗУ (Чтобы не было ошибки "not defined")
+        const pData = [
+            { n: "Королева Блесток", c: "p0" }, 
+            { n: "Мастер Кисточки", c: "p1" },
+            { n: "Эльф Раскрасок", c: "p2" }, 
+            { n: "Леди Палитра", c: "p3" }
+        ];
+
+        window.setPlayer = function(id) {
+            console.log("Кнопка нажата, ID:", id);
+            const setup = document.getElementById('setup-screen');
+            const game = document.getElementById('game-screen');
+            if (setup && game) {
+                setup.style.display = 'none';
+                game.style.display = 'block';
+                document.getElementById('p-name').innerText = pData[id].n;
+                window.myIdx = id;
+            }
+        };
+
+        // Запасной вариант функции
+        window.go = window.setPlayer;
+    </script>
+
     <style>
         body { font-family: sans-serif; background: #fff5f8; text-align: center; margin: 0; padding: 10px; }
-        .btn-select { padding: 15px; margin: 10px auto; border: 2px solid #ffcdd2; border-radius: 12px; background: white; width: 250px; display: block; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .btn-select { 
+            padding: 15px; margin: 10px auto; border: 2px solid #ffcdd2; 
+            border-radius: 12px; background: white; width: 250px; 
+            display: block; cursor: pointer; font-size: 16px; font-weight: bold;
+            box-shadow: 0 4px 0 #ffcdd2;
+        }
+        .btn-select:active { transform: translateY(2px); box-shadow: none; }
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 350px; margin: 15px auto; }
         .cell { width: 60px; height: 60px; border: 1px solid #ccc; background: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 8px; position: relative; }
         .target { border: 3px solid #ff007f !important; background: #fff0f5 !important; }
         .p0 { background: #ffcdd2 !important; } .p1 { background: #e1f5fe !important; } 
         .p2 { background: #f3e5f5 !important; } .p3 { background: #e8f5e9 !important; } 
-        .owner-tag { position: absolute; bottom: 2px; font-size: 8px; width: 100%; text-align: center; }
         #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 2000; width: 250px; box-shadow: 0 0 20px rgba(0,0,0,0.3); }
         #dice-btn { padding: 15px 30px; background: #ff007f; color: white; border: none; border-radius: 50px; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <div id="admin-panel" style="display: none; padding: 10px;">
-        <button onclick="resetGame()" style="background:red; color:white; border:none; padding:10px; border-radius:10px;">СБРОС КАРТЫ (АДМИН)</button>
-    </div>
-
-    <div id="setup-screen">
-        <h2>Выбери героя:</h2>
-        <button class="btn-select" onclick="setPlayer(0)">✨ Королева Блесток</button>
-        <button class="btn-select" onclick="setPlayer(1)">🖌️ Мастер Кисточки</button>
-        <button class="btn-select" onclick="setPlayer(2)">🦄 Эльф Раскрасок</button>
-        <button class="btn-select" onclick="setPlayer(3)">🍭 Леди Палитра</button>
-    </div>
-
-    <div id="game-screen" style="display: none;">
-        <p>Игрок: <b id="p-name"></b></p>
-        <button id="dice-btn" onclick="roll()">🎲 КИНУТЬ КУБИК</button>
-        <div id="status" style="margin-top:10px;">Жми на кубик!</div>
-        <div class="grid" id="grid"></div>
-    </div>
-
-    <div id="modal">
-        <h3 style="margin-top:0">Задание</h3>
-        <p id="mText"></p>
-        <button onclick="done()" style="width:100%; padding:15px; background:green; color:white; border:none; border-radius:10px;">ГОТОВО ✅</button>
-    </div>
-
-    <script>
-        // ДАННЫЕ ИГРОКОВ (нужны функциям)
-        const pData = [
-            { n: "Королева Блесток", c: "p0" }, { n: "Мастер Кисточки", c: "p1" },
-            { n: "Эльф Раскрасок", c: "p2" }, { n: "Леди Палитра", c: "p3" }
-        ];
-
-        // 1. ФУНКЦИИ ВЫБОРА (теперь они объявлены в самом начале)
-        window.setPlayer = function(id) {
-            console.log("Выбран герой:", id);
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('game-screen').style.display = 'block';
-            document.getElementById('p-name').innerText = pData[id].n;
-            window.myIdx = id;
-        };
-
-        // 2. ИНИЦИАЛИЗАЦИЯ (с защитой от ошибок)
-        try {
-            const config = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
-            firebase.initializeApp(config);
-            window.db = firebase.database();
-            console.log("Firebase готов");
-        } catch (e) {
-            console.error("Ошибка Firebase:", e);
-        }
-
-        const tasks = ["Очки герою", "Голубая вода", "Уши", "2 КАРТИНКИ", "Цветок", "Шляпа", "Летает", "Яблоко", "3 цвета", "Розовый фон", "Глаза закрыты
+    <div id="
