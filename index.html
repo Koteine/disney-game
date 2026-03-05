@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: 50 Artists Final</title>
+    <title>Disney Battle: Marathon 50</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -15,7 +15,7 @@
         .nav-item { background: none; border: none; font-size: 11px; color: #888; cursor: pointer; display: flex; flex-direction: column; align-items: center; flex: 1; }
         .nav-item.active { color: #ff007f; font-weight: bold; }
         
-        /* Цвета ячеек (цикл на 10 оттенков для 50 игроков) */
+        /* Цвета для 50 игроков */
         .cell.p0, .cell.p10, .cell.p20, .cell.p30, .cell.p40 { background: #ffcdd2 !important; }
         .cell.p1, .cell.p11, .cell.p21, .cell.p31, .cell.p41 { background: #e1f5fe !important; }
         .cell.p2, .cell.p12, .cell.p22, .cell.p32, .cell.p42 { background: #f3e5f5 !important; }
@@ -29,19 +29,14 @@
 
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; overflow: hidden; }
-        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; background: rgba(255,255,255,0.7); white-space: nowrap; }
+        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; background: rgba(255,255,255,0.7); }
 
-        /* Колесо */
-        #canvas-container { position: relative; width: 280px; height: 280px; margin: 20px auto; }
-        #wheel-canvas { display: block; transition: transform 4s cubic-bezier(0.15, 0, 0.15, 1); border-radius: 50%; border: 5px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.1); }
-        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 30px; z-index: 10; }
-
-        /* Кнопки */
-        #dice-btn, #spin-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; font-weight: bold; cursor: pointer; box-shadow: 0 4px 0 #d81b60; }
-        #dice-btn:disabled { background: #ccc; box-shadow: none; opacity: 0.6; }
         #round-timer { font-size: 28px; font-weight: bold; color: #ff007f; margin: 10px 0; }
+        #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; font-weight: bold; box-shadow: 0 4px 0 #d81b60; cursor: pointer; }
+        #dice-btn:disabled { background: #ccc; box-shadow: none; opacity: 0.6; }
 
-        /* Модалки */
+        .rules-banner { background: #fff3e0; border: 1px solid #ffcc80; padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 15px; text-align: left; }
+        
         #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
         #zoom-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; justify-content: center; align-items: center; }
@@ -57,6 +52,9 @@
     <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
+            <div class="rules-banner">
+                <b>📝 Правила:</b> 1 ход в 24ч. Пришли рисунок в чат, чтобы билет был активен!
+            </div>
             <div id="round-info" style="font-weight:bold; color:#ff007f;">Загрузка...</div>
             <div id="round-timer">00:00:00</div>
             <p style="font-size: 12px;">Вы: <b id="my-name-display" style="color:#ff007f;"></b></p>
@@ -67,27 +65,22 @@
         <div id="tab-wheel" class="tab-content">
             <h1>🎡 Фортуна</h1>
             <div id="winner-display" style="font-size:18px; font-weight:bold; color:#ff007f; min-height:45px;">Крутите!</div>
-            <div id="canvas-container">
-                <img class="wheel-pointer" src="https://cdn-icons-png.flaticon.com/512/3585/3585837.png">
-                <canvas id="wheel-canvas" width="300" height="300"></canvas>
+            <div id="canvas-container" style="position:relative; width:280px; height:280px; margin:20px auto;">
+                <img style="position:absolute; top:-15px; left:50%; transform:translateX(-50%); width:30px; z-index:10;" src="https://cdn-icons-png.flaticon.com/512/3585/3585837.png">
+                <canvas id="wheel-canvas" width="300" height="300" style="border-radius:50%; border:5px solid white; box-shadow:0 0 15px rgba(0,0,0,0.1); transition: transform 4s cubic-bezier(0.15, 0, 0.15, 1);"></canvas>
             </div>
-            <button id="spin-btn" onclick="adminTriggerSpin()" style="display:none; margin: 0 auto;">КРУТИТЬ (АДМИН)</button>
+            <button id="spin-btn" onclick="adminTriggerSpin()" style="display:none; margin: 0 auto; padding:15px 30px; background:#ff007f; color:white; border:none; border-radius:50px; font-weight:bold;">КРУТИТЬ (АДМИН)</button>
         </div>
 
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Управление</h1>
             <div class="admin-section">
                 <button onclick="adminStartNewRound()" style="width:100%; padding:12px; background:#4CAF50; color:white; border:none; border-radius:10px; font-weight:bold; margin-bottom:10px;">🚀 НОВЫЙ РАУНД (24ч)</button>
-                
-                <h4 style="margin:10px 0 5px 0;">🎟 Список билетов:</h4>
-                <div id="admin-tickets-list" style="font-size:11px; background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:15px; max-height:200px; overflow-y:auto; border:1px solid #ddd; line-height:1.6;"></div>
-
+                <h4 style="margin:10px 0 5px 0;">🎟 Билеты (№ — Ник):</h4>
+                <div id="admin-tickets-list" style="font-size:11px; background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:15px; max-height:150px; overflow-y:auto; border:1px solid #ddd;"></div>
                 <button onclick="openAdminModal()" style="width:100%; padding:10px; background:#2196F3; color:white; border:none; border-radius:10px; font-weight:bold;">➕ Добавить игрока</button>
-                
                 <div id="active-players" style="margin-top:15px;"></div>
-                
-                <hr style="margin:20px 0;">
-                <button onclick="adminFullReset()" style="width:100%; padding:10px; background:#f44336; color:white; border:none; border-radius:10px; font-size:12px;">⚠️ ПОЛНЫЙ СБРОС</button>
+                <button onclick="adminFullReset()" style="width:100%; padding:10px; background:#f44336; color:white; border:none; border-radius:10px; font-size:12px; margin-top:20px;">⚠️ СБРОС ИГРЫ</button>
             </div>
         </div>
 
@@ -102,16 +95,14 @@
     <div id="modal">
         <h2 id="mTitle" style="font-size:18px; margin-top:0;"></h2>
         <div id="mText"></div>
-        <button onclick="closeModal()" style="width:100%; padding:12px; margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; font-weight:bold;">УДАЧИ!</button>
+        <button onclick="closeModal()" style="width:100%; padding:12px; margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; font-weight:bold;">ПОНЯТНО</button>
     </div>
 
-    <div id="zoom-overlay" onclick="this.style.display='none'">
-        <img id="zoomed-img" src="" style="max-width:95%; max-height:95%; border-radius:10px;">
-    </div>
+    <div id="zoom-overlay" onclick="this.style.display='none'"><img id="zoomed-img" src="" style="max-width:95%; max-height:95%; border-radius:10px;"></div>
 
     <div id="admin-modal">
         <h3>Добавить ID</h3>
-        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; margin-bottom:15px; border:1px solid #ddd; border-radius:8px;">
+        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; margin-bottom:15px;">
         <button onclick="saveNewUserRandomly()" style="width:100%; padding:12px; background:#4CAF50; color:white; border:none; border-radius:10px; font-weight:bold;">СОХРАНИТЬ</button>
         <button onclick="closeAdminModal()" style="border:none; background:none; color:gray; margin-top:10px; width:100%;">Отмена</button>
     </div>
@@ -174,7 +165,7 @@
                         syncAdminData();
                     }
                 } else {
-                    document.body.innerHTML = `<div style="padding:40px;"><h3>Доступ ограничен</h3><p>ID: ${currentUserId}</p></div>`;
+                    document.body.innerHTML = `<div style="padding:40px;"><h3>Доступ только по пропускам</h3><p>ID: ${currentUserId}</p></div>`;
                 }
             });
         }
@@ -208,20 +199,75 @@
             }, 1000);
         }
 
+        // --- ЛОГИКА УНИКАЛЬНОГО ХОДА ---
+        async function roll() {
+            const btn = document.getElementById('dice-btn'); 
+            btn.disabled = true; // Блокируем сразу для защиты от дабл-клика
+
+            const boardSnap = await db.ref('board').once('value');
+            const boardData = boardSnap.val() || {};
+            let free = []; for(let i=0; i<50; i++) if(!boardData[i]) free.push(i);
+            
+            // ЖЕСТКАЯ ПРОВЕРКА УНИКАЛЬНОСТИ ЗАДАНИЙ В БАЗЕ
+            const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
+            let used = userSnap.val() || [];
+            let avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
+
+            if(avail.length === 0) return alert("Вы выполнили все задания!");
+            if(free.length === 0) return alert("На поле нет свободных мест!");
+
+            const ticketRes = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+            const ticket = ticketRes.snapshot.val();
+            const cell = free[Math.floor(Math.random()*free.length)];
+            const taskIdx = avail[Math.floor(Math.random()*avail.length)];
+
+            // Сохраняем ход
+            await db.ref('board/'+cell).set({ owner: myIndex, taskIdx, ticket });
+            used.push(taskIdx);
+            await db.ref(`whitelist/${currentUserId}`).update({ used_tasks: used, last_round: currentRoundNum });
+            
+            showTaskInfo(cell);
+        }
+
+        function initGrid() {
+            db.ref('board').on('value', snap => {
+                const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
+                for(let i=0; i<50; i++) {
+                    let d = document.createElement('div');
+                    d.className = 'cell' + (data[i] ? ' p' + data[i].owner : '');
+                    d.innerHTML = `<div>${i+1}</div>` + (data[i] ? `<div class="owner-tag">🎟${data[i].ticket}</div>` : "");
+                    if(data[i]) d.onclick = () => showTaskInfo(i);
+                    grid.appendChild(d);
+                }
+            });
+        }
+
+        async function showTaskInfo(i) {
+            const s = await db.ref('board/'+i).once('value');
+            if(!s.exists()) return;
+            const d = s.val(), t = tasks[d.taskIdx];
+            document.getElementById('mTitle').innerText = "Задание билета №" + d.ticket;
+            let h = `<div style="background:#fff5cc; padding:8px; border-radius:10px; margin-bottom:10px; font-weight:bold; color:#d48806; font-size:14px;">Клетка: ${i+1}</div>`;
+            if(t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px;" onclick="zoomImg('${t.img}')">`;
+            if(t.text) h += `<p style="font-size:15px; line-height:1.4;">${t.text}</p>`;
+            document.getElementById('mText').innerHTML = h;
+            document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
+        }
+
+        // --- КОЛЕСО И ОСТАЛЬНОЕ ---
         function syncWheelEvent() {
             db.ref('wheel_event').on('value', snap => {
                 const data = snap.val(); if (!data) return;
                 const canvas = document.getElementById('wheel-canvas');
                 canvas.style.transform = `rotate(${data.rotation}deg)`;
-                document.getElementById('winner-display').innerText = "Вращение...";
+                document.getElementById('winner-display').innerText = "Колесо крутится...";
                 setTimeout(() => {
                     if (wheelTickets.length === 0) return;
                     const segments = wheelTickets.length;
                     const actualDeg = (360 - (data.rotation % 360)) % 360;
                     const winnerIdx = Math.floor(actualDeg / (360 / segments));
                     const winner = wheelTickets[winnerIdx];
-                    document.getElementById('winner-display').innerHTML = `🎉 №${winner.num}<br><small>${winner.owner}</small>`;
-                    if (currentUserId !== ADMIN_ID) tg.HapticFeedback.notificationOccurred('success');
+                    document.getElementById('winner-display').innerHTML = `🎉 Победитель: Билет №${winner.num}<br><small>${winner.owner}</small>`;
                 }, 4000);
             });
         }
@@ -243,107 +289,59 @@
                 ctx.beginPath(); ctx.moveTo(150,150); ctx.arc(150,150,140, i*angle, (i+1)*angle);
                 ctx.fillStyle = i % 2 === 0 ? '#ffb2d9' : '#ff007f'; ctx.fill();
                 ctx.save(); ctx.translate(150,150); ctx.rotate(i*angle + angle/2);
-                ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText(t.num, 85, 5); ctx.restore();
+                ctx.fillStyle = "white"; ctx.font = "bold 9px Arial"; ctx.fillText(t.num, 85, 5); ctx.restore();
             });
         }
 
         function adminTriggerSpin() {
-            if (wheelTickets.length === 0) return alert("Билетов нет!");
+            if (wheelTickets.length === 0) return alert("Нет билетов!");
             const newRotation = 1440 + Math.floor(Math.random() * 3600);
             db.ref('wheel_event').set({ rotation: newRotation, ts: Date.now() });
         }
 
-        async function roll() {
-            const btn = document.getElementById('dice-btn'); btn.disabled = true;
-            const boardSnap = await db.ref('board').once('value');
-            const boardData = boardSnap.val() || {};
-            let free = []; for(let i=0; i<50; i++) if(!boardData[i]) free.push(i);
-            const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
-            let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
-            if(avail.length === 0 || free.length === 0) return alert("Ошибка!");
-            const ticketRes = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            const ticket = ticketRes.snapshot.val();
-            const cell = free[Math.floor(Math.random()*free.length)];
-            const taskIdx = avail[Math.floor(Math.random()*avail.length)];
-            await db.ref('board/'+cell).set({ owner: myIndex, taskIdx, ticket });
-            used.push(taskIdx);
-            await db.ref(`whitelist/${currentUserId}`).update({ used_tasks: used, last_round: currentRoundNum });
-            showTaskInfo(cell);
-        }
-
-        function initGrid() {
-            db.ref('board').on('value', snap => {
-                const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
-                for(let i=0; i<50; i++) {
-                    let d = document.createElement('div');
-                    d.className = 'cell' + (data[i] ? ' p' + data[i].owner : '');
-                    d.innerHTML = `<div>${i+1}</div>` + (data[i] ? `<div class="owner-tag">🎟${data[i].ticket}</div>` : "");
-                    if(data[i]) d.onclick = () => showTaskInfo(i);
-                    grid.appendChild(d);
-                }
-            });
-        }
-
-        async function showTaskInfo(i) {
-            const s = await db.ref('board/'+i).once('value');
-            const d = s.val(), t = tasks[d.taskIdx];
-            document.getElementById('mTitle').innerText = "Клетка №" + (i+1);
-            let h = `<div style="background:#fff5cc; padding:8px; border-radius:10px; margin-bottom:10px; font-weight:bold; color:#d48806;">🎟 БИЛЕТ №${d.ticket}</div>`;
-            if(t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px;" onclick="zoomImg('${t.img}')">`;
-            if(t.text) h += `<p style="font-size:14px;">${t.text}</p>`;
-            document.getElementById('mText').innerHTML = h;
-            document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
-        }
-
-        function zoomImg(src) { document.getElementById('zoomed-img').src = src; document.getElementById('zoom-overlay').style.display = 'flex'; }
-        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
-        function switchTab(id, el) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
-            document.getElementById(id).classList.add('tab-active');
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            el.classList.add('active'); if(id === 'tab-wheel') updateWheelData();
-        }
-
-        // --- АДМИН ПАНЕЛЬ ---
         function syncAdminData() {
             db.ref('whitelist').on('value', snap => {
-                let h = "<b>Участники (ID | Ник):</b>";
+                let h = "<b>Участники:</b>";
                 snap.forEach(u => {
                     const uid = u.key, name = players[u.val().charIndex]?.n || "???";
                     h += `<div class="player-row"><span><code>${uid}</code> — ${name}</span><button onclick="kick('${uid}')" style="color:red; border:none; background:none; font-size:16px;">✕</button></div>`;
                 });
                 document.getElementById('active-players').innerHTML = h;
             });
-
             db.ref('board').on('value', snap => {
                 let tickets = [];
-                snap.forEach(c => {
-                    const data = c.val();
-                    tickets.push({ num: data.ticket, name: players[data.owner].n });
-                });
+                snap.forEach(c => { tickets.push({ num: c.val().ticket, name: players[c.val().owner].n }); });
                 tickets.sort((a, b) => a.num - b.num);
-                let listHTML = tickets.map(t => `<b>№${t.num}</b> — ${t.name}`).join('<br>');
-                document.getElementById('admin-tickets-list').innerHTML = listHTML || "Билетов нет";
+                document.getElementById('admin-tickets-list').innerHTML = tickets.map(t => `<b>№${t.num}</b> — ${t.name}`).join('<br>') || "Нет билетов";
             });
         }
 
         async function adminStartNewRound() {
             const s = await db.ref('current_round/number').once('value');
             db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + 86400000 });
+            alert("Раунд обновлен! Кнопки броска снова активны.");
         }
 
         function adminFullReset() {
-            if(!confirm("Сбросить всё?")) return;
+            if(!confirm("Удалить всё поле и билеты?")) return;
             db.ref('board').remove(); db.ref('ticket_counter').set(0); db.ref('wheel_event').remove(); db.ref('current_round').remove();
             db.ref('whitelist').once('value', s => s.forEach(u => db.ref('whitelist/'+u.key).update({used_tasks:[], last_round:0})));
         }
 
-        function kick(id) { if(confirm("Удалить игрока " + id + "?")) db.ref('whitelist/' + id).remove(); }
+        function zoomImg(src) { document.getElementById('zoomed-img').src = src; document.getElementById('zoom-overlay').style.display = 'flex'; }
+        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         function openAdminModal() { document.getElementById('admin-modal').style.display='block'; document.getElementById('overlay').style.display='block'; }
         function closeAdminModal() { document.getElementById('admin-modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value; if(!id) return;
             db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*players.length), used_tasks: [], last_round: 0 }).then(closeAdminModal);
+        }
+        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
+        function switchTab(id, el) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById(id).classList.add('tab-active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active'); if(id === 'tab-wheel') updateWheelData();
         }
 
         init();
