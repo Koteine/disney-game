@@ -10,52 +10,79 @@
     <style>
         body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
-        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 12px; }
+        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 12px; transition: 0.3s; }
         .target { border: 3px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 10px #ff007f; z-index: 10; }
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
         .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; pointer-events: none; }
-        #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; }
-        #dice-btn:active { transform: translateY(2px); box-shadow: none; }
+        #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; }
         #dice-btn:disabled { background: #ccc; box-shadow: none; }
-        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
+        #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
-        .btn-select { padding: 10px; margin: 4px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; width: 90%; max-width: 250px; font-weight: bold; }
+        .admin-section { margin-top: 20px; padding: 10px; border: 2px dashed #ff007f; border-radius: 15px; display: none; }
+        input, select { padding: 10px; width: 90%; margin: 5px 0; border-radius: 10px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
 
-    <h1>✨ Disney Battle 50 ✨</h1>
-    
-    <div id="player-setup">
-        <h3>Выбери игрока:</h3>
-        <div id="setup-buttons"></div>
+    <div id="auth-screen" style="display:none; padding-top: 50px;">
+        <h2>Доступ ограничен 🛑</h2>
+        <p>Привет! Твой ID: <b id="display-id"></b></p>
+        <p>Отправь его организатору, чтобы тебя добавили в игру.</p>
     </div>
 
     <div id="game-ui" style="display:none;">
-        <p>Привет, <b id="my-name-display"></b>!</p>
-        <button onclick="location.reload()" style="background:none; border:1px solid #ccc; border-radius:10px; padding:5px; cursor:pointer; font-size:10px;">🔄 Сменить персонажа</button>
-        <br><br>
+        <h1>✨ Disney Battle 50 ✨</h1>
+        <p>Игрок: <b id="my-name-display"></b></p>
         <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
         <p id="status">Нажми на кубик!</p>
         <div class="grid" id="grid"></div>
-    </div>
 
-    <div id="admin-panel" style="display:none; margin-top:20px; padding:10px; border:2px dashed red;">
-        <button onclick="adminResetGame()" style="background:red; color:white; border:none; padding:10px; border-radius:10px; cursor:pointer;">🚫 СБРОС ИГРЫ</button>
+        <div id="admin-panel" class="admin-section">
+            <p style="font-weight:bold; color:#ff007f;">👑 Админка</p>
+            <button onclick="openAdminModal()" style="background:#333; color:white; border:none; padding:10px; border-radius:10px; cursor:pointer;">➕ Добавить игрока</button>
+            <br><br>
+            <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:12px; cursor:pointer;">Сбросить всю сетку</button>
+        </div>
     </div>
 
     <div id="overlay"></div>
     <div id="modal">
-        <h2 id="mTitle" style="font-size:18px; margin-top:0;"></h2>
-        <div id="mContent" style="margin: 15px 0; max-height: 300px; overflow-y: auto;"><p id="mText"></p></div>
+        <h2 id="mTitle"></h2>
+        <div id="mContent"><p id="mText"></p></div>
         <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; width:100%; font-weight:bold;">Я ВЫПОЛНИЛА! ✅</button>
+    </div>
+
+    <div id="admin-modal">
+        <h3>Добавить доступ</h3>
+        <input type="number" id="new-user-id" placeholder="Telegram ID игрока">
+        <select id="new-user-char">
+            <option value="0">Межгалактический почеркушка</option>
+            <option value="1">Марсианин ищет синий</option>
+            <option value="2">Краска вытекла</option>
+            <option value="3">Паста «Красный жуть»</option>
+            <option value="4">Баклажан с претензией</option>
+            <option value="5">Кусь за контур</option>
+            <option value="6">Квадратный корень из краски</option>
+            <option value="7">Крадущийся ленивец</option>
+            <option value="8">Графон на ультрах</option>
+            <option value="9">Пиксельный Мазок</option>
+            <option value="10">Залипаю в контур</option>
+        </select>
+        <br><br>
+        <button onclick="saveNewUser()" style="padding:10px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%;">СОХРАНИТЬ</button>
+        <button onclick="closeAdminModal()" style="margin-top:5px; background:none; border:none; color:gray;">Закрыть</button>
     </div>
 
     <script>
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+
+        const ADMIN_ID = 341995937; // ТВОЙ ID
+        const currentUserId = tg.initDataUnsafe?.user?.id || 0;
 
         const players = [
             { n: "Межгалактический почеркушка", c: "p0" }, { n: "Марсианин ищет синий", c: "p1" },
@@ -66,6 +93,7 @@
             { n: "Залипаю в контур", c: "p10" }
         ];
 
+        // Тут твои 50 загадок (я их сократил для краткости примера, но в твоем коде они должны быть все!)
         const tasks = [
             { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" },
             { text: "Разгадаешь ребус?", img: "rebus2.png" },
@@ -122,28 +150,55 @@
         let myIndex = null;
         let selectedCell = null;
 
-        const setupDiv = document.getElementById('setup-buttons');
-        players.forEach((p, idx) => {
-            const btn = document.createElement('button');
-            btn.className = 'btn-select';
-            btn.innerText = p.n;
-            btn.onclick = () => setMe(idx);
-            setupDiv.appendChild(btn);
-        });
-
-        const gridDiv = document.getElementById('grid');
-        for(let i=0; i<50; i++) {
-            let div = document.createElement('div');
-            div.className = 'cell'; div.id = 'cell-' + i;
-            div.innerHTML = `<div>${i+1}</div>`;
-            gridDiv.appendChild(div);
+        // ПРОВЕРКА ДОСТУПА
+        function checkAccess() {
+            db.ref('whitelist/' + currentUserId).once('value', (s) => {
+                if (s.exists() || currentUserId === ADMIN_ID) {
+                    myIndex = s.val()?.charIndex || 0;
+                    if (currentUserId === ADMIN_ID) document.getElementById('admin-panel').style.display = 'block';
+                    startApp();
+                } else {
+                    document.getElementById('auth-screen').style.display = 'block';
+                    document.getElementById('display-id').innerText = currentUserId;
+                }
+            });
         }
 
-        function setMe(idx) {
-            myIndex = idx;
-            document.getElementById('player-setup').style.display = 'none';
+        function startApp() {
             document.getElementById('game-ui').style.display = 'block';
-            document.getElementById('my-name-display').innerText = players[idx].n;
+            document.getElementById('my-name-display').innerText = players[myIndex].n;
+            initGrid();
+        }
+
+        function initGrid() {
+            const gridDiv = document.getElementById('grid');
+            gridDiv.innerHTML = "";
+            for(let i=0; i<50; i++) {
+                let div = document.createElement('div');
+                div.className = 'cell'; div.id = 'cell-' + i;
+                div.innerHTML = `<div>${i+1}</div>`;
+                gridDiv.appendChild(div);
+            }
+            syncBoard();
+        }
+
+        // Синхронизация
+        function syncBoard() {
+            db.ref('board').on('value', (snap) => {
+                const data = snap.val() || {};
+                for(let i=0; i<50; i++) {
+                    const cell = document.getElementById('cell-' + i);
+                    if (!cell) continue;
+                    if (data[i]) {
+                        const p = players[data[i].owner];
+                        cell.className = 'cell ' + p.c;
+                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                        cell.onclick = null;
+                    } else {
+                        cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
+                    }
+                }
+            });
         }
 
         function roll() {
@@ -152,22 +207,23 @@
                 const data = snap.val() || {};
                 let free = [];
                 for(let i=0; i<50; i++) if(!data[i]) free.push(i);
-                if(free.length === 0) { alert("Ура! Все выполнено!"); return; }
+                if(free.length === 0) return;
                 selectedCell = free[Math.floor(Math.random() * free.length)];
-                document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
+                document.getElementById('status').innerText = "Твоя цель: №" + (selectedCell + 1);
                 const target = document.getElementById('cell-' + selectedCell);
                 target.classList.add('target');
-                target.onclick = function() {
-                    const task = tasks[selectedCell] || { text: "Просто раскрась!" };
-                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
-                    let html = "";
-                    if (task.img) html += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">`;
-                    html += `<p>${task.text}</p>`;
-                    document.getElementById('mText').innerHTML = html;
-                    document.getElementById('modal').style.display = 'block';
-                    document.getElementById('overlay').style.display = 'block';
-                };
+                target.onclick = openTask;
             });
+        }
+
+        function openTask() {
+            const task = tasks[selectedCell] || { text: "Просто раскрась!" };
+            document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
+            let h = task.img ? `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">` : "";
+            h += `<p>${task.text}</p>`;
+            document.getElementById('mText').innerHTML = h;
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
         }
 
         function confirmTask() {
@@ -175,37 +231,27 @@
                 document.getElementById('modal').style.display = 'none';
                 document.getElementById('overlay').style.display = 'none';
                 document.getElementById('dice-btn').disabled = false;
-                document.getElementById('status').innerText = "Захвачено!";
-                document.getElementById('cell-' + selectedCell).classList.remove('target');
                 selectedCell = null;
             });
         }
 
-        db.ref('board').on('value', (snap) => {
-            const data = snap.val() || {};
-            for(let i=0; i<50; i++) {
-                const cell = document.getElementById('cell-' + i);
-                if (!cell) continue;
-                if (data[i] !== undefined && data[i].owner !== undefined) {
-                    const p = players[data[i].owner];
-                    if (p) {
-                        cell.className = 'cell ' + p.c;
-                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
-                        cell.onclick = null;
-                    }
-                } else {
-                    cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
-                }
-            }
-        });
+        // АДМИН ФУНКЦИИ
+        function openAdminModal() { document.getElementById('admin-modal').style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
+        function closeAdminModal() { document.getElementById('admin-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
+        
+        function saveNewUser() {
+            const id = document.getElementById('new-user-id').value;
+            const char = document.getElementById('new-user-char').value;
+            if(!id) return alert("Введи ID!");
+            db.ref('whitelist/' + id).set({ charIndex: parseInt(char) }).then(() => {
+                alert("Игрок добавлен!");
+                closeAdminModal();
+            });
+        }
 
-        function adminResetGame() { if(confirm("Сбросить всё?")) db.ref('board').remove(); }
+        function adminResetGame() { if(confirm("Очистить поле?")) db.ref('board').remove(); }
 
-        try {
-            const tg = window.Telegram.WebApp;
-            tg.ready();
-            if (tg.initDataUnsafe?.user?.id === 341995937) document.getElementById('admin-panel').style.display = 'block';
-        } catch(e) {}
+        checkAccess();
     </script>
 </body>
 </html>
