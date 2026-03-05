@@ -179,37 +179,24 @@
             gridDiv.appendChild(div);
         }
 
-        function roll() {
-            document.getElementById('dice-btn').disabled = true;
-            if(selectedCell !== null) {
-                const prev = document.getElementById('cell-' + selectedCell);
-                if (prev) prev.classList.remove('target');
-            }
-
-            db.ref('board').once('value', (snap) => {
-                const data = snap.val() || {};
-                let free = [];
-                for(let i=0; i<50; i++) if(!data[i]) free.push(i);
-                
-                if(free.length === 0) {
-                    alert("Ура! Все 50 заданий выполнены!");
-                    document.getElementById('dice-btn').disabled = false;
-                    return;
-                }
-                
-                selectedCell = free[Math.floor(Math.random() * free.length)];
-                document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
-                
-                const target = document.getElementById('cell-' + selectedCell);
-                target.classList.add('target');
-                target.onclick = function() {
+        function roll() target.onclick = function() {
+                    const task = tasks[selectedCell];
                     document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
-                    document.getElementById('mText').innerText = tasks[selectedCell] || "Просто раскрась красиво!";
+                    
+                    // Проверяем: если задание — это объект с картинкой
+                    if (typeof task === 'object' && task !== null) {
+                        document.getElementById('mText').innerHTML = `
+                            <img src="${task.img}" style="width: 100%; max-width: 250px; border-radius: 12px; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;">
+                            <div style="text-align: center;">${task.text}</div>
+                        `;
+                    } else {
+                        // Если это обычная строка текста
+                        document.getElementById('mText').innerHTML = `<div style="text-align: center; padding: 20px;">${task}</div>`;
+                    }
+                    
                     document.getElementById('modal').style.display = 'block';
                     document.getElementById('overlay').style.display = 'block';
                 };
-            });
-        }
 
         function confirmTask() {
             db.ref('board/' + selectedCell).set({
@@ -247,4 +234,5 @@
     </script>
 </body>
 </html>
+
 
