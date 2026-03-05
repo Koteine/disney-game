@@ -42,4 +42,168 @@
         <button class="btn-select" onclick="setMe(1)">🖌️ Марсианин ищет синий</button>
         <button class="btn-select" onclick="setMe(2)">🦄 Краска вытекла</button>
         <button class="btn-select" onclick="setMe(3)">🍭 Паста «Красный жуть»</button>
-        <button class="btn-select" onclick="setMe
+        <button class="btn-select" onclick="setMe(4)">🍆 Баклажан с претензией</button>
+        <button class="btn-select" onclick="setMe(5)">👿 Кусь за контур</button>
+        <button class="btn-select" onclick="setMe(6)">🌼 Квадратный корень из краски</button>
+        <button class="btn-select" onclick="setMe(7)">🐨 Крадущийся ленивец</button>
+        <button class="btn-select" onclick="setMe(8)">🔥 Графон на ультрах</button>
+        <button class="btn-select" onclick="setMe(9)">🌈 Пиксельный Мазок</button>
+        <button class="btn-select" onclick="setMe(10)">👀 Залипаю в контур</button>
+    </div>
+
+    <div id="game-ui" style="display:none;">
+        <p>Привет, <b id="my-name-display"></b>!</p>
+        <button class="back-btn" onclick="backToSetup()">🔄 Сменить персонажа</button>
+        <br>
+        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
+        <p id="status">Нажми на кубик!</p>
+        <div class="grid" id="grid"></div>
+    </div>
+
+    <div id="admin-panel">
+        <p style="font-weight: bold; color: #ff007f; margin: 5px;">Админ-панель</p>
+        <button class="admin-btn" onclick="adminResetGame()">🚫 СБРОСИТЬ ВСЮ ИГРУ</button>
+    </div>
+
+    <div id="overlay"></div>
+    <div id="modal">
+        <h2 id="mTitle" style="margin-top:0; font-size: 20px;"></h2>
+        <div id="mContent">
+            <p id="mText" style="font-size: 16px; color: #d81b60;"></p>
+        </div>
+        <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready(); tg.expand();
+
+        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const players = [
+            { n: "Межгалактический почеркушка", c: "p0" },
+            { n: "Марсианин ищет синий", c: "p1" },
+            { n: "Краска вытекла", c: "p2" },
+            { n: "Паста Красный жуть", c: "p3" },
+            { n: "Баклажан с претензией", c: "p4" },
+            { n: "Кусь за контур", c: "p5" },
+            { n: "Квадратный корень из краски", c: "p6" },
+            { n: "Крадущийся ленивец", c: "p7" },
+            { n: "Графон на ультрах", c: "p8" },
+            { n: "Пиксельный Мазок", c: "p9" },
+            { n: "Залипаю в контур", c: "p10" }
+        ];
+
+        // ИСПРАВЛЕННЫЙ МАССИВ ЗАДАНИЙ
+        const tasks = [
+            { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" },
+            { text: "Разгадаешь ребус?", img: "rebus2.png" },
+            { text: "Что-то на умном", img: "rebus3.png" },
+            { text: "Красиво, разноцветно", img: "rebus4.png" },
+            { text: "Бляяяяяяястяще", img: "rebus5.png" },
+            { text: "Может быть и такое", img: "rebus6.png" },
+            { text: "Твой герой тонет что ли? Тогда почему он под водой?" },
+            { text: "Грибы.. Я вижу, что грибы повсюду" },
+            { text: "Мышек видишь? А они есть. Ну, уши точно вижу" },
+            { text: "Давай сделаем дорого-богато! Добавь блестяшек!" }
+            // Добавь остальные задания сюда (всего до 50)
+        ];
+
+        let myIndex = null;
+        let selectedCell = null;
+        const ADMIN_ID = 341995937;
+
+        const adminPanel = document.getElementById('admin-panel');
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id === ADMIN_ID) { adminPanel.style.display = 'block'; }
+
+        function setMe(idx) {
+            myIndex = idx;
+            document.getElementById('player-setup').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            document.getElementById('my-name-display').innerText = players[idx].n;
+        }
+
+        function backToSetup() {
+            if (selectedCell !== null) {
+                const prev = document.getElementById('cell-' + selectedCell);
+                if (prev) prev.classList.remove('target');
+                selectedCell = null;
+                document.getElementById('dice-btn').disabled = false;
+                document.getElementById('status').innerText = "Нажми на кубик!";
+            }
+            document.getElementById('game-ui').style.display = 'none';
+            document.getElementById('player-setup').style.display = 'block';
+        }
+
+        const gridDiv = document.getElementById('grid');
+        for(let i=0; i<50; i++) {
+            let div = document.createElement('div');
+            div.className = 'cell'; div.id = 'cell-' + i;
+            div.innerHTML = `<div>${i+1}</div>`;
+            gridDiv.appendChild(div);
+        }
+
+        function roll() {
+            document.getElementById('dice-btn').disabled = true;
+            db.ref('board').once('value', (snap) => {
+                const data = snap.val() || {};
+                let free = [];
+                for(let i=0; i<50; i++) if(!data[i]) free.push(i);
+                if(free.length === 0) { alert("Ура! Все выполнено!"); return; }
+                
+                selectedCell = free[Math.floor(Math.random() * free.length)];
+                document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
+                
+                const target = document.getElementById('cell-' + selectedCell);
+                target.classList.add('target');
+                target.onclick = function() {
+                    const task = tasks[selectedCell] || "Просто раскрась!";
+                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
+                    
+                    // ЛОГИКА ОТОБРАЖЕНИЯ КАРТИНКИ
+                    if (task.img) {
+                        document.getElementById('mText').innerHTML = `
+                            <img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">
+                            <p>${task.text}</p>`;
+                    } else {
+                        document.getElementById('mText').innerText = task.text || task;
+                    }
+                    
+                    document.getElementById('modal').style.display = 'block';
+                    document.getElementById('overlay').style.display = 'block';
+                };
+            });
+        }
+
+        function confirmTask() {
+            db.ref('board/' + selectedCell).set({ owner: myIndex, name: players[myIndex].n });
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('dice-btn').disabled = false;
+            document.getElementById('status').innerText = "Клетка захвачена!";
+            document.getElementById('cell-' + selectedCell).classList.remove('target');
+            selectedCell = null;
+        }
+
+        db.ref('board').on('value', (snap) => {
+            const data = snap.val() || {};
+            for(let i=0; i<50; i++) {
+                const cell = document.getElementById('cell-' + i);
+                if (!cell) continue;
+                if (!data[i]) {
+                    cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
+                } else {
+                    const p = players[data[i].owner];
+                    if (p) {
+                        cell.className = 'cell ' + p.c;
+                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                        cell.onclick = null;
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
