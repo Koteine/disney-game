@@ -3,46 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Online Battle</title>
+    <title>Disney Online Battle 50</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         body { font-family: 'Comic Sans MS', cursive; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
-        h1 { cursor: pointer; user-select: none; }
-        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; max-width: 500px; margin: 20px auto; }
-        .cell { 
-            width: 100%; aspect-ratio: 1 / 1; border: 2px solid #ddd; border-radius: 12px; 
-            background: white; display: flex; flex-direction: column; align-items: center; 
-            justify-content: center; transition: 0.2s; position: relative; font-weight: bold; font-size: 14px;
-        }
-        .target { border: 4px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 15px #ff007f; z-index: 10; }
+        h1 { cursor: pointer; user-select: none; font-size: 24px; }
         
-        /* Цвета для игроков (добавлены дополнительные классы) */
+        /* Сетка теперь 5 колонок, но клетки чуть меньше для 50 штук */
+        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
+        .cell { 
+            width: 100%; aspect-ratio: 1 / 1; border: 1px solid #ddd; border-radius: 8px; 
+            background: white; display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; transition: 0.2s; position: relative; font-weight: bold; font-size: 12px;
+        }
+        .target { border: 3px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 10px #ff007f; z-index: 10; }
+        
+        /* Цвета игроков */
         .p0, .p4, .p8 { background: #ffcdd2 !important; border-color: #f44336; } 
         .p1, .p5, .p9 { background: #e1f5fe !important; border-color: #03a9f4; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; border-color: #9c27b0; }
         .p3, .p7 { background: #e8f5e9 !important; border-color: #4caf50; }
         
-        .owner-tag { position: absolute; bottom: 2px; font-size: 8px; text-transform: uppercase; color: #333; width: 100%; text-align: center; pointer-events: none; }
+        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; text-transform: uppercase; color: #333; width: 100%; text-align: center; pointer-events: none; white-space: nowrap; overflow: hidden; }
         
-        #dice-btn { padding: 15px 30px; font-size: 20px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         #dice-btn:disabled { background: #ccc; cursor: not-allowed; }
         
-        .back-btn { background: white; border: 1px solid #ffcdd2; color: #d81b60; padding: 5px 15px; border-radius: 20px; font-size: 13px; cursor: pointer; margin-bottom: 10px; font-weight: bold; }
+        .back-btn { background: white; border: 1px solid #ffcdd2; color: #d81b60; padding: 4px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; margin-bottom: 8px; font-weight: bold; }
         
-        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
+        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
         
-        .btn-select { padding: 12px; margin: 5px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; width: 90%; max-width: 250px; font-size: 16px; display: inline-block; }
+        .btn-select { padding: 10px; margin: 4px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; width: 90%; max-width: 250px; font-size: 14px; display: inline-block; }
         
-        #admin-panel { display: none; margin: 40px auto 20px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; max-width: 300px; }
-        .admin-btn { background: #333; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; }
+        #admin-panel { display: none; margin: 30px auto 10px; padding: 10px; border: 2px dashed #ff007f; border-radius: 15px; max-width: 300px; }
+        .admin-btn { background: #333; color: white; border: none; padding: 10px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; }
     </style>
 </head>
 <body>
 
-    <h1 id="game-title">✨ Disney Battle ✨</h1>
+    <h1 id="game-title">✨ Disney Battle 50 ✨</h1>
     
     <div id="player-setup">
         <h3>Выбери игрока:</h3>
@@ -69,15 +71,15 @@
     </div>
 
     <div id="admin-panel">
-        <p style="font-weight: bold; color: #ff007f;">Админ-панель</p>
+        <p style="font-weight: bold; color: #ff007f; margin: 5px;">Админ-панель</p>
         <button class="admin-btn" onclick="adminResetGame()">🚫 СБРОСИТЬ ВСЮ ИГРУ</button>
     </div>
 
     <div id="overlay"></div>
     <div id="modal">
-        <h2 id="mTitle" style="margin-top:0;"></h2>
-        <p id="mText" style="font-size: 18px; color: #d81b60;"></p>
-        <button onclick="confirmTask()" style="padding:15px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
+        <h2 id="mTitle" style="margin-top:0; font-size: 20px;"></h2>
+        <p id="mText" style="font-size: 16px; color: #d81b60;"></p>
+        <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
     </div>
 
     <script>
@@ -91,7 +93,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // ОБНОВЛЕННЫЙ СПИСОК ИГРОКОВ (теперь их 11)
         const players = [
             { n: "Межгалактический почеркушка", c: "p0" },
             { n: "Марсианин ищет синий", c: "p1" },
@@ -106,6 +107,7 @@
             { n: "Залипаю в контур", c: "p10" }
         ];
 
+        // Добавлено 50 заданий
         const tasks = [
             "Нарисуй очки любому герою", "Раскрась воду голубым", "Найди героя с ушами", "⭐ РАСКРАСЬ ДВЕ КАРТИНКИ", 
             "Нарисуй цветок", "Раскрась шляпу", "Найди летающего героя", "Нарисуй яблоко", 
@@ -114,7 +116,12 @@
             "Нарисуй замок", "⭐ ЦВЕТ ВЫБИРАЕТ ПОДРУГА", "Лесной житель", "Нарисуй морковку",
             "Сделай градиент на фоне", "Раскрась злодея", "Ночное небо", "⭐ КРАСЬ ЛЕВОЙ РУКОЙ",
             "Раскрась разворот", "Добавь узоры на платье", "Нарисуй ассоциацию", "Эффект свечения",
-            "Нарисуй друга герою", "👑 ФИНАЛЬНЫЙ ШЕДЕВР"
+            "Нарисуй друга герою", "👑 ФИНАЛЬНЫЙ ШЕДЕВР",
+            "Нарисуй корону", "Раскрась одежду в горошек", "Найди персонажа в обуви", "Нарисуй солнышко",
+            "Используй только теплые цвета", "Добавь блестки (или точки)", "Нарисуй сердечко в углу", "Раскрась траву оранжевым",
+            "⭐ КРАСЬ ТОЛЬКО ШТРИХАМИ", "Нарисуй бантик", "Найди персонажа с хвостом", "Раскрась птичку",
+            "Используй только холодные цвета", "Нарисуй тучку", "Добавь рамку на страницу", "Раскрась самого большого героя",
+            "⭐ КРАСЬ, НЕ ОТРЫВАЯ РУКИ", "Нарисуй рыбку", "Сделай фон в полоску", "⭐ САМАЯ КРАСИВАЯ СТРАНИЦА"
         ];
 
         let myIndex = null;
@@ -136,7 +143,7 @@
         };
 
         function adminResetGame() {
-            if (confirm("Вы точно хотите полностью очистить игровое поле?")) {
+            if (confirm("Вы точно хотите полностью очистить игровое поле (50 клеток)?")) {
                 db.ref('board').set(null).then(() => {
                     alert("Игра сброшена!");
                     location.reload();
@@ -151,7 +158,6 @@
             document.getElementById('my-name-display').innerText = players[idx].n;
         }
 
-        // НОВАЯ ФУНКЦИЯ НАЗАД
         function backToSetup() {
             if (selectedCell !== null) {
                 const prev = document.getElementById('cell-' + selectedCell);
@@ -164,8 +170,9 @@
             document.getElementById('player-setup').style.display = 'block';
         }
 
+        // Генерируем 50 клеток
         const gridDiv = document.getElementById('grid');
-        for(let i=0; i<30; i++) {
+        for(let i=0; i<50; i++) {
             let div = document.createElement('div');
             div.className = 'cell';
             div.id = 'cell-' + i;
@@ -183,10 +190,10 @@
             db.ref('board').once('value', (snap) => {
                 const data = snap.val() || {};
                 let free = [];
-                for(let i=0; i<30; i++) if(!data[i]) free.push(i);
+                for(let i=0; i<50; i++) if(!data[i]) free.push(i);
                 
                 if(free.length === 0) {
-                    alert("Все раскрашено! Вы молодцы!");
+                    alert("Ура! Все 50 заданий выполнены!");
                     document.getElementById('dice-btn').disabled = false;
                     return;
                 }
@@ -198,7 +205,7 @@
                 target.classList.add('target');
                 target.onclick = function() {
                     document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
-                    document.getElementById('mText').innerText = tasks[selectedCell];
+                    document.getElementById('mText').innerText = tasks[selectedCell] || "Просто раскрась красиво!";
                     document.getElementById('modal').style.display = 'block';
                     document.getElementById('overlay').style.display = 'block';
                 };
@@ -222,8 +229,9 @@
 
         db.ref('board').on('value', (snap) => {
             const data = snap.val() || {};
-            for(let i=0; i<30; i++) {
+            for(let i=0; i<50; i++) {
                 const cell = document.getElementById('cell-' + i);
+                if (!cell) continue;
                 if (!data[i]) {
                     cell.className = 'cell';
                     cell.innerHTML = `<div>${i+1}</div>`;
