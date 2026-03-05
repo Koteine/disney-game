@@ -2,56 +2,173 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle</title>
-    
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-
-    <script>
-        // 2. ОПРЕДЕЛЯЕМ ФУНКЦИИ СРАЗУ (Чтобы не было ошибки "not defined")
-        const pData = [
-            { n: "Королева Блесток", c: "p0" }, 
-            { n: "Мастер Кисточки", c: "p1" },
-            { n: "Эльф Раскрасок", c: "p2" }, 
-            { n: "Леди Палитра", c: "p3" }
-        ];
-
-        window.setPlayer = function(id) {
-            console.log("Кнопка нажата, ID:", id);
-            const setup = document.getElementById('setup-screen');
-            const game = document.getElementById('game-screen');
-            if (setup && game) {
-                setup.style.display = 'none';
-                game.style.display = 'block';
-                document.getElementById('p-name').innerText = pData[id].n;
-                window.myIdx = id;
-            }
-        };
-
-        // Запасной вариант функции
-        window.go = window.setPlayer;
-    </script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дисней: Магия Раскрасок</title>
     <style>
-        body { font-family: sans-serif; background: #fff5f8; text-align: center; margin: 0; padding: 10px; }
-        .btn-select { 
-            padding: 15px; margin: 10px auto; border: 2px solid #ffcdd2; 
-            border-radius: 12px; background: white; width: 250px; 
-            display: block; cursor: pointer; font-size: 16px; font-weight: bold;
-            box-shadow: 0 4px 0 #ffcdd2;
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f4f8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
         }
-        .btn-select:active { transform: translateY(2px); box-shadow: none; }
-        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 350px; margin: 15px auto; }
-        .cell { width: 60px; height: 60px; border: 1px solid #ccc; background: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 8px; position: relative; }
-        .target { border: 3px solid #ff007f !important; background: #fff0f5 !important; }
-        .p0 { background: #ffcdd2 !important; } .p1 { background: #e1f5fe !important; } 
-        .p2 { background: #f3e5f5 !important; } .p3 { background: #e8f5e9 !important; } 
-        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 2000; width: 250px; box-shadow: 0 0 20px rgba(0,0,0,0.3); }
-        #dice-btn { padding: 15px 30px; background: #ff007f; color: white; border: none; border-radius: 50px; font-size: 18px; cursor: pointer; }
+        h1 { color: #5a67d8; text-shadow: 1px 1px 2px #fff; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 15px;
+            max-width: 800px;
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .cell {
+            width: 80px;
+            height: 80px;
+            background: #edf2f7;
+            border: 2px solid #cbd5e0;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .cell:hover {
+            transform: scale(1.05);
+            background: #e2e8f0;
+        }
+
+        /* Интерактивные клетки */
+        .interactive {
+            background: #fefcbf;
+            border-color: #ecc94b;
+        }
+        .interactive::after {
+            content: "⭐";
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 12px;
+        }
+
+        /* Окно задания */
+        #modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.3);
+            z-index: 100;
+            max-width: 400px;
+            text-align: center;
+        }
+        
+        #overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 50;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #5a67d8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
-    <div id="
+    <h1>✨ Дисней: Карта Заданий ✨</h1>
+    <div class="grid" id="gameGrid"></div>
+
+    <div id="overlay"></div>
+    <div id="modal">
+        <h2 id="taskTitle">Задание №</h2>
+        <p id="taskText"></p>
+        <button onclick="closeModal()">Принято!</button>
+    </div>
+
+    <script>
+        const tasks = [
+            "Нарисуй любые очки на персонаже.",
+            "Раскрась воду (море, озеро или капли).",
+            "Найди и раскрась персонажа с большими ушами.",
+            "ИНТЕРАКТИВ: Раскрась 2 картинки вместо одной!",
+            "Нарисуй желтый цветок в углу страницы.",
+            "Раскрась только головной убор героя.",
+            "Найди персонажа, который умеет летать.",
+            "Нарисуй маленькое яблоко рядом с героем.",
+            "Используй только три любых цвета для всей страницы.",
+            "Раскрась фон ярко-розовым цветом.",
+            "ИНТЕРАКТИВ: Закрой глаза и выбери карандаш наугад. Им начни раскрашивать!",
+            "Нарисуй Белоснежку или любого гнома.",
+            "Найди персонажа из мультфильма 'Король Лев'.",
+            "Раскрась самого маленького персонажа на листе.",
+            "Дорисуй персонажу волшебную палочку.",
+            "Раскрась героя из 'Холодного сердца'.",
+            "Нарисуй замок на заднем плане.",
+            "ИНТЕРАКТИВ: Попроси друга/маму выбрать тебе следующий цвет.",
+            "Раскрась персонажа, который живет в лесу.",
+            "Нарисуй морковку (привет Олафу!).",
+            "Раскрась фон градиентом (от темного к светлому).",
+            "Найди и раскрась злодея из любого мультика.",
+            "Сделай небо на картинке ночным (черным или темно-синим).",
+            "ИНТЕРАКТИВ: Раскрась один элемент левой рукой!",
+            "Раскрась целый разворот (две страницы).",
+            "Добавь много блесток или узоров на одежду героя.",
+            "Нарисуй ассоциацию к мультфильму и опиши её.",
+            "Раскрась персонажа так, будто он светится.",
+            "Нарисуй рядом с героем его лучшего друга.",
+            "ФИНАЛ: Выбери самую сложную страницу и раскрась её идеально!"
+        ];
+
+        const grid = document.getElementById('gameGrid');
+        const modal = document.getElementById('modal');
+        const overlay = document.getElementById('overlay');
+        const taskTitle = document.getElementById('taskTitle');
+        const taskText = document.getElementById('taskText');
+
+        for (let i = 0; i < 30; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            // Делаем клетки 4, 11, 18, 24 интерактивными
+            if ([3, 10, 17, 23].includes(i)) {
+                cell.classList.add('interactive');
+            }
+            cell.textContent = i + 1;
+            cell.onclick = () => showTask(i);
+            grid.appendChild(cell);
+        }
+
+        function showTask(index) {
+            taskTitle.textContent = "Задание №" + (index + 1);
+            taskText.textContent = tasks[index];
+            modal.style.display = 'block';
+            overlay.style.display = 'block';
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            overlay.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
