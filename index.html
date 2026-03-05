@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Gold Edition</title>
+    <title>Disney Battle: Final Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -12,7 +12,6 @@
         .tab-content { display: none; animation: fadeIn 0.3s; }
         .tab-active { display: block; }
         
-        /* СТАТУС БАР */
         .status-container { background: #eee; border-radius: 20px; height: 15px; width: 80%; margin: 10px auto; position: relative; overflow: hidden; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         #status-fill { background: linear-gradient(90deg, #ff007f, #ff80bf); height: 100%; width: 0%; transition: width 0.5s; }
         #status-text { font-size: 11px; font-weight: bold; margin-bottom: 10px; color: #ff007f; }
@@ -21,7 +20,6 @@
         .nav-item { background: none; border: none; font-size: 11px; color: #888; cursor: pointer; display: flex; flex-direction: column; align-items: center; flex: 1; }
         .nav-item.active { color: #ff007f; font-weight: bold; }
         
-        /* СЕТКА */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 10px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; transition: transform 0.2s; }
         
@@ -36,7 +34,6 @@
         #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; font-weight: bold; box-shadow: 0 4px 0 #d81b60; cursor: pointer; margin: 10px 0; }
         #dice-btn:disabled { background: #ccc; box-shadow: none; opacity: 0.6; }
 
-        /* КОЛЕСО - ФИКС КНОПКИ */
         #wheel-container { position: relative; width: 300px; height: 300px; margin: 20px auto 40px auto; }
         #wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 30px; z-index: 10; }
         #wheel-canvas { width: 300px; height: 300px; border-radius: 50%; border: 5px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.1); transition: transform 4s cubic-bezier(0.15, 0, 0.15, 1); }
@@ -45,6 +42,7 @@
         #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
         .admin-section { text-align: left; background: white; padding: 15px; border-radius: 15px; border: 2px dashed #ff007f; max-height: 60vh; overflow-y: auto; }
+        .admin-list-box { background: #f9f9f9; padding: 10px; border-radius: 10px; border: 1px solid #eee; margin: 10px 0; font-size: 11px; max-height: 150px; overflow-y: auto; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
@@ -59,7 +57,7 @@
             <h1>🏰 Disney Battle</h1>
             <div id="status-text">Загрузка...</div>
             <div class="status-container"><div id="status-fill"></div></div>
-            <div id="round-info" style="font-weight:bold; color:#ff007f; font-size: 14px;">РАУНД...</div>
+            <div id="round-info" style="font-weight:bold; color:#ff007f;">РАУНД...</div>
             <div id="round-timer">00:00:00</div>
             <div id="player-action-area"><button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button></div>
             <div class="grid" id="grid"></div>
@@ -80,8 +78,14 @@
             <div class="admin-section">
                 <button onclick="adminStartNewRound()" style="width:100%; padding:10px; background:#4CAF50; color:white; border:none; border-radius:10px; margin-bottom:10px;">🚀 СЛЕДУЮЩИЙ РАУНД</button>
                 <button onclick="adminResetRounds()" style="width:100%; padding:10px; background:#FF9800; color:white; border:none; border-radius:10px; margin-bottom:10px;">🔄 СБРОСИТЬ РАУНДЫ НА 1</button>
-                <button onclick="openAdminModal()" style="width:100%; padding:10px; background:#2196F3; color:white; border:none; border-radius:10px;">➕ Добавить игрока</button>
-                <div id="active-players" style="margin-top:10px;"></div>
+                
+                <h4 style="margin: 10px 0 5px 0;">🎟 Список билетов:</h4>
+                <div id="admin-tickets-list" class="admin-list-box">Нет занятых клеток</div>
+
+                <button onclick="openAdminModal()" style="width:100%; padding:10px; background:#2196F3; color:white; border:none; border-radius:10px; margin-top:10px;">➕ Добавить игрока</button>
+                <h4 style="margin: 15px 0 5px 0;">👥 Участники (ID):</h4>
+                <div id="active-players" class="admin-list-box">Загрузка списка...</div>
+                
                 <button onclick="adminFullReset()" style="width:100%; padding:8px; background:#f44336; color:white; border:none; border-radius:10px; margin-top:20px; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС</button>
             </div>
         </div>
@@ -117,7 +121,7 @@
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
         let tasks = [], myIndex = 0, currentRoundNum = 0, roundEndTime = 0;
 
-        const players = [{n:"Ван Гог",c:"p0"},{n:"Пикассо",c:"p1"},{n:"Мокрая кисть",c:"p2"},{n:"Королева",c:"p3"},{n:"Барон",c:"p4"},{n:"Укротитель",c:"p5"},{n:"Ластик",c:"p6"},{n:"Монстр",c:"p7"},{n:"Клякса",c:"p8"},{n:"Сомелье",c:"p9"},{n:"Дали",c:"p10"},{n:"Мольберт",c:"p11"},{n:"Кисточка",c:"p12"},{n:"Акварель",c:"p13"},{n:"Магнат",c:"p14"},{n:"Джедай",c:"p15"},{n:"Растушевка",c:"p16"},{n:"Творец",c:"p17"},{n:"Холст",c:"p18"},{n:"Террорист",c:"p19"},{n:"Мазила",c:"p20"},{n:"Худо",c:"p21"},{n:"Мазок",c:"p22"},{n:"Гамлет",c:"p23"},{n:"Деспот",c:"p24"},{n:"Маньяк",c:"p25"},{n:"Винчик",c:"p26"},{n:"Шедевр",c:"p27"},{n:"Грозный",c:"p28"},{n:"Повелитель",c:"p29"},{n:"Гуру",c:"p30"},{n:"Судьба",c:"p31"},{n:"Анархист",c:"p32"},{n:"Скотч",c:"p33"},{n:"Рецидивист",c:"p34"},{n:"Рыцарь",c:"p35"},{n:"Гнев",c:"p36"},{n:"Пират",c:"p37"},{n:"Бродяга",c:"p38"},{n:"Эстет",c:"p39"},{n:"Замес",c:"p40"},{n:"Точилка",c:"p41"},{n:"Сечение",c:"p42"},{n:"Масло",c:"p43"},{n:"Фантазер",c:"p44"},{n:"Маратель",c:"p45"},{n:"Делец",c:"p46"},{n:"Призрак",c:"p47"},{n:"Ниндзя",c:"p48"},{n:"Муза",c:"p49"}];
+        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
 
         function playSound(id) { document.getElementById(id).currentTime = 0; document.getElementById(id).play().catch(()=>{}); }
 
@@ -169,17 +173,30 @@
         function initGrid() {
             db.ref('board').on('value', snap => {
                 const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
-                let count = 0;
+                let count = 0, ticketList = [];
                 for(let i=0; i<50; i++) {
                     let d = document.createElement('div');
                     const cellData = data[i];
                     d.className = 'cell' + (cellData ? ' p-occ' : '') + (cellData?.isGold ? ' gold' : '');
                     d.innerHTML = `<div>${i+1}</div>` + (cellData ? `<div class="owner-tag">🎟${cellData.ticket}</div>` : "");
                     d.onclick = () => { playSound('snd-click'); showCellInfo(i, cellData); };
-                    grid.appendChild(d); if(cellData) count++;
+                    grid.appendChild(d); if(cellData) { 
+                        count++; 
+                        ticketList.push({ ticket: cellData.ticket, name: players[cellData.owner].n });
+                    }
                 }
                 document.getElementById('status-fill').style.width = (count/50*100) + '%';
                 document.getElementById('status-text').innerText = `Занято клеток: ${count} из 50`;
+                
+                // Обновление текстового списка билетов в админке
+                if (currentUserId === ADMIN_ID) {
+                    const listDiv = document.getElementById('admin-tickets-list');
+                    if (ticketList.length > 0) {
+                        listDiv.innerHTML = ticketList.map(t => `<b>🎟 Билет ${t.ticket}</b> — ${t.name}`).join('<br>');
+                    } else {
+                        listDiv.innerHTML = "Нет занятых клеток";
+                    }
+                }
             });
         }
 
@@ -213,9 +230,9 @@
 
         function syncAdminData() {
             db.ref('whitelist').on('value', snap => {
-                let h = "<b>Список ID:</b>";
-                snap.forEach(u => h += `<div style="font-size:10px; padding:2px 0;">${u.key} - ${players[u.val().charIndex].n} <button onclick="kick('${u.key}')" style="color:red; border:none; background:none;">✕</button></div>`);
-                document.getElementById('active-players').innerHTML = h;
+                let h = "";
+                snap.forEach(u => h += `<div><code>${u.key}</code> — ${players[u.val().charIndex].n} <button onclick="kick('${u.key}')" style="color:red; border:none; background:none; font-weight:bold;">✕</button></div>`);
+                document.getElementById('active-players').innerHTML = h || "Нет участников";
             });
         }
         async function adminStartNewRound() { const s = await db.ref('current_round/number').once('value'); db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + 86400000 }); alert("Раунд обновлен!"); }
