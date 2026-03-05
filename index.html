@@ -8,61 +8,105 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
-        body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px 10px 80px 10px; -webkit-tap-highlight-color: transparent; }
+        
+        /* Вкладки */
+        .tab-content { display: none; animation: fadeIn 0.3s; }
+        .tab-active { display: block; }
+        
+        .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; }
+        .nav-item { background: none; border: none; font-size: 11px; color: #888; cursor: pointer; display: flex; flex-direction: column; align-items: center; flex: 1; }
+        .nav-item.active { color: #ff007f; font-weight: bold; }
+        .nav-icon { font-size: 20px; margin-bottom: 2px; }
+
+        /* Сетка игры */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; transition: 0.3s; }
         .target { border: 3px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 10px #ff007f; z-index: 10; }
+        
+        /* Цвета */
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
+        
         .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; pointer-events: none; overflow: hidden; white-space: nowrap; }
         #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; }
-        #dice-btn:disabled { background: #ccc; box-shadow: none; }
-        #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 320px; }
-        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
-        .admin-section { margin-top: 20px; padding: 10px; border: 2px dashed #ff007f; border-radius: 15px; display: none; background: #fff; }
-        input { padding: 10px; width: 80%; margin: 5px 0; border-radius: 10px; border: 1px solid #ccc; }
-        .user-list { text-align: left; font-size: 12px; max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 5px; border-radius: 5px; margin-top: 10px; }
-        .user-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #eee; }
-        .kick-btn { color: red; background: none; border: 1px solid red; border-radius: 5px; cursor: pointer; font-size: 9px; padding: 2px 5px; }
+        
+        /* Рандомайзер */
+        .random-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 20px; }
+        .num-btn { padding: 12px 0; border: 1px solid #ffb2d9; background: white; border-radius: 10px; font-weight: bold; color: #ff007f; font-size: 14px; }
+        .num-btn.used { background: #eee; color: #bbb; border-color: #ddd; }
+
+        /* Модалки */
+        #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
+        
+        .admin-section { margin-top: 10px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; background: #fff; }
+        .user-list { text-align: left; font-size: 12px; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 10px; margin-top: 10px; }
+        .user-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; }
+        .kick-btn { color: red; background: none; border: 1px solid red; border-radius: 5px; cursor: pointer; font-size: 10px; padding: 2px 6px; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
     <div id="auth-screen" style="display:none; padding-top: 50px;">
         <h2>Доступ ограничен 🛑</h2>
-        <p>Привет! Твой ID: <b id="display-id" style="color:#ff007f;"></b></p>
-        <p>Отправь его организатору, чтобы тебя добавили в игру.</p>
+        <p>Твой ID: <b id="display-id" style="color:#ff007f;"></b></p>
+        <p>Отправь его организатору!</p>
     </div>
 
     <div id="game-ui" style="display:none;">
-        <h1>✨ Disney Battle 50 ✨</h1>
-        <p>Ты: <b id="my-name-display" style="color:#ff007f;"></b></p>
-        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
-        <p id="status">Нажми на кубик!</p>
-        <div class="grid" id="grid"></div>
-
-        <div id="admin-panel" class="admin-section">
-            <p style="font-weight:bold; color:#ff007f; margin:0;">👑 Панель управления</p>
-            <button onclick="openAdminModal()" style="background:#333; color:white; border:none; padding:8px 15px; border-radius:10px; cursor:pointer; margin-top:10px;">➕ Добавить игрока</button>
-            <div id="active-players" class="user-list">Загрузка списка...</div>
-            <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:10px; cursor:pointer; margin-top:10px;">Сбросить всю сетку</button>
+        
+        <div id="tab-game" class="tab-content tab-active">
+            <h1>✨ Disney Battle 50 ✨</h1>
+            <p>Ты: <b id="my-name-display" style="color:#ff007f;"></b></p>
+            <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
+            <p id="status">Нажми на кубик!</p>
+            <div class="grid" id="grid"></div>
         </div>
+
+        <div id="tab-random" class="tab-content">
+            <h1>🎲 Все задания</h1>
+            <p style="font-size: 12px;">Нажми на номер, чтобы прочитать задание</p>
+            <div class="random-grid" id="random-grid"></div>
+        </div>
+
+        <div id="tab-admin" class="tab-content">
+            <h1>👑 Управление</h1>
+            <div id="admin-panel" class="admin-section">
+                <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold;">➕ Добавить игрока</button>
+                <div id="active-players" class="user-list">Загрузка списка...</div>
+                <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:11px; margin-top:20px; cursor:pointer; text-decoration: underline;">⚠️ Сбросить все захваченные клетки</button>
+            </div>
+        </div>
+
+        <nav class="nav-bar">
+            <button class="nav-item active" onclick="switchTab('tab-game', this)">
+                <span class="nav-icon">🏰</span><span>Игра</span>
+            </button>
+            <button class="nav-item" onclick="switchTab('tab-random', this)">
+                <span class="nav-icon">📜</span><span>Задания</span>
+            </button>
+            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)">
+                <span class="nav-icon">⚙️</span><span>Админ</span>
+            </button>
+        </nav>
     </div>
 
     <div id="overlay"></div>
     <div id="modal">
         <h2 id="mTitle" style="font-size:18px; margin:0;"></h2>
-        <div id="mContent" style="margin: 15px 0; max-height: 250px; overflow-y: auto;"><p id="mText"></p></div>
-        <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; width:100%; font-weight:bold;">Я ВЫПОЛНИЛА! ✅</button>
+        <div id="mContent" style="margin: 15px 0; max-height: 300px; overflow-y: auto;"><p id="mText"></p></div>
+        <button id="confirm-btn" onclick="confirmTask()" style="padding:15px; background:#4caf50; color:white; border:none; border-radius:12px; width:100%; font-weight:bold; display:none; font-size:16px;">Я ВЫПОЛНИЛА! ✅</button>
+        <button onclick="closeModal()" style="margin-top:10px; background:none; border:none; color:gray; width:100%; padding:10px;">Закрыть</button>
     </div>
 
     <div id="admin-modal">
         <h3>Новый участник</h3>
-        <p style="font-size: 12px; color: gray;">Введите ID, а персонаж выберется случайно</p>
-        <input type="number" id="new-user-id" placeholder="Telegram ID">
-        <br><br>
-        <button onclick="saveNewUserRandomly()" style="padding:10px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; font-weight:bold;">ДОБАВИТЬ В ИГРУ</button>
-        <button onclick="closeAdminModal()" style="margin-top:10px; background:none; border:none; color:gray; cursor:pointer;">Отмена</button>
+        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; border-radius:10px; border:1px solid #ccc;">
+        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#ff007f; color:white; border:none; border-radius:12px; width:100%; margin-top:15px; font-weight:bold;">ДОБАВИТЬ В ИГРУ</button>
+        <button onclick="closeAdminModal()" style="margin-top:10px; background:none; border:none; color:gray; width:100%;">Отмена</button>
     </div>
 
     <script>
@@ -110,28 +154,32 @@
         let myIndex = null;
         let selectedCell = null;
 
+        function switchTab(tabId, el) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById(tabId).classList.add('tab-active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active');
+        }
+
         function checkAccess() {
             db.ref('whitelist/' + currentUserId).on('value', (s) => {
                 if (s.exists() || currentUserId === ADMIN_ID) {
                     myIndex = s.exists() ? s.val().charIndex : 0;
                     document.getElementById('auth-screen').style.display = 'none';
+                    document.getElementById('game-ui').style.display = 'block';
+                    document.getElementById('my-name-display').innerText = players[myIndex].n;
                     if (currentUserId === ADMIN_ID) {
-                        document.getElementById('admin-panel').style.display = 'block';
+                        document.getElementById('nav-admin-btn').style.display = 'flex';
                         updateAdminPlayerList();
                     }
-                    startApp();
+                    initGrid();
+                    initRandomizer();
                 } else {
                     document.getElementById('game-ui').style.display = 'none';
                     document.getElementById('auth-screen').style.display = 'block';
                     document.getElementById('display-id').innerText = currentUserId;
                 }
             });
-        }
-
-        function startApp() {
-            document.getElementById('game-ui').style.display = 'block';
-            document.getElementById('my-name-display').innerText = players[myIndex].n;
-            initGrid();
         }
 
         function initGrid() {
@@ -144,6 +192,32 @@
                 gridDiv.appendChild(div);
             }
             syncBoard();
+        }
+
+        function initRandomizer() {
+            const rGrid = document.getElementById('random-grid');
+            db.ref('board').on('value', (snap) => {
+                const data = snap.val() || {};
+                rGrid.innerHTML = "";
+                for(let i=0; i<50; i++) {
+                    let btn = document.createElement('button');
+                    btn.className = 'num-btn' + (data[i] ? ' used' : '');
+                    btn.innerText = i + 1;
+                    btn.onclick = () => showTaskInfo(i);
+                    rGrid.appendChild(btn);
+                }
+            });
+        }
+
+        function showTaskInfo(index) {
+            const task = tasks[index] || { text: "Задание скоро будет!" };
+            document.getElementById('mTitle').innerText = "Задание №" + (index + 1);
+            let h = task.img ? `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">` : "";
+            h += `<p>${task.text}</p>`;
+            document.getElementById('mText').innerHTML = h;
+            document.getElementById('confirm-btn').style.display = 'none'; 
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
         }
 
         function syncBoard() {
@@ -182,39 +256,35 @@
         }
 
         function openTask() {
-            const task = tasks[selectedCell] || { text: "Просто раскрась!" };
-            document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
-            let h = task.img ? `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">` : "";
-            h += `<p>${task.text}</p>`;
-            document.getElementById('mText').innerHTML = h;
-            document.getElementById('modal').style.display = 'block';
-            document.getElementById('overlay').style.display = 'block';
+            showTaskInfo(selectedCell);
+            document.getElementById('confirm-btn').style.display = 'block'; 
         }
 
         function confirmTask() {
             db.ref('board/' + selectedCell).set({ owner: myIndex }).then(() => {
-                document.getElementById('modal').style.display = 'none';
-                document.getElementById('overlay').style.display = 'none';
+                closeModal();
                 document.getElementById('dice-btn').disabled = false;
                 document.getElementById('status').innerText = "Готово! Жми кубик снова.";
                 selectedCell = null;
             });
         }
 
-        // --- АДМИН ЛОГИКА ---
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+        }
+
         function openAdminModal() { document.getElementById('admin-modal').style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
         function closeAdminModal() { document.getElementById('admin-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
         
         function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value;
             if(!id) return alert("Введи ID!");
-
             db.ref('whitelist').once('value', (snap) => {
                 const usedIndices = [];
                 snap.forEach(child => { usedIndices.push(child.val().charIndex); });
                 const availableIndices = players.map((_, i) => i).filter(i => !usedIndices.includes(i));
-                if(availableIndices.length === 0) return alert("Все персонажи уже заняты!");
-
+                if(availableIndices.length === 0) return alert("Все ники заняты!");
                 const randomIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
                 db.ref('whitelist/' + id).set({ charIndex: randomIdx }).then(() => {
                     alert("Игрок добавлен!");
@@ -239,15 +309,12 @@
         }
 
         function kickPlayer(id) {
-            if(confirm("Удалить игрока " + id + " из игры? (Его клетки останутся, но он потеряет доступ)")) {
-                db.ref('whitelist/' + id).remove();
-            }
+            if(confirm("Исключить игрока " + id + "?")) db.ref('whitelist/' + id).remove();
         }
 
-        function adminResetGame() { if(confirm("Очистить все клетки?")) db.ref('board').remove(); }
+        function adminResetGame() { if(confirm("Очистить поле?")) db.ref('board').remove(); }
 
         checkAccess();
     </script>
 </body>
 </html>
-
