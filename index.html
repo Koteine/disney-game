@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Rounds Edition</title>
+    <title>Disney Battle: Ultimate Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -15,28 +15,24 @@
         .nav-item { background: none; border: none; font-size: 11px; color: #888; cursor: pointer; display: flex; flex-direction: column; align-items: center; flex: 1; }
         .nav-item.active { color: #ff007f; font-weight: bold; }
         
-        /* Сетка и ячейки */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; }
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
         .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; overflow: hidden; white-space: nowrap; }
 
-        /* Таймер и кнопка */
         #round-info { font-size: 14px; font-weight: bold; color: #ff007f; margin-top: 10px; }
         #round-timer { background: white; border: 2px solid #ff007f; border-radius: 15px; padding: 8px; margin: 5px auto 15px; max-width: 150px; font-size: 20px; font-weight: bold; color: #ff007f; }
         .timer-expired { border-color: #ccc !important; color: #ccc !important; }
         
-        #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; transition: 0.2s; }
-        #dice-btn:disabled { background: #ccc; box-shadow: none; transform: translateY(4px); opacity: 0.6; }
+        #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; }
+        #dice-btn:disabled { background: #ccc; box-shadow: none; opacity: 0.6; }
 
-        /* Модалки и зум */
         #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
-        #zoom-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; justify-content: center; align-items: center; }
-        #zoom-overlay img { max-width: 95%; max-height: 95%; border-radius: 10px; }
-
-        .admin-section { margin-top: 10px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; background: #fff; }
+        
+        .admin-section { margin-top: 10px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; background: #fff; max-height: 70vh; overflow-y: auto; }
+        .ticket-badge { background: #fff5cc; border: 1px dashed #ffa500; border-radius: 8px; padding: 8px; margin-bottom: 10px; font-weight: bold; color: #d48806; font-size: 14px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
@@ -45,7 +41,7 @@
     <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
-            <div id="round-info">Загрузка раунда...</div>
+            <div id="round-info">Связь с Каситой...</div>
             <div id="round-timer">00:00:00</div>
             <p style="font-size: 12px;">Вы: <b id="my-name-display" style="color:#ff007f;"></b></p>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
@@ -53,14 +49,20 @@
         </div>
 
         <div id="tab-admin" class="tab-content">
-            <h1>⚙️ Управление</h1>
+            <h1>⚙️ Админка</h1>
             <div class="admin-section">
-                <button onclick="adminStartNewRound()" style="background:#4CAF50; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold; margin-bottom:10px;">🚀 НАЧАТЬ РАУНД (24ч)</button>
-                <button onclick="adminEndRound()" style="background:#ff9800; color:white; border:none; padding:10px; border-radius:12px; width:100%; font-weight:bold; margin-bottom:20px;">⏹ ЗАВЕРШИТЬ РАУНД</button>
-                <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold;">➕ Добавить игрока</button>
-                <div id="active-players" style="text-align:left; font-size:12px; margin-top:15px;"></div>
+                <button onclick="adminStartNewRound()" style="background:#4CAF50; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold; margin-bottom:10px;">🚀 НОВЫЙ РАУНД (24ч)</button>
+                <button onclick="adminEndRound()" style="background:#ff9800; color:white; border:none; padding:10px; border-radius:12px; width:100%; font-weight:bold; margin-bottom:20px;">⏹ СТОП ТАЙМЕР</button>
+                
+                <h3 style="font-size:14px; color:#ff007f;">🎟 Список билетов:</h3>
+                <div id="admin-tickets-list" style="text-align:left; font-size:11px; background:#f9f9f9; padding:10px; border-radius:10px; margin-bottom:20px;"></div>
+
+                <button onclick="openAdminModal()" style="background:#2196F3; color:white; border:none; padding:10px; border-radius:12px; width:100%; margin-bottom:10px;">➕ Добавить игрока</button>
+                <div id="active-players" style="text-align:left; font-size:11px; margin-bottom:20px;"></div>
+                
                 <hr>
-                <button onclick="adminClearBoard()" style="width:100%; margin-top:10px; background:none; border:1px solid #ccc; padding:5px; font-size:10px;">Очистить поле</button>
+                <button onclick="adminFullReset()" style="background:#f44336; color:white; border:none; padding:15px; border-radius:12px; width:100%; font-weight:bold; margin-top:10px;">⚠️ ПОЛНЫЙ СБРОС ИГРЫ</button>
+                <p style="font-size:9px; color:gray;">(Удалит поле, билеты и историю заданий)</p>
             </div>
         </div>
 
@@ -72,19 +74,15 @@
 
     <div id="overlay" onclick="closeModal()"></div>
     <div id="modal">
-        <h2 id="mTitle" style="font-size:18px; margin-top:0;"></h2>
+        <h2 id="mTitle" style="font-size:18px;"></h2>
         <div id="mText"></div>
-        <button onclick="closeModal()" style="margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; padding:12px; font-weight:bold;">ПРИНЯТО!</button>
-    </div>
-
-    <div id="zoom-overlay" onclick="this.style.display='none'">
-        <img id="zoomed-img" src="">
+        <button onclick="closeModal()" style="margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; padding:12px; font-weight:bold;">УДАЧИ!</button>
     </div>
 
     <div id="admin-modal">
-        <h3>Новый участник</h3>
-        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; border-radius:10px; border:1px solid #ddd;">
-        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#4CAF50; color:white; border:none; border-radius:12px; width:100%; margin-top:15px; font-weight:bold;">ДОБАВИТЬ</button>
+        <h3>ID игрока</h3>
+        <input type="number" id="new-user-id" placeholder="Напр: 1234567" style="width:90%; padding:10px; border-radius:10px; border:1px solid #ddd;">
+        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#4CAF50; color:white; border:none; border-radius:12px; width:100%; margin-top:15px;">ДОБАВИТЬ</button>
         <button onclick="closeAdminModal()" style="margin-top:10px; background:none; border:none; color:gray; width:100%;">Отмена</button>
     </div>
 
@@ -117,7 +115,8 @@
                 checkAccess();
                 syncRound();
                 initGrid();
-            } catch (e) { alert("Ошибка загрузки данных."); }
+                if (currentUserId === ADMIN_ID) syncTicketsAdmin();
+            } catch (e) { console.error(e); }
         }
 
         function checkAccess() {
@@ -125,12 +124,9 @@
                 if (s.exists() || currentUserId === ADMIN_ID) {
                     myIndex = s.exists() ? s.val().charIndex : 0;
                     document.getElementById('my-name-display').innerText = players[myIndex]?.n || "Админ";
-                    if (currentUserId === ADMIN_ID) {
-                        document.getElementById('nav-admin-btn').style.display = 'flex';
-                        updateAdminPlayerList();
-                    }
+                    if (currentUserId === ADMIN_ID) document.getElementById('nav-admin-btn').style.display = 'flex';
                 } else {
-                    document.body.innerHTML = "<h1>Доступ закрыт</h1><p>Ваш ID: "+currentUserId+"</p>";
+                    document.body.innerHTML = "<div style='padding:50px;'><h2>Доступ только по приглашению</h2><p>Ваш ID: "+currentUserId+"</p></div>";
                 }
             });
         }
@@ -146,7 +142,7 @@
                     startTimer();
                 } else {
                     roundEndTime = 0;
-                    document.getElementById('round-info').innerText = "ОЖИДАНИЕ РАУНДА";
+                    document.getElementById('round-info').innerText = "ОЖИДАНИЕ СТАРТА";
                     document.getElementById('round-timer').innerText = "00:00:00";
                     btn.disabled = true;
                 }
@@ -156,24 +152,18 @@
         function startTimer() {
             const timerDiv = document.getElementById('round-timer');
             const btn = document.getElementById('dice-btn');
-            
             const itv = setInterval(async () => {
                 const now = Date.now();
                 const diff = roundEndTime - now;
-
                 if (diff <= 0) {
                     clearInterval(itv);
                     timerDiv.innerText = "00:00:00";
-                    timerDiv.classList.add('timer-expired');
                     btn.disabled = true;
                 } else {
-                    timerDiv.classList.remove('timer-expired');
                     const h = Math.floor(diff / 3600000);
                     const m = Math.floor((diff % 3600000) / 60000);
                     const s = Math.floor((diff % 60000) / 1000);
                     timerDiv.innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                    
-                    // Проверка: делал ли уже ход в этом раунде
                     const moveSnap = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
                     btn.disabled = (moveSnap.val() === currentRoundNum);
                 }
@@ -188,19 +178,21 @@
             const boardData = boardSnap.val() || {};
             let freeCells = [];
             for(let i=0; i<50; i++) if(!boardData[i]) freeCells.push(i);
-
-            if(freeCells.length === 0) return alert("Поле заполнено!");
+            if(freeCells.length === 0) return alert("Все клетки заняты!");
 
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
             let used = userSnap.val() || [];
             let availTasks = tasks.map((_, i) => i).filter(i => !used.includes(i));
+            if(availTasks.length === 0) return alert("Задания кончились!");
 
-            if(availTasks.length === 0) return alert("Задания закончились!");
+            // Генерация билета через транзакцию
+            const ticketResult = await db.ref('ticket_counter').transaction((current) => (current || 0) + 1);
+            const newTicket = ticketResult.snapshot.val();
 
             const cell = freeCells[Math.floor(Math.random() * freeCells.length)];
             const taskIdx = availTasks[Math.floor(Math.random() * availTasks.length)];
 
-            await db.ref('board/' + cell).set({ owner: myIndex, taskIdx: taskIdx });
+            await db.ref('board/' + cell).set({ owner: myIndex, taskIdx: taskIdx, ticket: newTicket });
             used.push(taskIdx);
             await db.ref(`whitelist/${currentUserId}`).update({ used_tasks: used, last_round: currentRoundNum });
 
@@ -217,7 +209,7 @@
                     div.className = 'cell' + (data[i] ? ' ' + players[data[i].owner].c : '');
                     div.innerHTML = `<div>${i+1}</div>`;
                     if(data[i]) {
-                        div.innerHTML += `<div class="owner-tag">${players[data[i].owner].n.split(' ')[0]}</div>`;
+                        div.innerHTML += `<div class="owner-tag">🎟 №${data[i].ticket}</div>`;
                         div.onclick = () => showTaskInfo(i);
                     }
                     gridDiv.appendChild(div);
@@ -228,26 +220,18 @@
         async function showTaskInfo(idx) {
             const snap = await db.ref('board/' + idx).once('value');
             if(!snap.exists()) return;
-            const task = tasks[snap.val().taskIdx];
+            const data = snap.val();
+            const task = tasks[data.taskIdx];
             document.getElementById('mTitle').innerText = "Клетка №" + (idx + 1);
-            let h = "";
-            if(task.img) h += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;" onclick="zoomImg('${task.img}')">`;
-            if(task.text) h += `<p style="margin:0; font-size:14px;">${task.text}</p>`;
+            let h = `<div class="ticket-badge">🎟 ВАШ БИЛЕТ: №${data.ticket}</div>`;
+            if(task.img) h += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">`;
+            if(task.text) h += `<p style="margin:0; font-size:14px; line-height:1.4;">${task.text}</p>`;
             document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display = 'block';
             document.getElementById('overlay').style.display = 'block';
         }
 
-        function zoomImg(src) {
-            document.getElementById('zoomed-img').src = src;
-            document.getElementById('zoom-overlay').style.display = 'flex';
-        }
-
-        function closeModal() { 
-            document.getElementById('modal').style.display = 'none'; 
-            document.getElementById('overlay').style.display = 'none'; 
-        }
-
+        function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
@@ -255,23 +239,44 @@
             el.classList.add('active');
         }
 
-        // --- ADMIN ---
+        // --- ADMIN FUNCTIONS ---
+        function syncTicketsAdmin() {
+            db.ref('board').on('value', (snap) => {
+                let list = [];
+                snap.forEach(c => {
+                    const d = c.val();
+                    list.push(`Билет <b>№${d.ticket}</b> — ${players[d.owner].n} (кл. ${parseInt(c.key)+1})`);
+                });
+                document.getElementById('admin-tickets-list').innerHTML = list.length ? list.join('<br>') : "Билетов пока нет";
+            });
+            updateAdminPlayerList();
+        }
+
         async function adminStartNewRound() {
             const s = await db.ref('current_round/number').once('value');
             const num = (s.val() || 0) + 1;
             await db.ref('current_round').set({ number: num, endTime: Date.now() + 86400000 });
-            alert("Раунд №" + num + " запущен на 24 часа!");
         }
 
-        function adminEndRound() {
-            if(confirm("Завершить раунд досрочно?")) db.ref('current_round/endTime').set(0);
+        function adminEndRound() { db.ref('current_round/endTime').set(0); }
+
+        async function adminFullReset() {
+            if(!confirm("ВНИМАНИЕ! Это удалит все клетки на поле, обнулит билеты и историю заданий у всех игроков. Продолжить?")) return;
+            await db.ref('board').remove();
+            await db.ref('ticket_counter').set(0);
+            await db.ref('current_round').remove();
+            const users = await db.ref('whitelist').once('value');
+            users.forEach(u => {
+                db.ref(`whitelist/${u.key}`).update({ used_tasks: [], last_round: 0 });
+            });
+            alert("Игра полностью обнулена!");
         }
 
         function updateAdminPlayerList() {
             db.ref('whitelist').on('value', (snap) => {
-                let h = "<b>Список участников:</b><br>";
+                let h = "";
                 snap.forEach(c => {
-                    h += `<div style="display:flex; justify-content:space-between; margin-top:5px;">
+                    h += `<div style="display:flex; justify-content:space-between; padding:5px; border-bottom:1px solid #eee;">
                         <span>${players[c.val().charIndex]?.n || c.key}</span>
                         <button onclick="kick('${c.key}')" style="color:red; border:none; background:none;">✕</button>
                     </div>`;
@@ -288,8 +293,7 @@
             const idx = Math.floor(Math.random() * players.length);
             db.ref('whitelist/' + id).set({ charIndex: idx, used_tasks: [], last_round: 0 }).then(closeAdminModal);
         }
-        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/' + id).remove(); }
-        function adminClearBoard() { if(confirm("Очистить всё поле?")) db.ref('board').remove(); }
+        function kick(id) { if(confirm("Удалить игрока?")) db.ref('whitelist/' + id).remove(); }
 
         init();
     </script>
