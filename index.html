@@ -18,15 +18,18 @@
         }
         .target { border: 4px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 15px #ff007f; z-index: 10; }
         
-        .p0 { background: #ffcdd2 !important; border-color: #f44336; }
-        .p1 { background: #e1f5fe !important; border-color: #03a9f4; }
-        .p2 { background: #f3e5f5 !important; border-color: #9c27b0; }
-        .p3 { background: #e8f5e9 !important; border-color: #4caf50; }
+        /* Цвета для игроков (добавлены дополнительные классы) */
+        .p0, .p4, .p8 { background: #ffcdd2 !important; border-color: #f44336; } 
+        .p1, .p5, .p9 { background: #e1f5fe !important; border-color: #03a9f4; }
+        .p2, .p6, .p10 { background: #f3e5f5 !important; border-color: #9c27b0; }
+        .p3, .p7 { background: #e8f5e9 !important; border-color: #4caf50; }
         
         .owner-tag { position: absolute; bottom: 2px; font-size: 8px; text-transform: uppercase; color: #333; width: 100%; text-align: center; pointer-events: none; }
         
         #dice-btn { padding: 15px 30px; font-size: 20px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         #dice-btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .back-btn { background: white; border: 1px solid #ffcdd2; color: #d81b60; padding: 5px 15px; border-radius: 20px; font-size: 13px; cursor: pointer; margin-bottom: 10px; font-weight: bold; }
         
         #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
@@ -56,26 +59,10 @@
         <button class="btn-select" onclick="setMe(10)">👀 Залипаю в контур</button>
     </div>
 
-    function backToSetup() {
-    // Если была выбрана клетка, убираем подсветку перед выходом
-    if (selectedCell !== null) {
-        document.getElementById('cell-' + selectedCell).classList.remove('target');
-        selectedCell = null;
-        document.getElementById('dice-btn').disabled = false;
-        document.getElementById('status').innerText = "Нажми на кубик!";
-    }
-    // Переключаем экраны
-    document.getElementById('game-ui').style.display = 'none';
-    document.getElementById('player-setup').style.display = 'block';
-}
-    
     <div id="game-ui" style="display:none;">
-        <div style="margin-bottom: 15px;">
-    <button onclick="backToSetup()" style="background: none; border: 1px solid #ffcdd2; color: #d81b60; padding: 5px 15px; border-radius: 20px; font-size: 13px; cursor: pointer;">
-        🔄 Сменить персонажа
-    </button>
-</div>
         <p>Привет, <b id="my-name-display"></b>!</p>
+        <button class="back-btn" onclick="backToSetup()">🔄 Сменить персонажа</button>
+        <br>
         <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
         <p id="status">Нажми на кубик!</p>
         <div class="grid" id="grid"></div>
@@ -94,23 +81,29 @@
     </div>
 
     <script>
-        // Настройки Telegram
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        // Настройки Firebase
         const firebaseConfig = {
             databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/"
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
+        // ОБНОВЛЕННЫЙ СПИСОК ИГРОКОВ (теперь их 11)
         const players = [
-            { n: "Королева Блесток", c: "p0" },
-            { n: "Мастер Кисточки", c: "p1" },
-            { n: "Эльф Раскрасок", c: "p2" },
-            { n: "Леди Палитра", c: "p3" }
+            { n: "Межгалактический почеркушка", c: "p0" },
+            { n: "Марсианин ищет синий", c: "p1" },
+            { n: "Краска вытекла", c: "p2" },
+            { n: "Паста Красный жуть", c: "p3" },
+            { n: "Баклажан с претензией", c: "p4" },
+            { n: "Кусь за контур", c: "p5" },
+            { n: "Квадратный корень из краски", c: "p6" },
+            { n: "Крадущийся ленивец", c: "p7" },
+            { n: "Графон на ультрах", c: "p8" },
+            { n: "Пиксельный Мазок", c: "p9" },
+            { n: "Залипаю в контур", c: "p10" }
         ];
 
         const tasks = [
@@ -128,15 +121,11 @@
         let selectedCell = null;
         const ADMIN_ID = 341995937;
 
-        // --- ЛОГИКА АДМИНКИ ---
         const adminPanel = document.getElementById('admin-panel');
-        
-        // 1. Проверка по ID (для Телеграм)
         if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id === ADMIN_ID) {
             adminPanel.style.display = 'block';
         }
 
-        // 2. Секретный вход (5 кликов по заголовку для браузера)
         let clicks = 0;
         document.getElementById('game-title').onclick = () => {
             clicks++;
@@ -154,13 +143,25 @@
                 });
             }
         }
-        // ----------------------
 
         function setMe(idx) {
             myIndex = idx;
             document.getElementById('player-setup').style.display = 'none';
             document.getElementById('game-ui').style.display = 'block';
             document.getElementById('my-name-display').innerText = players[idx].n;
+        }
+
+        // НОВАЯ ФУНКЦИЯ НАЗАД
+        function backToSetup() {
+            if (selectedCell !== null) {
+                const prev = document.getElementById('cell-' + selectedCell);
+                if (prev) prev.classList.remove('target');
+                selectedCell = null;
+                document.getElementById('dice-btn').disabled = false;
+                document.getElementById('status').innerText = "Нажми на кубик!";
+            }
+            document.getElementById('game-ui').style.display = 'none';
+            document.getElementById('player-setup').style.display = 'block';
         }
 
         const gridDiv = document.getElementById('grid');
@@ -228,15 +229,14 @@
                     cell.innerHTML = `<div>${i+1}</div>`;
                 } else {
                     const p = players[data[i].owner];
-                    cell.className = 'cell ' + p.c;
-                    cell.innerHTML = `<div>${parseInt(i)+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
-                    cell.onclick = null;
+                    if (p) {
+                        cell.className = 'cell ' + p.c;
+                        cell.innerHTML = `<div>${parseInt(i)+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                        cell.onclick = null;
+                    }
                 }
             }
         });
     </script>
 </body>
 </html>
-
-
-
