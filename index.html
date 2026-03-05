@@ -3,54 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Admin Full</title>
+    <title>Disney Battle: Final Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         :root { --p-pink: #ff007f; --p-bg: #fff5f8; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--p-bg); text-align: center; color: #333; margin: 0; padding: 5px 5px 75px 5px; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--p-bg); text-align: center; color: #333; margin: 0; padding: 5px 5px 80px 5px; -webkit-tap-highlight-color: transparent; }
         
+        /* Таймер */
         .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 90%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        #round-timer { font-size: 26px; font-weight: 900; color: #222; margin: 5px 0; }
+        #round-timer { font-size: 24px; font-weight: 900; color: #222; }
 
+        /* Сетка */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; max-width: 350px; margin: 10px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 6px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; position: relative; }
         .cell.gold { border: 2px solid #ffaa00 !important; background: #fffdf0; }
         .cell.gold::after { content: "👑"; position: absolute; top: 1px; right: 1px; font-size: 8px; }
 
-        #dice-btn, .admin-btn { padding: 15px; font-size: 16px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 90%; margin: 8px 0; cursor: pointer; }
-        #dice-btn:disabled { background: #ccc; }
-
+        /* Кнопки и Навигация */
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #eee; z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 10px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
-
-        .admin-controls { background: white; padding: 15px; border-radius: 12px; margin: 10px; border: 1px solid #eee; text-align: left; }
-        .timer-inputs { display: flex; gap: 10px; margin: 10px 0; }
-        .admin-input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; font-size: 16px; box-sizing: border-box; }
         
+        #dice-btn, .admin-btn { padding: 15px; font-size: 16px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 90%; margin: 8px 0; }
+        #dice-btn:disabled { background: #ccc; }
+
+        /* Админка */
+        .admin-section { background: white; padding: 15px; border-radius: 12px; margin: 10px; border: 1px solid #eee; text-align: left; }
+        .admin-input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 16px; box-sizing: border-box; }
+        .player-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; font-size: 13px; }
+
+        /* Модалки */
         #modal, #overlay { display: none; }
         #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 1100; width: 85%; max-height: 80vh; overflow-y: auto; box-shadow: 0 0 40px rgba(0,0,0,0.2); }
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1050; }
         
         .tab-content { display: none; }
-        .tab-active { display: block; }
-        .player-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; align-items: center; }
-        
-        canvas { max-width: 100%; height: auto; }
+        .tab-active { display: block; animation: fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
-    <audio id="snd-win" src="https://actions.google.com/sounds/v1/cartoon/tada.ogg"></audio>
-
     <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
-            <div id="player-identity" style="font-size:12px; font-weight:bold;">Загрузка...</div>
+            <div id="player-identity" style="font-size:12px; font-weight:bold;">Загрузка профиля...</div>
             <div class="timer-box">
-                <div id="round-info">Раунд №--</div>
+                <div id="round-info" style="font-size:12px; color:var(--p-pink);">Раунд №--</div>
                 <div id="round-timer">0д 00:00:00</div>
             </div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
@@ -58,8 +59,8 @@
         </div>
 
         <div id="tab-tickets" class="tab-content">
-            <h1>🎫 Билеты</h1>
-            <table style="width:100%; background:white; font-size:11px; border-radius:10px;">
+            <h1>🎫 Все билеты</h1>
+            <table style="width:100%; background:white; font-size:11px; border-radius:10px; border-collapse: collapse;">
                 <thead style="background:var(--p-pink); color:white;">
                     <tr><th id="th-user" style="display:none; padding:8px;">Игрок</th><th style="padding:8px;">Рд.</th><th style="padding:8px;">Кл.</th><th style="padding:8px;">Билет</th></tr>
                 </thead>
@@ -69,43 +70,41 @@
 
         <div id="tab-wheel" class="tab-content">
             <h1>🎡 Колесо Фортуны</h1>
-            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px;">Крутите для выбора победителя</div>
-            <canvas id="wheel-canvas" width="300" height="300" style="transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1);"></canvas>
-            <div id="wheel-admin-btn"></div>
+            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:45px; padding:10px;">Нажмите кнопку внизу, чтобы крутить</div>
+            <div style="display:flex; justify-content:center;">
+                <canvas id="wheel-canvas" width="300" height="300" style="transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); max-width: 90%;"></canvas>
+            </div>
+            <div id="wheel-admin-btn" style="margin-top:15px;"></div>
         </div>
 
         <div id="tab-admin" class="tab-content">
-            <h1>⚙️ Админка</h1>
-            
-            <div class="admin-controls">
-                <b>Начать новый раунд:</b>
-                <div class="timer-inputs">
-                    <input type="number" id="r-days" placeholder="Дни" class="admin-input" value="1" style="width:50%">
-                    <input type="number" id="r-hours" placeholder="Часы" class="admin-input" value="0" style="width:50%">
+            <h1>⚙️ Управление</h1>
+            <div class="admin-section">
+                <b>Время раунда:</b>
+                <div style="display:flex; gap:10px; margin:10px 0;">
+                    <input type="number" id="r-days" placeholder="Дни" class="admin-input" value="1">
+                    <input type="number" id="r-hours" placeholder="Часы" class="admin-input" value="0">
                 </div>
-                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%">ЗАПУСТИТЬ</button>
+                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0;">ЗАПУСТИТЬ РАУНД</button>
             </div>
-
-            <div class="admin-controls">
-                <b>Добавить игрока:</b>
+            <div class="admin-section">
+                <b>Новый игрок (ID):</b>
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input">
-                <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%">ДОБАВИТЬ В БАЗУ</button>
+                <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
             </div>
-
-            <div class="admin-controls">
-                <b>Список игроков:</b>
-                <div id="active-players" style="max-height:150px; overflow-y:auto; margin-top:10px;"></div>
+            <div class="admin-section">
+                <b>Игроки в базе:</b>
+                <div id="active-players" style="max-height:120px; overflow-y:auto; margin-top:10px;"></div>
             </div>
-
-            <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
+            <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
             <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
         </div>
 
         <nav class="nav-bar">
-            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>Поле</span></button>
-            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>Билеты</span></button>
-            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡</span></button>
-            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>Админ</span></button>
+            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
+            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
+            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>
 
@@ -142,7 +141,7 @@
         }
 
         function syncData() {
-            db.ref('current_round').on('value', snap => { if (snap.exists()) { currentRoundNum = snap.val().number; roundEndTime = snap.val().endTime; document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum; updateTimerDisplay(); } });
+            db.ref('current_round').on('value', snap => { if (snap.exists()) { currentRoundNum = snap.val().number; roundEndTime = snap.val().endTime; document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum; updateTimer(); } });
             db.ref('board').on('value', snap => {
                 const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
                 let count = 0; allTicketsData = [];
@@ -160,14 +159,13 @@
             db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
         }
 
-        function updateTimerDisplay() {
+        function updateTimer() {
             if (window.timerInt) clearInterval(window.timerInt);
             window.timerInt = setInterval(async () => {
                 const diff = roundEndTime - Date.now();
                 const btn = document.getElementById('dice-btn');
                 if (diff <= 0) {
-                    document.getElementById('round-timer').innerText = "ОКОНЧЕН";
-                    btn.disabled = true;
+                    document.getElementById('round-timer').innerText = "ОКОНЧЕН"; btn.disabled = true;
                 } else {
                     const d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
                     document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
@@ -185,16 +183,13 @@
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
             let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
             if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return;
-            
             const isGold = Math.random() < 0.05;
             const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             let tStr = tCounter.snapshot.val().toString();
             if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
-            
             const cellIdx = free[Math.floor(Math.random()*free.length)];
             const taskIdx = isGold ? -1 : avail[Math.floor(Math.random()*avail.length)];
             const cellData = { owner: myIndex, taskIdx, ticket: tStr, isGold, round: currentRoundNum };
-            
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -207,7 +202,7 @@
             document.getElementById('mTitle').innerText = (cell.isGold ? "👑 Золото " : "Клетка ") + (i+1);
             let h = `<p>Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b><br>Билет: ${cell.ticket}</p>`;
             if (isOwner || isAdmin) {
-                if(cell.isGold) h += `<p>✨ <b>БОНУС!</b> Рисуй на любую тему.</p>`;
+                if(cell.isGold) h += `<p>✨ <b>БОНУС!</b> Свободная тема.</p>`;
                 else { const t = tasks[cell.taskIdx]; if(t) { if(t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px;">`; h += `<p>${t.text}</p>`; } }
             } else h += `<p style="color:#999;">🔒 Скрыто</p>`;
             document.getElementById('mText').innerHTML = h;
@@ -245,12 +240,11 @@
                 tickets.sort((a,b) => a.num - b.num);
                 const winIdx = Math.floor(((360 - (rotation % 360) + 270) % 360) / (360/tickets.length));
                 const win = tickets[winIdx];
-                document.getElementById('winner-display').innerHTML = `🏆 Билет №${win.num}: <b>${win.name}</b>`;
-                document.getElementById('snd-win').play();
+                document.getElementById('winner-display').innerHTML = `🏆 Выпал билет №${win.num}<br>Победил: <b>${win.name}</b>`;
+                const audio = new Audio('https://actions.google.com/sounds/v1/cartoon/tada.ogg'); audio.play();
             }, 5000);
         }
 
-        // --- АДМИН-ЛОГИКА ---
         async function adminStartNewRound() {
             const d = parseInt(document.getElementById('r-days').value) || 0;
             const h = parseInt(document.getElementById('r-hours').value) || 0;
@@ -262,10 +256,9 @@
 
         async function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value;
-            if(!id) return alert("Введите ID");
+            if(!id) return;
             await db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*50), used_tasks: [], last_round: 0 });
             document.getElementById('new-user-id').value = "";
-            alert("Игрок добавлен!");
         }
 
         function syncAdminList() {
@@ -273,17 +266,17 @@
                 let h = ""; snap.forEach(u => {
                     const idx = u.val().charIndex;
                     h += `<div class="player-row">
-                        <span style="color:${charColors[idx]}"><b>${players[idx].n}</b> (${u.key})</span>
-                        <button onclick="kick('${u.key}')" style="background:none; border:none; color:red; font-weight:bold;">✕</button>
+                        <span style="color:${charColors[idx]}"><b>${players[idx].n}</b></span>
+                        <button onclick="kick('${u.key}')" style="color:red; border:none; background:none;">✕</button>
                     </div>`;
                 });
-                document.getElementById('active-players').innerHTML = h || "Список пуст";
+                document.getElementById('active-players').innerHTML = h || "Пусто";
             });
         }
 
-        function kick(id) { if(confirm("Удалить игрока из базы?")) db.ref('whitelist/'+id).remove(); }
-        function adminResetRounds() { if(confirm("Сбросить к 1 раунду?")) db.ref('current_round').set({ number: 1, endTime: Date.now() + 3600000 }); }
-        function adminFullReset() { if(confirm("ВНИМАНИЕ! Это удалит ВСЕХ игроков и ВСЁ поле. Вы уверены?")) db.ref().remove(); }
+        function kick(id) { if(confirm("Удалить игрока?")) db.ref('whitelist/'+id).remove(); }
+        function adminResetRounds() { if(confirm("Сбросить?")) db.ref('current_round').set({ number: 1, endTime: Date.now() + 3600000 }); }
+        function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
         async function adminTriggerSpin() { if (allTicketsData.length < 2) return alert("Мало билетов!"); await db.ref('wheel_event').set({ rotation: 3600 + Math.floor(Math.random() * 3600), timestamp: Date.now() }); }
 
         function switchTab(id, el) {
