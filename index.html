@@ -3,196 +3,378 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Bombs & Gossips</title>
+    <title>Disney Battle: Trap Edition (💥 V.5)</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
-        :root { --p-pink: #ff007f; --p-bg: #fff5f8; --p-purple: #a020f0; --p-gold: #ffaa00; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--p-bg); text-align: center; color: #333; margin: 0; padding: 5px 5px 80px 5px; overflow-x: hidden; }
+        :root { --p-pink: #ff007f; --p-bg: #fff5f8; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, system-ui, sans-serif; 
+            background: var(--p-bg); 
+            text-align: center; 
+            color: #333; 
+            margin: 0; 
+            padding: 5px 5px 80px 5px; 
+            overflow-x: hidden; /* Запрет бокового скролла */
+            -webkit-tap-highlight-color: transparent; 
+        }
         
-        /* Сетка 50 клеток */
-        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 500px; margin: 10px auto; }
-        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; position: relative; transition: 0.3s; }
-        .cell.occupied { background: #ff007f10; border-color: var(--p-pink); }
-        .cell.gold { border: 2px solid var(--p-gold); background: #fffdf0; font-size: 18px; }
-        .cell.coop { border: 2px solid var(--p-purple); background: #fdf0ff; font-size: 18px; animation: pulse 2s infinite; }
-        .cell.trap { border: 2px solid red; background: #fff0f0; font-size: 18px; }
+        /* Сетка — Полностью Адаптивная */
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(5, 1fr); 
+            gap: 4px; 
+            width: 100%; 
+            max-width: 500px; 
+            margin: 10px auto; 
+            padding: 0 5px;
+        }
+        .cell { 
+            width: 100%; 
+            aspect-ratio: 1/1; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            background: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            font-weight: bold; 
+            font-size: 10px; 
+            position: relative;
+            overflow: hidden; 
+        }
+        .cell span { font-size: 7px; line-height: 1; margin-top: 2px; }
+        .cell.gold { border: 2px solid #ffaa00 !important; background: #fffdf0; }
+        .cell.gold::after { content: "👑"; position: absolute; top: 0; right: 0; font-size: 7px; }
+        .cell.excluded { opacity: 0.5; filter: grayscale(1); } /* Клетка не сдавшего */
 
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(0.95); } 100% { transform: scale(1); } }
-        @keyframes shake { 0%, 100% { transform: translate(0,0); } 10%, 30%, 50%, 70%, 90% { transform: translate(-5px,0); } 20%, 40%, 60%, 80% { transform: translate(5px,0); } }
-        .apply-shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        /* Таймер и Блоки */
+        .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        #round-timer { font-size: 22px; font-weight: 900; color: #222; }
 
-        /* Сплетни */
-        .gossip-box { background: white; border-left: 4px solid var(--p-pink); margin: 10px auto; width: 95%; padding: 12px; border-radius: 8px; text-align: left; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        #gossip-list { font-size: 13px; line-height: 1.4; }
-
-        /* Навигация */
+        /* Кнопки и Навигация */
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #eee; z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 10px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
-        
-        #dice-btn, .admin-btn { padding: 14px; font-size: 16px; border-radius: 14px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 10px auto; display: block; }
+        #dice-btn, .admin-btn { padding: 12px; font-size: 15px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 8px 0; }
         #dice-btn:disabled { background: #ccc; }
-
-        .tab-content { display: none; }
-        .tab-active { display: block; }
         
+        /* Админка */
+        .admin-section { background: white; padding: 12px; border-radius: 12px; margin: 8px; border: 1px solid #eee; text-align: left; }
+        .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
+        
+        /* Модалки и Эффекты */
         #modal, #overlay { display: none; }
-        #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 20px; z-index: 1100; width: 85%; }
-        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1050; backdrop-filter: blur(2px); }
+        #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 15px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 0 40px rgba(0,0,0,0.2); }
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1050; }
+        .tab-content { display: none; width: 100%; }
+        .tab-active { display: block; animation: fadeIn 0.1s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Анимация Тряски (💥 Новое) */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .apply-shake { animation: shake 0.5s; }
+
+        /* Таблица Билетов */
+        table { width: 100%; border-collapse: collapse; font-size: 11px; background: white; border-radius: 10px; }
+        th, td { padding: 8px 4px; border-bottom: 1px solid #eee; text-align: center; }
+        .row-excluded { background: #f0f0f0; color: #aaa; text-decoration: line-through; }
     </style>
 </head>
 <body>
 
-    <div id="tab-game" class="tab-content tab-active">
-        <h1>🏰 Disney Battle</h1>
-        <div id="player-identity" style="font-size:12px; margin-bottom:10px;">Загрузка...</div>
-        <div class="gossip-box">
-            <div id="gossip-list">📢 Сплетни: Ждем первых ходов...</div>
+    <div id="game-ui">
+        <div id="tab-game" class="tab-content tab-active">
+            <h1>🏰 Disney Battle</h1>
+            <div id="player-identity" style="font-size:11px; margin-bottom:5px;">Загрузка профиля...</div>
+            <div class="timer-box">
+                <div id="round-info" style="font-size:11px; color:var(--p-pink); font-weight:bold;">Раунд №--</div>
+                <div id="round-timer">0д 00:00:00</div>
+            </div>
+            <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
+            <div class="grid" id="grid"></div>
         </div>
-        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
-        <div class="grid" id="grid"></div>
-    </div>
 
-    <div id="tab-tickets" class="tab-content">
-        <h1>🎫 Билеты</h1>
-        <table style="width:100%; background:white; border-radius:10px;"><tbody id="tickets-body"></tbody></table>
-    </div>
-
-    <div id="tab-rules" class="tab-content">
-        <h1>📜 Правила</h1>
-        <div style="text-align:left; padding:20px;">
-            <p>💣 <b>Ловушка:</b> Если попадешь на мину, рисуй левой рукой!</p>
-            <p>✨ <b>Связь:</b> Совместный рисунок с напарницей (+3 билета).</p>
-            <p>👑 <b>Золото:</b> Любой персонаж на выбор.</p>
+        <div id="tab-tickets" class="tab-content">
+            <h1>🎫 Билеты</h1>
+            <table>
+                <thead style="background:var(--p-pink); color:white;">
+                    <tr><th id="th-user" style="display:none;">Игрок</th><th>Билет</th><th id="th-status" style="display:none;">Готов?</th></tr>
+                </thead>
+                <tbody id="tickets-body"></tbody>
+            </table>
         </div>
-    </div>
 
-    <div id="tab-wheel" class="tab-content">
-        <h1>🎡 Колесо</h1>
-        <div id="winner-display" style="font-weight:bold; color:var(--p-pink);"></div>
-        <canvas id="wheel-canvas" width="300" height="300" style="margin:0 auto; display:block; transition: 5s;"></canvas>
-        <div id="wheel-admin"></div>
-    </div>
+        <div id="tab-wheel" class="tab-content">
+            <h1>🎡 Колесо</h1>
+            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к розыгрышу?</div>
+            <canvas id="wheel-canvas" width="280" height="280" style="transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block;"></canvas>
+            <div id="wheel-admin-btn"></div>
+        </div>
 
-    <div id="tab-admin" class="tab-content">
-        <h1>⚙️ Админ</h1>
-        <input type="number" id="new-id" placeholder="Telegram ID">
-        <input type="number" id="new-char" placeholder="Индекс (0-49)">
-        <button onclick="adminAddPlayer()" class="admin-btn">Добавить игрока</button>
-        <button onclick="adminStartNewRound()" class="admin-btn" style="background:green">Новый раунд</button>
-    </div>
+        <div id="tab-admin" class="tab-content">
+            <h1>⚙️ Админ</h1>
+            <div class="admin-section">
+                <b>Запустить раунд (💥 +2 ловушки):</b>
+                <div style="display:flex; gap:5px; margin:5px 0;">
+                    <input type="number" id="r-days" placeholder="Дни" class="admin-input" value="1">
+                    <input type="number" id="r-hours" placeholder="Часы" class="admin-input" value="0">
+                </div>
+                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0;">СТАРТ</button>
+            </div>
+            <div class="admin-section">
+                <b>Игроки:</b>
+                <div id="active-players" style="max-height:100px; overflow-y:auto;"></div>
+                <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
+                <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
+            </div>
+            <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
+            <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
+        </div>
 
-    <nav class="nav-bar">
-        <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>Поле</span></button>
-        <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>Билеты</span></button>
-        <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>Колесо</span></button>
-        <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>Админ</span></button>
-    </nav>
+        <nav class="nav-bar">
+            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
+            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
+            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
+        </nav>
+    </div>
 
     <div id="overlay" onclick="closeModal()"></div>
-    <div id="modal"><h2 id="mTitle"></h2><div id="mText"></div><button onclick="closeModal()" class="admin-btn">Слушаюсь!</button></div>
+    <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
 
     <script>
+        const JSON_URL = 'tasks.json';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const tg = window.Telegram.WebApp;
+        tg.ready(); tg.expand();
+
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
+        const charColors = ["#FFADAD","#FFD6A5","#FDFFB6","#CAFFBF","#9BF6FF","#A0C4FF","#BDB2FF","#FFC6FF","#FFFFFC","#FF8585","#FFB347","#F0E68C","#90EE90","#87CEFA","#6495ED","#9370DB","#FF69B4","#F5F5DC","#CD5C5C","#FFA500","#EEDD82","#3CB371","#00CED1","#4169E1","#8A2BE2","#C71585","#D3D3D3","#FA8072","#FF8C00","#BDB76B","#2E8B57","#20B2AA","#1E90FF","#9400D3","#FF1493","#A9A9A9","#E9967A","#DAA520","#8FBC8F","#008080","#0000CD","#800080","#DC143C","#808080","#B0C4DE","#FF4500","#556B2F","#008B8B","#000080","#4B0082"];
+        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
 
-        const playersArr = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
+        let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
 
-        let currentRound = 0, allTickets = [];
+        async function init() {
+            try { const res = await fetch(JSON_URL); tasks = await res.json(); checkAccess(); syncData(); } catch(e) { console.error(e); }
+        }
 
-        function init() {
+        // Функция звука взрыва (💥 Новое)
+        function playExplosion() {
+            const audio = new Audio('https://www.soundjay.com/mechanical/explosion-01.mp3');
+            audio.volume = 0.3; // Тише, чтобы не оглохли
+            audio.play().catch(e => console.log("Браузер заблокировал звук до клика"));
+        }
+
+        function checkAccess() {
             if (currentUserId === ADMIN_ID) {
-                document.getElementById('nav-admin-btn').style.display = 'flex';
-                document.getElementById('wheel-admin').innerHTML = `<button onclick="spinWheel()" class="admin-btn">КРУТИТЬ</button>`;
-                db.ref('whitelist/'+ADMIN_ID).once('value', s => { if(!s.exists()) db.ref('whitelist/'+ADMIN_ID).set({charIndex:0, last_round:-1}); });
+                document.getElementById('nav-admin-btn').style.display='flex';
+                document.getElementById('th-user').style.display = 'table-cell';
+                document.getElementById('th-status').style.display = 'table-cell';
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
+                syncAdminList();
             }
-            syncData();
+            db.ref('whitelist/' + currentUserId).on('value', s => { if (s.exists()) { myIndex = s.val().charIndex; document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; } });
         }
 
         function syncData() {
-            db.ref('current_round/number').on('value', s => { currentRound = s.val() || 0; });
+            db.ref('current_round').on('value', snap => { if (snap.exists()) { currentRoundNum = snap.val().number; roundEndTime = snap.val().endTime; document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum; updateTimerDisplay(); } });
             db.ref('board').on('value', snap => {
-                const data = snap.val() || {}, grid = document.getElementById('grid'), tBody = document.getElementById('tickets-body');
-                grid.innerHTML = ""; tBody.innerHTML = ""; allTickets = [];
+                const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
+                allTicketsData = [];
                 for(let i=0; i<50; i++) {
-                    let cell = data[i], d = document.createElement('div');
-                    d.className = 'cell' + (cell ? ' occupied' : '') + (cell?.isGold ? ' gold' : '') + (cell?.isCoop ? ' coop' : '') + (cell?.isTrap ? ' trap' : '');
-                    if(cell) {
-                        d.innerHTML = cell.isTrap ? "💣" : (cell.isGold ? "👑" : (cell.isCoop ? "✨" : "🎟"));
-                        allTickets.push({ name: playersArr[cell.owner].n });
-                        tBody.innerHTML += `<tr><td>${playersArr[cell.owner].n}</td><td>🎟 ${cell.ticket}</td></tr>`;
-                    } else d.innerText = i+1;
-                    d.onclick = () => showCell(i, cell);
-                    grid.appendChild(d);
+                    const cell = data[i]; let d = document.createElement('div'); 
+                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell && cell.excluded ? ' excluded' : '');
+                    if (cell) {
+                        const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
+                        // На поле для всех показываем Бомбу, если это была ловушка
+                        d.innerHTML = (cell.isTrap ? "💣" : (i+1)) + `<span>🎟${cell.ticket}</span>`;
+                        allTicketsData.push({ ...cell, cell: i+1 });
+                    } else { d.innerHTML = (i+1); }
+                    d.onclick = () => showCell(i, cell); grid.appendChild(d);
                 }
+                updateTicketsTable();
             });
-            db.ref('gossips').limitToLast(2).on('value', s => {
-                const list = document.getElementById('gossip-list'); list.innerHTML = "";
-                if(s.exists()) Object.values(s.val()).reverse().forEach(t => list.innerHTML += `<div>${t}</div>`);
-            });
-            db.ref('whitelist/'+currentUserId).on('value', s => {
-                if(s.exists()) {
-                    document.getElementById('player-identity').innerHTML = `Ты: <b>${playersArr[s.val().charIndex].n}</b>`;
-                    document.getElementById('dice-btn').disabled = (s.val().last_round === currentRound);
+            db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
+        }
+
+        function updateTimerDisplay() {
+            if (window.timerInt) clearInterval(window.timerInt);
+            window.timerInt = setInterval(async () => {
+                const diff = roundEndTime - Date.now(), btn = document.getElementById('dice-btn');
+                if (diff <= 0) { document.getElementById('round-timer').innerText = "ОКОНЧЕН"; btn.disabled = true; } 
+                else {
+                    const d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
+                    document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                    if(myIndex !== -1) {
+                        const last = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
+                        btn.disabled = (last.val() === currentRoundNum);
+                        if (btn.disabled) btn.innerText = "🎲 Ход сделан"; else btn.innerText = "🎲 Бросить кубик";
+                    }
                 }
-            });
+            }, 1000);
         }
 
         async function roll() {
-            const bSnap = await db.ref('board').once('value'), board = bSnap.val() || {};
+            const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
+            const roundSnap = await db.ref('current_round').once('value'), rData = roundSnap.val();
             let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
-            const myS = await db.ref('whitelist/'+currentUserId).once('value');
-            const cellIdx = free[Math.floor(Math.random()*free.length)];
+            const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
+            let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
+            if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
             
-            // ЛОГИКА СЮРПРИЗОВ
-            const isTrap = Math.random() < 0.15; // 15% шанс мины
+            // Логика Кубика + Ловушек
+            const cellIdx = free[Math.floor(Math.random()*free.length)];
+            const isTrap = rData.traps && rData.traps.includes(cellIdx); // Клетка в списке ловушек раунда?
             const isGold = !isTrap && Math.random() < 0.05;
-            const isCoop = !isTrap && !isGold && Math.random() < 0.1;
 
-            const tCnt = await db.ref('ticket_counter').transaction(c => (c||0)+1);
-            await db.ref('board/'+cellIdx).set({ owner: myS.val().charIndex, ticket: tCnt.snapshot.val(), isGold, isCoop, isTrap });
-            await db.ref('whitelist/'+currentUserId+'/last_round').set(currentRound);
-
-            const name = playersArr[myS.val().charIndex].n;
-            if(isTrap) {
-                db.ref('gossips').push(`💥 <b>${name}</b> подорвалась на мине на №${cellIdx+1}!`);
-                new Audio('https://www.soundjay.com/mechanical/explosion-01.mp3').play();
-                document.body.classList.add('apply-shake'); setTimeout(()=>document.body.classList.remove('apply-shake'), 500);
-            } else {
-                db.ref('gossips').push(`✨ <b>${name}</b> заняла клетку №${cellIdx+1}`);
+            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+            let tStr = tCounter.snapshot.val().toString();
+            if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
+            
+            // Задание или Текст ловушки
+            let taskIdx = -1;
+            let trapText = "";
+            if (isTrap) {
+                const traps = [
+                    "Детка, это ловушка Капитана Крюка! Чтобы освободиться, рисуй своей не ведущей рукой! Смотри не мухлюй, злой пират всё видит и порвет твой счастливый билетик у тебя на глазах!",
+                    "Ха-ха! Как же тебе не повезло! Задача трудная - за тобой разворот. Рисуй скорее, а то счастливый билетик растворится как утренняя заря!"
+                ];
+                trapText = traps[Math.floor(Math.random()*traps.length)];
+            } else if (!isGold) {
+                taskIdx = avail[Math.floor(Math.random()*avail.length)];
             }
-            showCell(cellIdx, {owner: myS.val().charIndex, isTrap, isGold, isCoop});
+
+            const cellData = { owner: myIndex, taskIdx, ticket: tStr, isGold, isTrap, trapText, round: currentRoundNum, excluded: false };
+            
+            await db.ref('board/'+cellIdx).set(cellData);
+            if(!isGold && !isTrap) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
+            await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
+            showCell(cellIdx, cellData);
         }
 
         function showCell(i, cell) {
             if(!cell) return;
-            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 БУМ!" : "Клетка " + (i+1);
-            let txt = cell.isTrap ? "О нет! Это мина Капитана Крюка! <b>Задание: Рисуй левой рукой!</b>" : "Твоя клетка! Рисуй задание раунда.";
-            if(cell.isGold) txt = "👑 ЗОЛОТО! Рисуй любого персонажа!";
-            if(cell.isCoop) txt = "✨ СВЯЗЬ! Найди пару для совместного рисунка!";
-            document.getElementById('mText').innerHTML = `Художник: ${playersArr[cell.owner].n}<br><br>${txt}`;
+            const isAdmin = (currentUserId === ADMIN_ID), isOwner = (cell.owner === myIndex);
+            
+            // Эффекты взрыва и тряски (💥 Новое)
+            if (cell.isTrap && (isOwner || isAdmin)) {
+                playExplosion();
+                document.body.classList.add('apply-shake'); // Трясем всё приложение
+                setTimeout(() => document.body.classList.remove('apply-shake'), 500); // Убираем тряску через 0.5сек
+                // Вибрация (работает на Android)
+                if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
+            }
+
+            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 БА-БАХ! ЛОВУШКА!" : (cell.isGold ? "👑 Золото " : "Клетка "+(i+1));
+            let h = `<p style="font-size:14px;">Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b><br>Билет: ${cell.ticket}</p>`;
+            
+            if (isOwner || isAdmin) {
+                if(cell.isTrap) {
+                    h += `<div style="padding:15px; border:2px dashed red; border-radius:10px; background:#fff0f0; color:#ff4444; font-weight:bold;">${cell.trapText}</div>`;
+                }
+                else if(cell.isGold) h += `<div style="padding:10px; border:2px solid #fbc02d; border-radius:8px; background:#fff9c4;">✨ Рисуй на любую тему!</div>`;
+                else { const t = tasks[cell.taskIdx]; if(t) { if(t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">`; h += `<p style="text-align:left;">${t.text}</p>`; } }
+            } else h += `<p style="color:#999; padding:20px;">🔒 Скрыто</p>`;
+            
+            document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
         }
 
-        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+        function updateTicketsTable() {
+            const body = document.getElementById('tickets-body'), isAdmin = (currentUserId === ADMIN_ID);
+            body.innerHTML = allTicketsData.sort((a,b)=>b.round-a.round).map(t => `
+                <tr class="${t.excluded ? 'row-excluded' : ''}">
+                    ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
+                    <td><b>${t.ticket}</b></td>
+                    ${isAdmin ? `<td><button onclick="db.ref('board/${t.cell-1}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:16px;">${t.excluded ? '❌' : '✅'}</button></td>` : ''}
+                </tr>`).join('');
+        }
+
+        function drawWheel() {
+            const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
+            const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) t.ticket.toString().split(' и ').forEach(n => tickets.push({ num: n.trim(), owner: t.owner })); });
+            if (!tickets.length) return; tickets.sort((a,b)=>a.num-b.num);
+            const segs = tickets.length, angle = 2 * Math.PI / segs;
+            ctx.clearRect(0,0,280,280);
+            tickets.forEach((t, i) => {
+                ctx.beginPath(); ctx.moveTo(140,140); ctx.arc(140,140,135, i*angle, (i+1)*angle);
+                ctx.fillStyle = charColors[t.owner]; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke();
+                ctx.save(); ctx.translate(140,140); ctx.rotate(i*angle + angle/2);
+                ctx.fillStyle="white"; ctx.font="bold 9px Arial"; ctx.fillText(t.num, 100, 4); ctx.restore();
+            });
+        }
+
+        function runWheelAnimation(rotation) {
+            const canvas = document.getElementById('wheel-canvas'); canvas.style.transform = `rotate(${rotation}deg)`;
+            setTimeout(() => {
+                const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) t.ticket.toString().split(' и ').forEach(n => tickets.push({ num: n.trim(), name: players[t.owner].n })); });
+                tickets.sort((a,b)=>a.num-b.num);
+                const winIdx = Math.floor(((360 - (rotation % 360) + 270) % 360) / (360/tickets.length));
+                const win = tickets[winIdx];
+                document.getElementById('winner-display').innerHTML = win ? `🏆 Билет №${win.num}: <b>${win.name}</b>` : "...";
+                new Audio('https://actions.google.com/sounds/v1/cartoon/tada.ogg').play();
+            }, 5000);
+        }
+
+        // --- АДМИН-ФУНКЦИИ ---
+        async function adminStartNewRound() {
+            const d = parseInt(document.getElementById('r-days').value)||0, h = parseInt(document.getElementById('r-hours').value)||0;
+            const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
+            let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
+            
+            // ГЕНЕРАЦИЯ 2 ЛОВУШЕК (💥 Новое)
+            let traps = [];
+            for(let j=0; j<2; j++) { if(free.length) traps.push(free.splice(Math.floor(Math.random()*free.length), 1)[0]); }
+            
+            const s = await db.ref('current_round/number').once('value');
+            await db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + (d*86400000 + h*3600000 || 3600000), traps: traps });
+            alert(`Раунд ${ (s.val()||0)+1 } запущен, 2 ловушки скрыты!`);
+        }
+
+        async function saveNewUserRandomly() {
+            const id = document.getElementById('new-user-id').value; if(!id) return;
+            await db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*50), used_tasks: [], last_round: 0 });
+            document.getElementById('new-user-id').value = "";
+        }
+
+        function syncAdminList() {
+            db.ref('whitelist').on('value', snap => {
+                let h = "<b>Список ID в базе:</b><br>"; snap.forEach(u => { h += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${players[u.val().charIndex].n}</span><button onclick="kick('${u.key}')" style="color:red;border:none;background:none">✕</button></div>`; });
+                document.getElementById('active-players').innerHTML = h;
+            });
+        }
+
+        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
+        function adminResetRounds() { if(confirm("Сбросить к 1 раунду?")) { db.ref('current_round').set({ number: 1, endTime: Date.now() + 3600000 }); location.reload(); } }
+        function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
+        async function adminTriggerSpin() { if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет готовых работ!"); await db.ref('wheel_event').set({ rotation: 3600 + Math.floor(Math.random()*3600), timestamp: Date.now() }); }
+
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); el.classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active'); if (id === 'tab-wheel') drawWheel();
         }
-        function adminAddPlayer() {
-            const id = document.getElementById('new-id').value, char = document.getElementById('new-char').value;
-            db.ref('whitelist/'+id).set({charIndex: parseInt(char), last_round: -1}); alert("Ок!");
-        }
-        function adminStartNewRound() { db.ref('current_round/number').set(currentRound+1); alert("Раунд начат!"); }
-        
+        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         init();
     </script>
 </body>
