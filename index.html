@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Disney Online Battle</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
@@ -16,23 +17,10 @@
         .target { border: 4px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 15px #ff007f; }
         
         /* Цвета игроков */
-        .p0 { background: #ffcdd2 !important; border-color: #f44336; } /* Фломастер Вжух */
-        .p1 { background: #e1f5fe !important; border-color: #03a9f4; } /* Раскрась-меня-целиком */
-        .p2 { background: #f3e5f5 !important; border-color: #9c27b0; } /* Кисти в стакане */
-        .p3 { background: #e8f5e9 !important; border-color: #4caf50; } /* Залипаю в контур */
-        .p4 { background: #e8f5e9 !important; border-color: #4caf50; } /* Ачивка за штрих */
-        .p5 { background: #e8f5e9 !important; border-color: #4caf50; } /* Выхожу из рамы */
-        .p6 { background: #e8f5e9 !important; border-color: #4caf50; } /* Обновил раскраску */
-        .p7 { background: #e8f5e9 !important; border-color: #4caf50; } /* Енот с палитрой */
-        .p8 { background: #e8f5e9 !important; border-color: #4caf50; } /* Жаба душит, но я крашу */
-        .p9 { background: #e8f5e9 !important; border-color: #4caf50; } /* Прокрашусь без шума */
-        .p10 { background: #e8f5e9 !important; border-color: #4caf50; } /* Графон на ультрах */
-
-<div id="admin-panel" style="display: none; margin-top: 20px;">
-    <button onclick="resetGame()" style="background: #ff4081; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">
-        🔄 Сбросить поле (Только для Хозяйки)
-    </button>
-</div>
+        .p0 { background: #ffcdd2 !important; border-color: #f44336; } 
+        .p1 { background: #e1f5fe !important; border-color: #03a9f4; } 
+        .p2 { background: #f3e5f5 !important; border-color: #9c27b0; } 
+        .p3 { background: #e8f5e9 !important; border-color: #4caf50; } 
         
         .owner-tag { position: absolute; bottom: 4px; font-size: 9px; text-transform: uppercase; color: #333; }
         
@@ -43,12 +31,17 @@
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
         
         .btn-select { padding: 10px; margin: 5px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; }
-        .active-p { background: #ffcdd2; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <h1>✨ Disney Online Battle ✨</h1>
+
+    <div id="admin-panel" style="display: none; margin-bottom: 20px;">
+        <button onclick="resetGame()" style="background: #ff4081; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold;">
+            🔄 Сбросить поле (Только для Хозяйки)
+        </button>
+    </div>
     
     <div id="player-setup">
         <h3>Выбери, кто ты сегодня:</h3>
@@ -73,7 +66,10 @@
     </div>
 
     <script>
-        // ТВОИ НАСТРОЙКИ FIREBASE (УЖЕ ВСТАВЛЕНЫ)
+        // Инициализация Telegram
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+
         const firebaseConfig = {
             databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/"
         };
@@ -108,7 +104,6 @@
             document.getElementById('my-name-display').innerText = players[idx].n;
         }
 
-        // Создаем сетку
         const gridDiv = document.getElementById('grid');
         for(let i=0; i<30; i++) {
             let div = document.createElement('div');
@@ -120,7 +115,6 @@
 
         function roll() {
             document.getElementById('dice-btn').disabled = true;
-            // Убираем старую цель, если была
             if(selectedCell !== null) document.getElementById('cell-' + selectedCell).classList.remove('target');
 
             db.ref('board').once('value', (snap) => {
@@ -136,71 +130,10 @@
                 selectedCell = free[Math.floor(Math.random() * free.length)];
                 document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
                 
-                const target = document.getElementById('cell-' + selectedCell);
-                target.classList.add('target');
-                target.onclick = function() {
-                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
-                    document.getElementById('mText').innerText = tasks[selectedCell];
-                    document.getElementById('modal').style.display = 'block';
-                    document.getElementById('overlay').style.display = 'block';
-                };
-            });
-        }
-
-        function confirmTask() {
-            db.ref('board/' + selectedCell).set({
-                owner: myIndex,
-                name: players[myIndex].n
-            });
-            
-            document.getElementById('modal').style.display = 'none';
-            document.getElementById('overlay').style.display = 'none';
-            document.getElementById('dice-btn').disabled = false;
-            document.getElementById('status').innerText = "Клетка захвачена! Ход следующей девочки.";
-            document.getElementById('cell-' + selectedCell).classList.remove('target');
-            document.getElementById('cell-' + selectedCell).onclick = null;
-            selectedCell = null;
-        }
-
-        // Обновление в реальном времени у всех игроков
-        db.ref('board').on('value', (snap) => {
-            const data = snap.val() || {};
-            for(let i in data) {
-                const cell = document.getElementById('cell-' + i);
-                const p = players[data[i].owner];
-                cell.className = 'cell ' + p.c;
-                cell.innerHTML = `<div>${parseInt(i)+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
-                cell.onclick = null;
-            }
-        });
-
-        // Твой ID из бота (вставь сюда своё число без кавычек)
-const adminId = 341995937; 
-
-// Проверяем, кто открыл приложение
-const user = window.Telegram.WebApp.initDataUnsafe.user;
-
-if (user && user.id === adminId) {
-    // Если ID совпал, показываем секретную панель
-    document.getElementById('admin-panel').style.display = 'block';
-}
-        
-        function resetGame() {
-    // Спрашиваем подтверждение, чтобы не сбросить случайно
-    if (confirm("Вы точно хотите стереть все закрашенные клетки и начать новую игру?")) {
-        // Эта строчка удаляет все данные из папки 'board' в твоем Firebase
-        firebase.database().ref('board').remove()
-        .then(() => {
-            alert("Поле очищено! Можно начинать новый раунд ✨");
-            location.reload(); // Перезагружаем страницу, чтобы обнулить всё локально
-        })
-        .catch((error) => {
-            console.error("Ошибка при очистке: ", error);
-        });
-    }
-}
+                const target = document.getElementById
         
     </script>
 </body>
 </html>
+
 
