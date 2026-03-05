@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Secure Edition</title>
+    <title>Disney Battle: Pro Admin Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -13,18 +13,17 @@
         body { font-family: -apple-system, system-ui, sans-serif; background: var(--p-bg); text-align: center; color: #333; margin: 0; padding: 0; overflow-x: hidden; }
         
         /* Экран блокировки */
-        #access-denied { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; z-index: 9999; position: fixed; width: 100%; top: 0; left: 0; }
-        .lock-icon { font-size: 60px; margin-bottom: 20px; }
-
+        #access-denied { display: none; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: white; position: fixed; width: 100%; top: 0; left: 0; z-index: 9999; }
+        
         /* Игровой интерфейс */
         #game-ui { display: none; padding: 5px 5px 80px 5px; }
         .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         #round-timer { font-size: 22px; font-weight: 900; color: #222; }
         
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; max-width: 500px; margin: 10px auto; }
-        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; transition: 0.3s; }
+        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; transition: 0.2s; position: relative; overflow: hidden; }
         .cell.gold { border: 2px solid var(--p-gold) !important; background: #fffdf0; }
-        .cell.trap { border: 2px solid red !important; background: #fff0f0; }
+        .cell.trap { border: 2px solid #ff4d4d !important; background: #fff0f0; }
         .cell.coop { border: 2px solid var(--p-purple) !important; background: #fdf0ff; }
         .cell.not-ready { opacity: 0.5; filter: grayscale(1); }
 
@@ -32,44 +31,44 @@
         .nav-item { background: none; border: none; font-size: 10px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
         
-        #dice-btn, .admin-btn { padding: 14px; font-size: 16px; border-radius: 14px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 10px auto; display: block; }
-        #dice-btn:disabled { background: #ccc; }
+        #dice-btn, .admin-btn { padding: 14px; font-size: 16px; border-radius: 14px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 10px auto; display: block; cursor: pointer; }
+        #dice-btn:disabled { background: #ccc; cursor: not-allowed; }
 
         .tab-content { display: none; }
         .tab-active { display: block; }
         #modal, #overlay { display: none; }
-        #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 80vh; overflow-y: auto; }
+        #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1050; backdrop-filter: blur(2px); }
         
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; margin-top: 10px; }
-        th, td { padding: 10px; border-bottom: 1px solid #eee; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; margin-top: 10px; font-size: 11px; }
+        th, td { padding: 10px 5px; border-bottom: 1px solid #eee; text-align: center; }
         .admin-section { background: white; padding: 15px; border-radius: 12px; margin: 10px; text-align: left; border: 1px solid #eee; }
-        input { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 8px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
     </style>
 </head>
 <body>
 
     <div id="access-denied">
-        <div class="lock-icon">🔒</div>
-        <h2>Доступ ограничен</h2>
+        <div style="font-size: 60px; margin-bottom:15px;">🏰</div>
+        <h2 style="margin:5px;">Доступ ограничен</h2>
         <p>Ваш ID: <b id="my-id-display">...</b></p>
-        <p style="color: #888; font-size: 14px; padding: 0 40px;">Отправьте этот ID администратору для получения допуска в игру.</p>
+        <p style="color: #888; font-size: 13px; padding: 0 40px;">Отправьте этот ID Королеве (Админу), чтобы попасть в игру.</p>
     </div>
 
     <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
-            <div id="player-identity" style="font-size:12px; margin-bottom:10px;">Загрузка...</div>
+            <div id="player-identity" style="font-size:12px; margin-bottom:10px; font-weight: bold;">Загрузка...</div>
             <div class="timer-box">
                 <div id="round-info" style="font-size:11px; color:var(--p-pink); font-weight:bold;">Раунд №--</div>
-                <div id="round-timer">0д 00:00:00</div>
+                <div id="round-timer">00:00:00</div>
             </div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
 
         <div id="tab-tickets" class="tab-content">
-            <h1>🎫 Билеты</h1>
+            <h1>🎫 Билеты и Статус</h1>
             <table>
                 <thead style="background:var(--p-pink); color:white;">
                     <tr><th id="th-user" style="display:none;">Игрок</th><th>Рд.</th><th>Билет</th><th id="th-status" style="display:none;">Ок?</th></tr>
@@ -79,9 +78,9 @@
         </div>
 
         <div id="tab-wheel" class="tab-content">
-            <h1>🎡 Колесо</h1>
-            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:30px;"></div>
-            <canvas id="wheel-canvas" width="280" height="280" style="margin:0 auto; display:block; transition: 5s;"></canvas>
+            <h1>🎡 Колесо Удачи</h1>
+            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:30px; margin-bottom:10px; font-size:14px;"></div>
+            <canvas id="wheel-canvas" width="280" height="280" style="margin:0 auto; display:block; transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1);"></canvas>
             <div id="wheel-admin-btn"></div>
         </div>
 
@@ -94,21 +93,24 @@
             </div>
             <div class="admin-section">
                 <b>Старт раунда:</b>
-                <input type="number" id="r-days" value="1" placeholder="Дни">
-                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; margin: 5px 0;">НАЧАТЬ НОВЫЙ РАУНД</button>
+                <div style="display:flex; gap:5px;">
+                    <input type="number" id="r-days" value="1" placeholder="Дни">
+                    <input type="number" id="r-hours" value="0" placeholder="Часы">
+                </div>
+                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50;">ЗАПУСТИТЬ РАУНД</button>
             </div>
             <div class="admin-section">
-                <b>Игроки в допуске:</b>
-                <div id="active-players" style="max-height:150px; overflow-y:auto; font-size:12px;"></div>
+                <b>Игроки в системе:</b>
+                <div id="active-players" style="max-height:150px; overflow-y:auto; font-size:12px; margin-top:10px;"></div>
             </div>
-            <button onclick="adminFullReset()" class="admin-btn" style="background:red; font-size:10px;">ПОЛНЫЙ СБРОС БАЗЫ</button>
+            <button onclick="adminFullReset()" class="admin-btn" style="background:red; font-size:10px; opacity:0.6;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
         </div>
 
         <nav class="nav-bar">
-            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>Поле</span></button>
-            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>Билеты</span></button>
-            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>Колесо</span></button>
-            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>Админ</span></button>
+            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
+            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
+            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>
 
@@ -116,33 +118,46 @@
     <div id="modal"><h2 id="mTitle"></h2><div id="mText"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
 
     <script>
+        const JSON_URL = 'https://raw.githubusercontent.com/Koteine/disney-game/refs/heads/main/tasks.json';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const tg = window.Telegram.WebApp;
+        
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
-
+        
         const charColors = ["#FFADAD","#FFD6A5","#FDFFB6","#CAFFBF","#9BF6FF","#A0C4FF","#BDB2FF","#FFC6FF","#FFFFFC","#FF8585","#FFB347","#F0E68C","#90EE90","#87CEFA","#6495ED","#9370DB","#FF69B4","#F5F5DC","#CD5C5C","#FFA500","#EEDD82","#3CB371","#00CED1","#4169E1","#8A2BE2","#C71585","#D3D3D3","#FA8072","#FF8C00","#BDB76B","#2E8B57","#20B2AA","#1E90FF","#9400D3","#FF1493","#A9A9A9","#E9967A","#DAA520","#8FBC8F","#008080","#0000CD","#800080","#DC143C","#808080","#B0C4DE","#FF4500","#556B2F","#008B8B","#000080","#4B0082"];
-        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
+        const playersArr = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
 
-        let myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [], events = {};
+        let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [], events = {};
 
-        function init() {
+        async function init() {
             tg.expand();
             document.getElementById('my-id-display').innerText = currentUserId;
+
+            try {
+                const res = await fetch(JSON_URL);
+                tasks = await res.json();
+            } catch(e) { console.error("JSON Error", e); }
+
             checkAccess();
             syncData();
         }
 
         function checkAccess() {
             db.ref('whitelist/' + currentUserId).on('value', s => {
-                if (s.exists()) {
+                if (s.exists() || currentUserId === ADMIN_ID) {
                     document.getElementById('access-denied').style.display = 'none';
                     document.getElementById('game-ui').style.display = 'block';
-                    myIndex = s.val().charIndex;
-                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`;
                     
+                    if (s.exists()) {
+                        myIndex = s.val().charIndex;
+                        document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${playersArr[myIndex].n}</span>`;
+                    } else {
+                        document.getElementById('player-identity').innerHTML = `👑 Статус: <b>Администратор</b>`;
+                    }
+
                     if (currentUserId === ADMIN_ID) {
                         document.getElementById('nav-admin-btn').style.display = 'flex';
                         document.getElementById('th-user').style.display = 'table-cell';
@@ -152,13 +167,12 @@
                     }
                 } else {
                     document.getElementById('access-denied').style.display = 'flex';
-                    document.getElementById('game-ui').style.display = 'none';
                 }
             });
         }
 
         function syncData() {
-            db.ref('current_round').on('value', s => { 
+            db.ref('current_round').on('value', s => {
                 const data = s.val() || {};
                 currentRoundNum = data.number || 0;
                 roundEndTime = data.endTime || 0;
@@ -168,13 +182,14 @@
             });
 
             db.ref('board').on('value', snap => {
-                const data = snap.val() || {}, grid = document.getElementById('grid'), body = document.getElementById('tickets-body');
-                grid.innerHTML = ""; body.innerHTML = ""; allTicketsData = [];
+                const data = snap.val() || {}, grid = document.getElementById('grid');
+                grid.innerHTML = ""; allTicketsData = [];
                 for(let i=0; i<50; i++) {
                     const cell = data[i]; let d = document.createElement('div');
                     d.className = 'cell' + (cell?.isGold?' gold':'') + (cell?.isTrap?' trap':'') + (cell?.isCoop?' coop':'') + (cell?.excluded?' not-ready':'');
                     if(cell) {
-                        const c = charColors[cell.owner]; d.style.borderColor = c; d.style.background = c + "15";
+                        const c = charColors[cell.owner];
+                        d.style.borderColor = c; d.style.background = c + "15";
                         d.innerHTML = (i+1) + `<br><span style="font-size:8px">🎟${cell.ticket}</span>`;
                         allTicketsData.push({...cell, cellIdx: i});
                     } else d.innerText = i+1;
@@ -198,28 +213,38 @@
                 } else {
                     const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
                     document.getElementById('round-timer').innerText = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                    db.ref(`whitelist/${currentUserId}/last_round`).once('value', res => {
-                        btn.disabled = (res.val() === currentRoundNum);
-                        btn.innerText = btn.disabled ? "✅ Ход сделан" : "🎲 Бросить кубик";
+                    db.ref(`whitelist/${currentUserId}/last_round`).once('value', r => {
+                        btn.disabled = (r.val() === currentRoundNum || myIndex === -1);
+                        btn.innerText = btn.disabled ? (myIndex === -1 ? "Нужен допуск" : "✅ Готово") : "🎲 Бросить кубик";
                     });
                 }
             }, 1000);
         }
 
         async function roll() {
+            if (myIndex === -1) return;
             const bSnap = await db.ref('board').once('value'), board = bSnap.val() || {};
             let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
             if(!free.length) return;
 
+            const uSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
+            let used = uSnap.val() || [];
+            let avail = tasks.map((_, i) => i).filter(idx => !used.includes(idx));
+            if(!avail.length) return alert("Все задания выполнены!");
+
             const cellIdx = free[Math.floor(Math.random()*free.length)];
+            const taskIdx = avail[Math.floor(Math.random()*avail.length)];
             const type = events[cellIdx] || "normal";
             const tCnt = await db.ref('ticket_counter').transaction(c => (c||0)+1);
 
             const cellData = {
                 owner: myIndex, ticket: tCnt.snapshot.val(), round: currentRoundNum,
-                isTrap: type === "trap", isGold: type === "gold", isCoop: type === "coop", excluded: false
+                taskIdx: taskIdx, isTrap: type === "trap", isGold: type === "gold", 
+                isCoop: type === "coop", excluded: false
             };
 
+            used.push(taskIdx);
+            await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used);
             await db.ref('board/'+cellIdx).set(cellData);
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             showCell(cellIdx, cellData);
@@ -229,13 +254,20 @@
             if(!cell) return;
             const isAdmin = (currentUserId === ADMIN_ID), isOwner = (cell.owner === myIndex);
             document.getElementById('mTitle').innerText = (cell.isTrap?"💣":(cell.isGold?"👑":"🎨")) + " Клетка " + (i+1);
-            let h = `<p>Художник: <b>${players[cell.owner].n}</b></p>`;
+            let h = `<p>Художник: <b style="color:${charColors[cell.owner]}">${playersArr[cell.owner].n}</b></p>`;
+            
             if (isOwner || isAdmin) {
-                if(cell.isTrap) h += `<p style="color:red"><b>МИНА!</b> Рисуй левой рукой!</p>`;
-                else if(cell.isGold) h += `<p style="color:orange"><b>ЗОЛОТО!</b> Любой персонаж на выбор!</p>`;
-                else if(cell.isCoop) h += `<p style="color:purple"><b>СВЯЗЬ!</b> Совместный арт (+3 билета каждой).</p>`;
-                else h += `<p>Задание: Рисуй персонажа раунда.</p>`;
-            } else h += `<p style="color:#999">Содержимое скрыто</p>`;
+                if(cell.isTrap) h += `<p style="color:red; font-weight:bold;">💣 МИНА! (Особое условие на арт)</p>`;
+                else if(cell.isGold) h += `<p style="color:orange; font-weight:bold;">👑 ЗОЛОТО! (Любая тема)</p>`;
+                
+                const task = tasks[cell.taskIdx];
+                if(task) {
+                    h += `<div style="background:#f9f9f9; padding:15px; border-radius:10px; margin-top:10px; border-left: 4px solid var(--p-pink);">`;
+                    if(task.img) h += `<img src="${task.img}" style="width:100%; border-radius:8px; margin-bottom:10px;">`;
+                    h += `<p style="margin:0;">${task.text}</p></div>`;
+                }
+            } else h += `<p style="color:#999; margin-top:20px;">🔒 Скрыто магией</p>`;
+            
             document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
         }
@@ -243,8 +275,8 @@
         function updateTicketsTable() {
             const body = document.getElementById('tickets-body'), isAdmin = (currentUserId === ADMIN_ID);
             body.innerHTML = allTicketsData.sort((a,b)=>b.round-a.round).map(t => `
-                <tr style="${t.excluded?'opacity:0.5':''}">
-                    ${isAdmin ? `<td>${players[t.owner].n}</td>` : ''}
+                <tr style="${t.excluded?'opacity:0.5; text-decoration:line-through;':''}">
+                    ${isAdmin ? `<td>${playersArr[t.owner].n}</td>` : ''}
                     <td>${t.round}</td>
                     <td>🎟 ${t.ticket}</td>
                     ${isAdmin ? `<td><button onclick="toggleT(${t.cellIdx},${t.excluded})">${t.excluded?'❌':'✅'}</button></td>` : ''}
@@ -254,44 +286,43 @@
         function toggleT(idx, stat) { db.ref(`board/${idx}/excluded`).set(!stat); }
 
         async function adminStartNewRound() {
+            if(!confirm("Очистить поле и начать новый раунд?")) return;
             let ev = {}; let pool = Array.from({length: 50}, (_, i) => i).sort(()=>Math.random()-0.5);
             ev[pool[0]]="trap"; ev[pool[1]]="trap"; ev[pool[2]]="gold"; ev[pool[3]]="coop";
-            const days = parseInt(document.getElementById('r-days').value) || 1;
-            await db.ref('current_round').set({
-                number: currentRoundNum + 1,
-                endTime: Date.now() + (days * 86400000),
-                events: ev
-            });
-            alert("Раунд запущен!");
+            const ms = ((parseInt(document.getElementById('r-days').value)||0)*86400000) + ((parseInt(document.getElementById('r-hours').value)||0)*3600000);
+            await db.ref('board').remove();
+            await db.ref('current_round').set({ number: currentRoundNum + 1, endTime: Date.now() + (ms||3600000), events: ev });
         }
 
         async function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value; if(!id) return;
-            await db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*50), last_round: 0 });
+            await db.ref('whitelist/'+id).update({ charIndex: Math.floor(Math.random()*50), last_round: 0, used_tasks: [] });
             document.getElementById('new-user-id').value = "";
         }
 
         function syncAdminList() {
             db.ref('whitelist').on('value', s => {
                 let h = ""; s.forEach(u => {
-                    h += `<div style="padding:5px; border-bottom:1px solid #eee;">ID: ${u.key} (${players[u.val().charIndex].n}) <button onclick="db.ref('whitelist/${u.key}').remove()" style="color:red;float:right;border:none;background:none">✕</button></div>`;
+                    h += `<div style="padding:5px; border-bottom:1px solid #eee;">ID: ${u.key} (${playersArr[u.val().charIndex].n}) <button onclick="db.ref('whitelist/${u.key}').remove()" style="color:red;float:right;border:none;background:none;cursor:pointer;">✕</button></div>`;
                 });
-                document.getElementById('active-players').innerHTML = h || "Нет игроков";
+                document.getElementById('active-players').innerHTML = h || "Пусто";
             });
         }
 
         function drawWheel() {
             const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
             const valid = allTicketsData.filter(t => !t.excluded);
-            if(!valid.length) { ctx.clearRect(0,0,280,280); return; }
+            ctx.clearRect(0,0,280,280);
+            if(!valid.length) return;
             const slice = (Math.PI*2)/valid.length;
             valid.forEach((t, i) => {
                 ctx.beginPath(); ctx.moveTo(140,140); ctx.arc(140,140,130, i*slice, (i+1)*slice);
-                ctx.fillStyle = charColors[t.owner]; ctx.fill(); ctx.stroke();
+                ctx.fillStyle = charColors[t.owner]; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke();
             });
         }
 
         async function adminTriggerSpin() {
+            if(allTicketsData.filter(t=>!t.excluded).length < 1) return;
             await db.ref('wheel_event').set({ rotation: 3600 + Math.random()*3600, timestamp: Date.now() });
         }
 
@@ -299,8 +330,9 @@
             const canvas = document.getElementById('wheel-canvas'); canvas.style.transform = `rotate(${rot}deg)`;
             setTimeout(() => {
                 const valid = allTicketsData.filter(t => !t.excluded);
-                const winIdx = Math.floor(Math.random()*valid.length); // Упрощенная логика для примера
-                document.getElementById('winner-display').innerText = "ПОБЕДИТЕЛЬ: " + players[valid[winIdx].owner].n;
+                const winIdx = Math.floor((360 - (rot % 360)) / (360 / valid.length)) % valid.length;
+                const winner = valid[winIdx];
+                document.getElementById('winner-display').innerHTML = `🏆 Победитель: <b>${playersArr[winner.owner].n}</b>`;
             }, 5000);
         }
 
@@ -311,7 +343,7 @@
             el.classList.add('active'); if(id === 'tab-wheel') drawWheel();
         }
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
-        function adminFullReset() { if(confirm("Сбросить базу?")) db.ref().remove(); }
+        function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
         
         init();
     </script>
