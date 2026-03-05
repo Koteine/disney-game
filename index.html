@@ -17,11 +17,10 @@
             color: #333; 
             margin: 0; 
             padding: 5px 5px 80px 5px; 
-            overflow-x: hidden; /* Запрет бокового скролла */
+            overflow-x: hidden;
             -webkit-tap-highlight-color: transparent; 
         }
         
-        /* Сетка — Полностью Адаптивная */
         .grid { 
             display: grid; 
             grid-template-columns: repeat(5, 1fr); 
@@ -49,32 +48,28 @@
         .cell span { font-size: 7px; line-height: 1; margin-top: 2px; }
         .cell.gold { border: 2px solid #ffaa00 !important; background: #fffdf0; }
         .cell.gold::after { content: "👑"; position: absolute; top: 0; right: 0; font-size: 7px; }
-        .cell.excluded { opacity: 0.5; filter: grayscale(1); } /* Клетка не сдавшего */
+        .cell.excluded { opacity: 0.5; filter: grayscale(1); }
 
-        /* Таймер и Блоки */
         .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         #round-timer { font-size: 22px; font-weight: 900; color: #222; }
 
-        /* Кнопки и Навигация */
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #eee; z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 10px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
         #dice-btn, .admin-btn { padding: 12px; font-size: 15px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 8px 0; }
         #dice-btn:disabled { background: #ccc; }
         
-        /* Админка */
         .admin-section { background: white; padding: 12px; border-radius: 12px; margin: 8px; border: 1px solid #eee; text-align: left; }
         .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
         
-        /* Модалки и Эффекты */
         #modal, #overlay { display: none; }
         #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 15px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 0 40px rgba(0,0,0,0.2); }
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1050; }
+        
         .tab-content { display: none; width: 100%; }
         .tab-active { display: block; animation: fadeIn 0.1s; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        /* Анимация Тряски (💥 Новое) */
         @keyframes shake {
             0% { transform: translate(1px, 1px) rotate(0deg); }
             10% { transform: translate(-1px, -2px) rotate(-1deg); }
@@ -90,7 +85,6 @@
         }
         .apply-shake { animation: shake 0.5s; }
 
-        /* Таблица Билетов */
         table { width: 100%; border-collapse: collapse; font-size: 11px; background: white; border-radius: 10px; }
         th, td { padding: 8px 4px; border-bottom: 1px solid #eee; text-align: center; }
         .row-excluded { background: #f0f0f0; color: #aaa; text-decoration: line-through; }
@@ -147,14 +141,6 @@
             <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
         </div>
 
-        <nav class="nav-bar">
-            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
-            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
-            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
-            <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
-            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', <div id="tab-admin" class="tab-content">
-            </div>
-
         <div id="tab-rules" class="tab-content">
             <h1>📜 Правила битвы</h1>
             <div class="admin-section" style="font-size: 13px; line-height: 1.5;">
@@ -174,8 +160,7 @@
             <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
-        </nav>this)"><span>⚙️ Админ</span></button>
-            </nav>
+        </nav>
     </div>
 
     <div id="overlay" onclick="closeModal()"></div>
@@ -200,11 +185,10 @@
             try { const res = await fetch(JSON_URL); tasks = await res.json(); checkAccess(); syncData(); } catch(e) { console.error(e); }
         }
 
-        // Функция звука взрыва (💥 Новое)
         function playExplosion() {
             const audio = new Audio('https://www.soundjay.com/mechanical/explosion-01.mp3');
-            audio.volume = 0.3; // Тише, чтобы не оглохли
-            audio.play().catch(e => console.log("Браузер заблокировал звук до клика"));
+            audio.volume = 0.3;
+            audio.play().catch(e => console.log("Sound blocked"));
         }
 
         function checkAccess() {
@@ -215,7 +199,12 @@
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
                 syncAdminList();
             }
-            db.ref('whitelist/' + currentUserId).on('value', s => { if (s.exists()) { myIndex = s.val().charIndex; document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; } });
+            db.ref('whitelist/' + currentUserId).on('value', s => { 
+                if (s.exists()) { 
+                    myIndex = s.val().charIndex; 
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; 
+                } 
+            });
         }
 
         function syncData() {
@@ -228,7 +217,6 @@
                     d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell && cell.excluded ? ' excluded' : '');
                     if (cell) {
                         const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
-                        // На поле для всех показываем Бомбу, если это была ловушка
                         d.innerHTML = (cell.isTrap ? "💣" : (i+1)) + `<span>🎟${cell.ticket}</span>`;
                         allTicketsData.push({ ...cell, cell: i+1 });
                     } else { d.innerHTML = (i+1); }
@@ -264,16 +252,14 @@
             let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
             if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
             
-            // Логика Кубика + Ловушек
             const cellIdx = free[Math.floor(Math.random()*free.length)];
-            const isTrap = rData.traps && rData.traps.includes(cellIdx); // Клетка в списке ловушек раунда?
+            const isTrap = rData.traps && rData.traps.includes(cellIdx);
             const isGold = !isTrap && Math.random() < 0.05;
 
             const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             let tStr = tCounter.snapshot.val().toString();
             if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
             
-            // Задание или Текст ловушки
             let taskIdx = -1;
             let trapText = "";
             if (isTrap) {
@@ -287,7 +273,6 @@
             }
 
             const cellData = { owner: myIndex, taskIdx, ticket: tStr, isGold, isTrap, trapText, round: currentRoundNum, excluded: false };
-            
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -298,12 +283,10 @@
             if(!cell) return;
             const isAdmin = (currentUserId === ADMIN_ID), isOwner = (cell.owner === myIndex);
             
-            // Эффекты взрыва и тряски (💥 Новое)
             if (cell.isTrap && (isOwner || isAdmin)) {
                 playExplosion();
-                document.body.classList.add('apply-shake'); // Трясем всё приложение
-                setTimeout(() => document.body.classList.remove('apply-shake'), 500); // Убираем тряску через 0.5сек
-                // Вибрация (работает на Android)
+                document.body.classList.add('apply-shake');
+                setTimeout(() => document.body.classList.remove('apply-shake'), 500);
                 if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
             }
 
@@ -358,19 +341,17 @@
             }, 5000);
         }
 
-        // --- АДМИН-ФУНКЦИИ ---
         async function adminStartNewRound() {
             const d = parseInt(document.getElementById('r-days').value)||0, h = parseInt(document.getElementById('r-hours').value)||0;
             const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
             let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
             
-            // ГЕНЕРАЦИЯ 2 ЛОВУШЕК (💥 Новое)
             let traps = [];
             for(let j=0; j<2; j++) { if(free.length) traps.push(free.splice(Math.floor(Math.random()*free.length), 1)[0]); }
             
             const s = await db.ref('current_round/number').once('value');
             await db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + (d*86400000 + h*3600000 || 3600000), traps: traps });
-            alert(`Раунд ${ (s.val()||0)+1 } запущен, 2 ловушки скрыты!`);
+            alert(`Раунд ${ (s.val()||0)+1 } запущен!`);
         }
 
         async function saveNewUserRandomly() {
@@ -381,15 +362,15 @@
 
         function syncAdminList() {
             db.ref('whitelist').on('value', snap => {
-                let h = "<b>Список ID в базе:</b><br>"; snap.forEach(u => { h += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${players[u.val().charIndex].n}</span><button onclick="kick('${u.key}')" style="color:red;border:none;background:none">✕</button></div>`; });
+                let h = "<b>ID в базе:</b><br>"; snap.forEach(u => { h += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${players[u.val().charIndex].n}</span><button onclick="kick('${u.key}')" style="color:red;border:none;background:none">✕</button></div>`; });
                 document.getElementById('active-players').innerHTML = h;
             });
         }
 
         function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
-        function adminResetRounds() { if(confirm("Сбросить к 1 раунду?")) { db.ref('current_round').set({ number: 1, endTime: Date.now() + 3600000 }); location.reload(); } }
+        function adminResetRounds() { if(confirm("Сбросить?")) { db.ref('current_round').set({ number: 1, endTime: Date.now() + 3600000 }); location.reload(); } }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
-        async function adminTriggerSpin() { if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет готовых работ!"); await db.ref('wheel_event').set({ rotation: 3600 + Math.floor(Math.random()*3600), timestamp: Date.now() }); }
+        async function adminTriggerSpin() { if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет работ!"); await db.ref('wheel_event').set({ rotation: 3600 + Math.floor(Math.random()*3600), timestamp: Date.now() }); }
 
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
@@ -402,4 +383,3 @@
     </script>
 </body>
 </html>
-
