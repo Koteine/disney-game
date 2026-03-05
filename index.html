@@ -70,24 +70,8 @@
         .tab-active { display: block; animation: fadeIn 0.1s; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        @keyframes shake {
-            0% { transform: translate(1px, 1px) rotate(0deg); }
-            10% { transform: translate(-1px, -2px) rotate(-1deg); }
-            20% { transform: translate(-3px, 0px) rotate(1deg); }
-            30% { transform: translate(3px, 2px) rotate(0deg); }
-            40% { transform: translate(1px, -1px) rotate(1deg); }
-            50% { transform: translate(-1px, 2px) rotate(-1deg); }
-            60% { transform: translate(-3px, 1px) rotate(0deg); }
-            70% { transform: translate(3px, 1px) rotate(-1deg); }
-            80% { transform: translate(-1px, -1px) rotate(1deg); }
-            90% { transform: translate(1px, 2px) rotate(0deg); }
-            100% { transform: translate(1px, -2px) rotate(-1deg); }
-        }
-        .apply-shake { animation: shake 0.5s; }
-
         table { width: 100%; border-collapse: collapse; font-size: 11px; background: white; border-radius: 10px; }
         th, td { padding: 8px 4px; border-bottom: 1px solid #eee; text-align: center; }
-        .row-excluded { background: #f0f0f0; color: #aaa; text-decoration: line-through; }
     </style>
 </head>
 <body>
@@ -104,314 +88,263 @@
             <div class="grid" id="grid"></div>
         </div>
 
-       <div id="tab-tickets" class="tab-content">
-    <h1>🎫 История билетов</h1>
-    <div style="overflow-x: auto;">
-        <table>
-            <thead style="background:var(--p-pink); color:white;">
-                <tr>
-                    <th>Рнд</th>
-                    <th>Клетка</th>
-                    <th id="th-user-name" style="display:none;">Игрок</th>
-                    <th>Билет</th>
-                    <th>Задание</th> </tr>
-            </thead>
-            <tbody id="tickets-body"></tbody>
-        </table>
-    </div>
-</div>
+        <div id="tab-tickets" class="tab-content">
+            <h1>🎫 История билетов</h1>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead style="background:var(--p-pink); color:white;">
+                        <tr>
+                            <th>Рнд</th>
+                            <th>Клетка</th>
+                            <th id="th-user-name" style="display:none;">Игрок</th>
+                            <th>Билет</th>
+                            <th>Задание</th> 
+                        </tr>
+                    </thead>
+                    <tbody id="tickets-body"></tbody>
+                </table>
+            </div>
+        </div>
 
-        <div id="tab-wheel" class="tab-content">
-            <h1>🎡 Колесо</h1>
-            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к розыгрышу?</div>
-            <canvas id="wheel-canvas" width="280" height="280" style="transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block;"></canvas>
-            <div id="wheel-admin-btn"></div>
+        <div id="tab-rules" class="tab-content">
+            <h1>📜 Правила</h1>
+            <div class="admin-section">
+                <p>Выполняйте задания, копите билеты и побеждайте в финальном колесе!</p>
+            </div>
         </div>
 
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Админ</h1>
             <div class="admin-section">
-    <b>Установить длительность раунда:</b>
-    <div style="display:flex; gap:5px; margin:10px 0;">
-        <div style="flex:1;"><small>Дни</small><input type="number" id="r-days" class="admin-input" value="1"></div>
-        <div style="flex:1;"><small>Часы</small><input type="number" id="r-hours" class="admin-input" value="0"></div>
-        <div style="flex:1;"><small>Мин</small><input type="number" id="r-mins" class="admin-input" value="0"></div>
-    </div>
-    <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0; height:45px;">🚀 ЗАПУСТИТЬ РАУНД</button>
-</div>
-            <div class="admin-section">
-                <b>Игроки:</b>
-                <div id="active-players" style="max-height:100px; overflow-y:auto;"></div>
-                <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
-                <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
-            </div>
-            <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
-            <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
-        </div>
-
-        <div id="tab-rules" class="tab-content">
-            <h1>📜 Правила битвы</h1>
-            <div class="admin-section" style="font-size: 13px; line-height: 1.5;">
-                <p><b>1. Ход в раунде:</b> В каждом раунде ты можешь бросить кубик один раз. Тебе выпадет случайная клетка и задание.</p>
-                <p><b>2. Задания:</b> Выполни творческое задание и сдай его. Если задание выполнено — твой билет участвует в розыгрыше.</p>
-                <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание.</p>
-                <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
-                <p><b>5. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
-                <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
+                <b>Запуск раунда:</b>
+                <input type="number" id="r-days" class="admin-input" placeholder="Дни" value="1">
+                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50;">🚀 ЗАПУСТИТЬ РАУНД</button>
             </div>
         </div>
 
         <nav class="nav-bar">
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
             <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
-            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>
 
     <div id="overlay" onclick="closeModal()"></div>
-    <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
+    <div id="modal">
+        <h2 id="mTitle" style="font-size:1.1rem;"></h2>
+        <div id="mText" style="font-size:0.9rem;"></div>
+        <button onclick="closeModal()" class="admin-btn">Закрыть</button>
+    </div>
 
     <script>
-       const JSON_URL = 'tasks.json';
-const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-const tg = window.Telegram.WebApp;
-tg.ready(); tg.expand();
+        const JSON_URL = 'tasks.json';
+        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const tg = window.Telegram.WebApp;
+        tg.ready(); tg.expand();
 
-const ADMIN_ID = 341995937;
-const currentUserId = tg.initDataUnsafe?.user?.id || 0;
-const charColors = ["#FFADAD","#FFD6A5","#FDFFB6","#CAFFBF","#9BF6FF","#A0C4FF","#BDB2FF","#FFC6FF","#FFFFFC","#FF8585","#FFB347","#F0E68C","#90EE90","#87CEFA","#6495ED","#9370DB","#FF69B4","#F5F5DC","#CD5C5C","#FFA500","#EEDD82","#3CB371","#00CED1","#4169E1","#8A2BE2","#C71585","#D3D3D3","#FA8072","#FF8C00","#BDB76B","#2E8B57","#20B2AA","#1E90FF","#9400D3","#FF1493","#A9A9A9","#E9967A","#DAA520","#8FBC8F","#008080","#0000CD","#800080","#DC143C","#808080","#B0C4DE","#FF4500","#556B2F","#008B8B","#000080","#4B0082"];
-const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
+        const ADMIN_ID = 341995937;
+        const currentUserId = tg.initDataUnsafe?.user?.id || 0;
+        const charColors = ["#FFADAD","#FFD6A5","#FDFFB6","#CAFFBF","#9BF6FF","#A0C4FF","#BDB2FF","#FFC6FF","#FFFFFC","#FF8585","#FFB347","#F0E68C","#90EE90","#87CEFA","#6495ED","#9370DB","#FF69B4","#F5F5DC","#CD5C5C","#FFA500","#EEDD82","#3CB371","#00CED1","#4169E1","#8A2BE2","#C71585","#D3D3D3","#FA8072","#FF8C00","#BDB76B","#2E8B57","#20B2AA","#1E90FF","#9400D3","#FF1493","#A9A9A9","#E9967A","#DAA520","#8FBC8F","#008080","#0000CD","#800080","#DC143C","#808080","#B0C4DE","#FF4500","#556B2F","#008B8B","#000080","#4B0082"];
+        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
 
-let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
+        let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0;
 
-async function init() {
-    try { 
-        const res = await fetch(JSON_URL); 
-        tasks = await res.json(); 
-        checkAccess(); 
-        syncData(); 
-    } catch(e) { console.error("Ошибка инициализации:", e); }
-}
-
-function checkAccess() {
-    if (currentUserId === ADMIN_ID) {
-        document.getElementById('nav-admin-btn').style.display='flex';
-        document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
-        syncAdminList();
-    }
-    db.ref('whitelist/' + currentUserId).on('value', s => { 
-        if (s.exists()) { 
-            myIndex = s.val().charIndex; 
-            document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; 
-        } 
-    });
-}
-
-function syncData() {
-    db.ref('current_round').on('value', snap => { 
-        if (snap.exists()) { 
-            currentRoundNum = snap.val().number; 
-            roundEndTime = snap.val().endTime; 
-            document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum; 
-            updateTimerDisplay(); 
-        } 
-    });
-    db.ref('board').on('value', snap => {
-        const data = snap.val() || {}, grid = document.getElementById('grid'); 
-        grid.innerHTML = "";
-        allTicketsData = [];
-        for(let i=0; i<50; i++) {
-            const cell = data[i]; 
-            let d = document.createElement('div'); 
-            d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.excluded ? ' excluded' : '');
-            if (cell) {
-                const c = charColors[cell.owner]; 
-                d.style.background = c + "22"; d.style.borderColor = c;
-                d.innerHTML = (cell.isTrap ? "💣" : (i+1)) + `<span>🎟${cell.ticket}</span>`;
-                allTicketsData.push({ ...cell, cell: i+1 });
-            } else { d.innerHTML = (i+1); }
-            d.onclick = () => showCell(i, cell); 
-            grid.appendChild(d);
-        }
-        updateTicketsTable();
-        drawWheel();
-    });
-}
-
-function updateTimerDisplay() {
-    if (window.timerInt) clearInterval(window.timerInt);
-    const btn = document.getElementById('dice-btn');
-    window.timerInt = setInterval(async () => {
-        const diff = roundEndTime - Date.now();
-        if (diff <= 0) {
-            document.getElementById('round-timer').innerText = "ОКОНЧЕН";
-            btn.disabled = true;
-        } else {
-            const d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
-            document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-            
-            if(myIndex !== -1) {
-                const last = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
-                btn.disabled = (last.val() === currentRoundNum);
-                btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
-            }
-        }
-    }, 1000);
-}
-
-async function roll() {
-    if (myIndex === -1) return alert("Тебя нет в списке участников!");
-    const diff = roundEndTime - Date.now();
-    if (diff <= 0) return alert("Раунд завершен!");
-
-    const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
-    let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
-    if (!free.length) return alert("На поле нет свободных мест!");
-
-    const magicSnap = await db.ref('magic_link').once('value');
-    let magicData = magicSnap.val() || { active: false };
-
-    let taskIndices = [];
-    let linkedWith = null;
-    const cellIdx = free[Math.floor(Math.random() * free.length)];
-    
-    // ЛОВУШКА ИЛИ ЗОЛОТО
-    const roundSnap = await db.ref('current_round').once('value'), rData = roundSnap.val();
-    const isTrap = rData.traps && rData.traps.includes(cellIdx);
-    const isGold = !isTrap && Math.random() < 0.05;
-
-    // Генерация билетов
-    const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-    let tStr = tCounter.snapshot.val().toString();
-    if(isGold) { 
-        const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); 
-        tStr += " и " + tGold.snapshot.val(); 
-    }
-
-    if (!isTrap && !isGold) {
-        // Проверка Магической связи
-        if (magicData.active && magicData.firstPlayerId !== currentUserId) {
-            const chance = 1 / magicData.remainingAttempts;
-            if (Math.random() < chance || magicData.remainingAttempts <= 1) {
-                taskIndices = magicData.taskIndices;
-                linkedWith = magicData.firstPlayerName;
-                await db.ref('magic_link').set({ active: false });
-            }
+        async function init() {
+            try { 
+                const res = await fetch(JSON_URL); 
+                tasks = await res.json(); 
+                checkAccess(); 
+                syncData(); 
+            } catch(e) { console.error("Ошибка инициализации:", e); }
         }
 
-        if (taskIndices.length === 0) {
-            // Обычный выбор 3 задач
-            let pool = [...Array(tasks.length).keys()];
-            for(let i=0; i<3; i++) {
-                const r = Math.floor(Math.random() * pool.length);
-                taskIndices.push(pool.splice(r, 1)[0]);
+        function checkAccess() {
+            if (currentUserId === ADMIN_ID) {
+                document.getElementById('nav-admin-btn').style.display='flex';
             }
-            // Проверка на активацию связи
-            const mIdx = taskIndices.find(idx => tasks[idx].special === "magic");
-            if (mIdx !== undefined) {
-                await db.ref('magic_link').set({
-                    active: true, firstPlayerId: currentUserId, firstPlayerName: players[myIndex].n,
-                    taskIndices: taskIndices, remainingAttempts: 3
-                });
-            } else if (magicData.active) {
-                await db.ref('magic_link/remainingAttempts').set(magicData.remainingAttempts - 1);
-            }
-        }
-    }
-
-    const cellData = {
-        owner: myIndex, userId: currentUserId, ticket: tStr, round: currentRoundNum,
-        isGold, isTrap, taskIndices, linkedWith,
-        trapText: isTrap ? "Детка, это ловушка! Рисуй не ведущей рукой!" : ""
-    };
-
-    await db.ref('board/' + cellIdx).set(cellData);
-    await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
-    showCell(cellIdx, cellData);
-}
-
-function showCell(i, cell) {
-    if(!cell) return;
-    const isAdmin = (currentUserId === ADMIN_ID), isOwner = (cell.owner === myIndex);
-    const mText = document.getElementById('mText');
-    
-    document.getElementById('mTitle').innerText = cell.isTrap ? "💣 ЛОВУШКА" : (cell.isGold ? "👑 ЗОЛОТО" : "КЛЕТКА " + (i+1));
-    
-    let h = `<p>Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b> 
-             ${isAdmin ? `<br><small>ID: ${cell.userId}</small>` : ''}<br>Билет: ${cell.ticket}</p><hr>`;
-
-    if (isOwner || isAdmin) {
-        if (cell.isTrap) h += `<div style="color:red; font-weight:bold;">${cell.trapText}</div>`;
-        else if (cell.isGold) h += `<div style="color:orange;">✨ Рисуй на любую тему!</div>`;
-        else if (cell.taskIndices) {
-            if (cell.linkedWith) h += `<div style="background:#e3f2fd; padding:5px; border-radius:5px; margin-bottom:10px;">🔗 Связь с: <b>${cell.linkedWith}</b></div>`;
-            cell.taskIndices.forEach(idx => {
-                const t = tasks[idx], isSel = cell.selectedTaskIdx === idx;
-                h += `<div style="border:1px solid ${isSel?'#ff007f':'#eee'}; padding:8px; margin-bottom:5px; border-radius:8px;">
-                        ${t.text}
-                        ${isOwner && cell.selectedTaskIdx === undefined ? `<button onclick="selectTask(${i},${idx})" style="width:100%; margin-top:5px; font-size:10px;">ВЫБРАТЬ</button>` : ''}
-                        ${isSel ? '<br><b style="color:#ff007f; font-size:10px;">ВЫБРАНО</b>' : ''}
-                      </div>`;
+            db.ref('whitelist/' + currentUserId).on('value', s => { 
+                if (s.exists()) { 
+                    myIndex = s.val().charIndex; 
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; 
+                } 
             });
         }
-    } else {
-        h += `<p>🔒 Задание скрыто</p>`;
-    }
 
-    mText.innerHTML = h;
-    document.getElementById('modal').style.display='block';
-    document.getElementById('overlay').style.display='block';
-}
+        function syncData() {
+            db.ref('current_round').on('value', snap => { 
+                if (snap.exists()) { 
+                    currentRoundNum = snap.val().number; 
+                    roundEndTime = snap.val().endTime; 
+                    document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum; 
+                    updateTimerDisplay(); 
+                } 
+            });
+            db.ref('board').on('value', snap => {
+                const data = snap.val() || {}, grid = document.getElementById('grid'); 
+                grid.innerHTML = "";
+                for(let i=0; i<50; i++) {
+                    const cell = data[i]; 
+                    let d = document.createElement('div'); 
+                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.excluded ? ' excluded' : '');
+                    if (cell) {
+                        const c = charColors[cell.owner]; 
+                        d.style.background = c + "22"; d.style.borderColor = c;
+                        d.innerHTML = (cell.isTrap ? "💣" : (i+1)) + `<span>🎟${cell.ticket}</span>`;
+                    } else { d.innerHTML = (i+1); }
+                    d.onclick = () => showCell(i, cell); 
+                    grid.appendChild(d);
+                }
+            });
+        }
 
-async function selectTask(cIdx, tIdx) {
-    await db.ref(`board/${cIdx}/selectedTaskIdx`).set(tIdx);
-    const s = await db.ref(`board/${cIdx}`).once('value');
-    showCell(cIdx, s.val());
-}
+        function updateTimerDisplay() {
+            if (window.timerInt) clearInterval(window.timerInt);
+            const btn = document.getElementById('dice-btn');
+            window.timerInt = setInterval(async () => {
+                const diff = roundEndTime - Date.now();
+                if (diff <= 0) {
+                    document.getElementById('round-timer').innerText = "ОКОНЧЕН";
+                    btn.disabled = true;
+                } else {
+                    const d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
+                    document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                    if(myIndex !== -1) {
+                        const last = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
+                        btn.disabled = (last.val() === currentRoundNum);
+                        btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
+                    }
+                }
+            }, 1000);
+        }
 
-// Функции админа, Колеса и остальные... (не забудь закрыть скрипт)
-async function adminStartNewRound() {
-    const d = parseInt(document.getElementById('r-days').value) || 0;
-    const h = parseInt(document.getElementById('r-hours').value) || 0;
-    const m = parseInt(document.getElementById('r-mins').value) || 0;
-    const duration = (d * 86400000) + (h * 3600000) + (m * 60000);
-    if (duration <= 0) return alert("Укажите время!");
+        async function roll() {
+            if (myIndex === -1) return alert("Тебя нет в списке участников!");
+            const diff = roundEndTime - Date.now();
+            if (diff <= 0) return alert("Раунд завершен!");
 
-    const s = await db.ref('current_round/number').once('value');
-    const nextR = (s.val() || 0) + 1;
-    
-    // Генерация 2 ловушек
-    let traps = [];
-    const board = (await db.ref('board').once('value')).val() || {};
-    let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
-    for(let j=0; j<2; j++) if(free.length) traps.push(free.splice(Math.floor(Math.random()*free.length), 1)[0]);
+            const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
+            let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
+            if (!free.length) return alert("На поле нет свободных мест!");
 
-    await db.ref('current_round').set({ number: nextR, endTime: Date.now() + duration, traps: traps });
-    alert("Раунд " + nextR + " запущен!");
-}
+            const magicSnap = await db.ref('magic_link').once('value');
+            let magicData = magicSnap.val() || { active: false };
 
-function switchTab(id, btn) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
-    document.getElementById(id).classList.add('tab-active');
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    btn.classList.add('active');
-}
+            let taskIndices = [];
+            let linkedWith = null;
+            const cellIdx = free[Math.floor(Math.random() * free.length)];
+            
+            const rData = (await db.ref('current_round').once('value')).val();
+            const isTrap = rData.traps && rData.traps.includes(cellIdx);
+            const isGold = !isTrap && Math.random() < 0.05;
 
-function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+            let tStr = tCounter.snapshot.val().toString();
+            if(isGold) { 
+                const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); 
+                tStr += " и " + tGold.snapshot.val(); 
+            }
 
-init();
-</script>
+            if (!isTrap && !isGold) {
+                if (magicData.active && magicData.firstPlayerId !== currentUserId) {
+                    const chance = 1 / magicData.remainingAttempts;
+                    if (Math.random() < chance || magicData.remainingAttempts <= 1) {
+                        taskIndices = magicData.taskIndices;
+                        linkedWith = magicData.firstPlayerName;
+                        await db.ref('magic_link').remove();
+                    }
+                }
+                if (taskIndices.length === 0) {
+                    let pool = [...Array(tasks.length).keys()];
+                    for(let i=0; i<3; i++) {
+                        const r = Math.floor(Math.random() * pool.length);
+                        taskIndices.push(pool.splice(r, 1)[0]);
+                    }
+                    const mIdx = taskIndices.find(idx => tasks[idx].special === "magic");
+                    if (mIdx !== undefined) {
+                        await db.ref('magic_link').set({
+                            active: true, firstPlayerId: currentUserId, firstPlayerName: players[myIndex].n,
+                            taskIndices: taskIndices, remainingAttempts: 3
+                        });
+                    } else if (magicData.active) {
+                        const nextAtt = magicData.remainingAttempts - 1;
+                        if(nextAtt <= 0) await db.ref('magic_link').remove();
+                        else await db.ref('magic_link/remainingAttempts').set(nextAtt);
+                    }
+                }
+            }
+
+            const cellData = {
+                owner: myIndex, userId: currentUserId, ticket: tStr, round: currentRoundNum,
+                isGold, isTrap, taskIndices, linkedWith,
+                trapText: isTrap ? "Рисуй не ведущей рукой!" : ""
+            };
+
+            await db.ref('board/' + cellIdx).set(cellData);
+            await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
+            showCell(cellIdx, cellData);
+        }
+
+        function showCell(i, cell) {
+            if(!cell) return;
+            const isAdmin = (currentUserId === ADMIN_ID), isOwner = (cell.owner === myIndex);
+            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 ЛОВУШКА" : (cell.isGold ? "👑 ЗОЛОТО" : "КЛЕТКА " + (i+1));
+            
+            let h = `<p>Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b><br>Билет: ${cell.ticket}</p><hr>`;
+
+            if (isOwner || isAdmin) {
+                if (cell.isTrap) h += `<div style="color:red; font-weight:bold;">${cell.trapText}</div>`;
+                else if (cell.isGold) h += `<div style="color:orange;">✨ Рисуй на любую тему!</div>`;
+                else if (cell.taskIndices) {
+                    if (cell.linkedWith) h += `<div style="background:#e3f2fd; padding:5px; border-radius:5px; margin-bottom:10px;">🔗 Связь с: <b>${cell.linkedWith}</b></div>`;
+                    cell.taskIndices.forEach(idx => {
+                        const t = tasks[idx], isSel = cell.selectedTaskIdx === idx;
+                        h += `<div style="border:1px solid ${isSel?'#ff007f':'#eee'}; padding:8px; margin-bottom:5px; border-radius:8px;">
+                                ${t.text}
+                                ${isOwner && cell.selectedTaskIdx === undefined ? `<button onclick="selectTask(${i},${idx})" style="width:100%; margin-top:5px; background:var(--p-pink); color:white; border:none; border-radius:4px; padding:4px;">ВЫБРАТЬ</button>` : ''}
+                                ${isSel ? '<br><b style="color:#ff007f; font-size:10px;">ВЫБРАНО</b>' : ''}
+                              </div>`;
+                    });
+                }
+            } else { h += `<p>🔒 Задание скрыто</p>`; }
+
+            document.getElementById('mText').innerHTML = h;
+            document.getElementById('modal').style.display='block';
+            document.getElementById('overlay').style.display='block';
+        }
+
+        async function selectTask(cIdx, tIdx) {
+            await db.ref(`board/${cIdx}/selectedTaskIdx`).set(tIdx);
+            const s = await db.ref(`board/${cIdx}`).once('value');
+            showCell(cIdx, s.val());
+        }
+
+        async function adminStartNewRound() {
+            const d = parseInt(document.getElementById('r-days').value) || 0;
+            const duration = d * 86400000;
+            if (duration <= 0) return alert("Укажите дни!");
+            const s = await db.ref('current_round/number').once('value');
+            const nextR = (s.val() || 0) + 1;
+            let traps = [];
+            const board = (await db.ref('board').once('value')).val() || {};
+            let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
+            for(let j=0; j<2; j++) if(free.length) traps.push(free.splice(Math.floor(Math.random()*free.length), 1)[0]);
+            await db.ref('current_round').set({ number: nextR, endTime: Date.now() + duration, traps: traps });
+            alert("Раунд " + nextR + " запущен!");
+        }
+
+        function switchTab(id, btn) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById(id).classList.add('tab-active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+
+        init();
+    </script>
 </body>
 </html>
-
-
-
-
-
-
-
