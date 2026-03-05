@@ -151,8 +151,31 @@
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
             <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
             <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
+            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', <div id="tab-admin" class="tab-content">
+            </div>
+
+        <div id="tab-rules" class="tab-content">
+            <h1>📜 Правила битвы</h1>
+            <div class="admin-section" style="font-size: 13px; line-height: 1.5;">
+                <p><b>1. Ход в раунде:</b> В каждом раунде ты можешь бросить кубик один раз. Тебе выпадет случайная клетка и задание.</p>
+                <p><b>2. Задания:</b> Выполни творческое задание и сдай его модератору. Если задание выполнено — твой билет участвует в розыгрыше.</p>
+                <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание (например, рисовать левой рукой).</p>
+                <p><b>4. 👑 Золотая клетка:</b> Дает право рисовать на любую свободную тему и приносит сразу 2 билета на колесо!</p>
+                <p><b>5. 🎡 Розыгрыш:</b> В конце всех раундов админ запускает Колесо. Чем больше у тебя выполненных клеток, тем выше шанс забрать главный приз.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
+            </div>
+        </div>
+
+        <nav class="nav-bar">
+            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
+            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
+            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
-        </nav>
+        </nav>this)"><span>⚙️ Админ</span></button>
+            </nav>
     </div>
 
     <div id="overlay" onclick="closeModal()"></div>
@@ -379,3 +402,4 @@
     </script>
 </body>
 </html>
+
