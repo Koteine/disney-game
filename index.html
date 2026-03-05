@@ -2,200 +2,30 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Disney Online Battle</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Disney Battle</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
-        body { font-family: 'Comic Sans MS', cursive; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 20px; }
-        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; max-width: 450px; margin: 20px auto; }
+        body { font-family: sans-serif; background: #fff5f8; text-align: center; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
+        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 400px; margin: 15px auto; }
         .cell { 
-            width: 75px; height: 75px; border: 2px solid #ddd; border-radius: 12px; 
-            background: white; display: flex; flex-direction: column; align-items: center; 
-            justify-content: center; cursor: pointer; transition: 0.2s; position: relative; font-weight: bold;
+            width: 70px; height: 70px; border: 1px solid #ccc; border-radius: 10px; 
+            background: white; display: flex; align-items: center; justify-content: center; 
+            position: relative; font-weight: bold; font-size: 14px;
         }
-        .target { border: 4px solid #ff007f !important; transform: scale(1.05); background: #fff0f5; box-shadow: 0 0 15px rgba(255, 0, 127, 0.4); z-index: 5; }
+        .target { border: 3px solid #ff007f !important; background: #fff0f5 !important; box-shadow: 0 0 10px #ff007f; }
         
-        .p0 { background: #ffcdd2 !important; border-color: #f44336; } 
-        .p1 { background: #e1f5fe !important; border-color: #03a9f4; } 
-        .p2 { background: #f3e5f5 !important; border-color: #9c27b0; } 
-        .p3 { background: #e8f5e9 !important; border-color: #4caf50; } 
+        /* Цвета */
+        .p0 { background: #ffcdd2 !important; } .p1 { background: #e1f5fe !important; } 
+        .p2 { background: #f3e5f5 !important; } .p3 { background: #e8f5e9 !important; } 
         
-        .owner-tag { position: absolute; bottom: 4px; font-size: 8px; text-transform: uppercase; color: #333; pointer-events: none; }
+        .owner-tag { position: absolute; bottom: 2px; font-size: 8px; width: 100%; text-align: center; }
         
-        #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; z-index: 10; }
-        #dice-btn:disabled { background: #ccc; }
+        #dice-btn { padding: 15px 25px; font-size: 18px; border-radius: 30px; border: none; background: #ff007f; color: white; margin: 10px; cursor: pointer; }
+        #dice-btn:disabled { background: #ddd; }
         
-        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 200; width: 280px; }
-        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 150; }
-        
-        .btn-select { padding: 12px; margin: 5px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; font-size: 14px; }
-    </style>
-</head>
-<body>
-
-    <h1>✨ Disney Online Battle ✨</h1>
-
-    <div id="admin-panel" style="display: none; margin-bottom: 20px;">
-        <button onclick="resetGame()" style="background: #333; color: white; border: none; padding: 10px 15px; border-radius: 15px; cursor: pointer;">
-            🔄 Сбросить поле (Хозяйка)
-        </button>
-    </div>
-    
-    <div id="player-setup">
-        <h3>Кто ты сегодня?</h3>
-        <button class="btn-select" onclick="setMe(0)">✨ Королева Блесток</button>
-        <button class="btn-select" onclick="setMe(1)">🖌️ Мастер Кисточки</button>
-        <button class="btn-select" onclick="setMe(2)">🦄 Эльф Раскрасок</button>
-        <button class="btn-select" onclick="setMe(3)">🍭 Леди Палитра</button>
-    </div>
-
-    <div id="game-ui" style="display:none;">
-        <p>Игрок: <b id="my-name-display"></b></p>
-        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
-        <p id="status">Нажми на кубик!</p>
-        <div class="grid" id="grid"></div>
-    </div>
-
-    <div id="overlay"></div>
-    <div id="modal">
-        <h2 id="mTitle" style="margin-top:0">Задание</h2>
-        <p id="mText" style="font-size: 18px; color: #d81b60; margin: 20px 0;"></p>
-        <button onclick="confirmTask()" style="padding:15px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
-    </div>
-
-    <script>
-        // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ TELEGRAM ---
-        try {
-            window.Telegram.WebApp.ready();
-            window.Telegram.WebApp.expand();
-            
-            const adminId = 341995937; 
-            const user = window.Telegram.WebApp.initDataUnsafe.user;
-
-            if (user && user.id === adminId) {
-                document.getElementById('admin-panel').style.display = 'block';
-            }
-        } catch (e) {
-            console.log("Telegram WebApp не обнаружен, работаем в браузере");
-        }
-
-        // --- НАСТРОЙКИ FIREBASE ---
-        const firebaseConfig = {
-            databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        const players = [
-            { n: "Королева Блесток", c: "p0" },
-            { n: "Мастер Кисточки", c: "p1" },
-            { n: "Эльф Раскрасок", c: "p2" },
-            { n: "Леди Палитра", c: "p3" }
-        ];
-
-        const tasks = [
-            "Нарисуй очки любому герою", "Раскрась воду голубым", "Найди героя с ушами", "⭐ РАСКРАСЬ ДВЕ КАРТИНКИ", 
-            "Нарисуй цветок", "Раскрась шляпу", "Найди летающего героя", "Нарисуй яблоко", 
-            "Только 3 цвета на страницу", "Розовый фон", "⭐ ВЫБЕРИ ЦВЕТ С ЗАКРЫТЫМИ ГЛАЗАМИ", "Нарисуй Белоснежку",
-            "Герой из Короля Льва", "Маленький персонаж", "Дорисуй палочку", "Герой Холодного Сердца",
-            "Нарисуй замок", "⭐ ЦВЕТ ВЫБИРАЕТ ПОДРУГА", "Лесной житель", "Нарисуй морковку",
-            "Сделай градиент на фоне", "Раскрась злодея", "Ночное небо", "⭐ КРАСЬ ЛЕВОЙ РУКОЙ",
-            "Раскрась разворот", "Добавь узоры на платье", "Нарисуй ассоциацию", "Эффект свечения",
-            "Нарисуй друга герою", "👑 ФИНАЛЬНЫЙ ШЕДЕВР"
-        ];
-
-        let myIndex = null;
-        let selectedCell = null;
-
-        function setMe(idx) {
-            myIndex = idx;
-            document.getElementById('player-setup').style.display = 'none';
-            document.getElementById('game-ui').style.display = 'block';
-            document.getElementById('my-name-display').innerText = players[idx].n;
-        }
-
-        // Генерация сетки
-        const gridDiv = document.getElementById('grid');
-        for(let i=0; i<30; i++) {
-            let div = document.createElement('div');
-            div.className = 'cell';
-            div.id = 'cell-' + i;
-            div.innerHTML = `<span>${i+1}</span>`;
-            gridDiv.appendChild(div);
-        }
-
-        function roll() {
-            document.getElementById('dice-btn').disabled = true;
-            if(selectedCell !== null) document.getElementById('cell-' + selectedCell).classList.remove('target');
-
-            db.ref('board').once('value', (snap) => {
-                const data = snap.val() || {};
-                let free = [];
-                for(let i=0; i<30; i++) if(!data[i]) free.push(i);
-                
-                if(free.length === 0) {
-                    alert("Все клетки заняты!");
-                    document.getElementById('dice-btn').disabled = false;
-                    return;
-                }
-                
-                selectedCell = free[Math.floor(Math.random() * free.length)];
-                document.getElementById('status').innerText = "Твоя клетка: №" + (selectedCell + 1);
-                
-                const targetCell = document.getElementById('cell-' + selectedCell);
-                targetCell.classList.add('target');
-                targetCell.onclick = function() {
-                    document.getElementById('mTitle').innerText = "Задание " + (selectedCell + 1);
-                    document.getElementById('mText').innerText = tasks[selectedCell];
-                    document.getElementById('modal').style.display = 'block';
-                    document.getElementById('overlay').style.display = 'block';
-                };
-            });
-        }
-
-        function confirmTask() {
-            if(selectedCell === null) return;
-            db.ref('board/' + selectedCell).set({
-                owner: myIndex,
-                name: players[myIndex].n
-            }).then(() => {
-                document.getElementById('modal').style.display = 'none';
-                document.getElementById('overlay').style.display = 'none';
-                document.getElementById('dice-btn').disabled = false;
-                document.getElementById('status').innerText = "Готово! Ход следующего.";
-                selectedCell = null;
-            });
-        }
-
-        // Слушатель обновлений
-        db.ref('board').on('value', (snap) => {
-            const data = snap.val() || {};
-            for(let i=0; i<30; i++) {
-                const cell = document.getElementById('cell-' + i);
-                if(data[i]) {
-                    const p = players[data[i].owner];
-                    cell.className = 'cell ' + p.c;
-                    cell.innerHTML = `<span>${parseInt(i)+1}</span><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
-                    cell.onclick = null;
-                } else {
-                    // Если данных нет (сброс), возвращаем исходный вид
-                    cell.className = 'cell';
-                    cell.innerHTML = `<span>${parseInt(i)+1}</span>`;
-                    cell.onclick = null;
-                }
-            }
-        });
-
-        function resetGame() {
-            if (confirm("Очистить поле для новой игры?")) {
-                db.ref('board').remove().then(() => {
-                    alert("Поле чистое! ✨");
-                    location.reload();
-                });
-            }
-        }
-    </script>
-</body>
-</html>
+        /* Окна */
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; }
+        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 15px; z-index: 1100
