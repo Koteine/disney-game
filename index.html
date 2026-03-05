@@ -104,15 +104,22 @@
             <div class="grid" id="grid"></div>
         </div>
 
-        <div id="tab-tickets" class="tab-content">
-            <h1>🎫 Билеты</h1>
-            <table>
-                <thead style="background:var(--p-pink); color:white;">
-                    <tr><th id="th-user" style="display:none;">Игрок</th><th>Билет</th><th id="th-status" style="display:none;">Готов?</th></tr>
-                </thead>
-                <tbody id="tickets-body"></tbody>
-            </table>
-        </div>
+       <div id="tab-tickets" class="tab-content">
+    <h1>🎫 История билетов</h1>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead style="background:var(--p-pink); color:white;">
+                <tr>
+                    <th>Рнд</th>
+                    <th>Клетка</th>
+                    <th id="th-user-name" style="display:none;">Игрок</th>
+                    <th>Билет</th>
+                    <th>Задание</th> </tr>
+            </thead>
+            <tbody id="tickets-body"></tbody>
+        </table>
+    </div>
+</div>
 
         <div id="tab-wheel" class="tab-content">
             <h1>🎡 Колесо</h1>
@@ -222,7 +229,44 @@
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
                 }
-                updateTicketsTable();
+               function updateTicketsTable() {
+    const body = document.getElementById('tickets-body');
+    const isAdmin = (currentUserId === ADMIN_ID);
+    
+    // Показываем колонку "Игрок" только админу
+    document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
+
+    // Сортируем: сначала новые раунды, потом по номеру билета
+    const sortedData = allTicketsData.sort((a, b) => b.round - a.round || b.ticket - a.ticket);
+
+    body.innerHTML = sortedData.map(t => {
+        // Фильтр: игрок видит только своё, админ — всё
+        if (!isAdmin && t.owner !== myIndex) return '';
+
+        const task = tasks[t.taskIdx] || { text: "Золотая клетка / Ловушка" };
+        const statusClass = t.excluded ? 'row-excluded' : '';
+        
+        return `
+            <tr class="${statusClass}">
+                <td>${t.round}</td>
+                <td>${t.cell}</td>
+                ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
+                <td><b>${t.ticket}</b></td>
+                <td>
+                    <button onclick="viewTaskDetails(${t.cell-1})" style="background:none; border:none; font-size:14px;">
+                        ${isAdmin ? '👁️' : '📝'}
+                    </button>
+                </td>
+            </tr>`;
+    }).join('');
+}
+
+// Новая функция для просмотра деталей задания из таблицы
+function viewTaskDetails(cellIdx) {
+    db.ref('board/' + cellIdx).once('value', s => {
+        if (s.exists()) showCell(cellIdx, s.val());
+    });
+}
             });
             db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
         }
@@ -383,4 +427,5 @@
     </script>
 </body>
 </html>
+
 
