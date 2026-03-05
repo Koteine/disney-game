@@ -10,68 +10,57 @@
     <style>
         body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
-        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 12px; transition: 0.3s; }
+        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; transition: 0.3s; }
         .target { border: 3px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 10px #ff007f; z-index: 10; }
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
-        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; pointer-events: none; }
+        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; pointer-events: none; overflow: hidden; white-space: nowrap; }
         #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; }
         #dice-btn:disabled { background: #ccc; box-shadow: none; }
-        #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
+        #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
-        .admin-section { margin-top: 20px; padding: 10px; border: 2px dashed #ff007f; border-radius: 15px; display: none; }
-        input, select { padding: 10px; width: 90%; margin: 5px 0; border-radius: 10px; border: 1px solid #ccc; }
+        .admin-section { margin-top: 20px; padding: 10px; border: 2px dashed #ff007f; border-radius: 15px; display: none; background: #fff; }
+        input { padding: 10px; width: 80%; margin: 5px 0; border-radius: 10px; border: 1px solid #ccc; }
+        .user-list { text-align: left; font-size: 12px; max-height: 100px; overflow-y: auto; background: #f9f9f9; padding: 5px; border-radius: 5px; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div id="auth-screen" style="display:none; padding-top: 50px;">
         <h2>Доступ ограничен 🛑</h2>
-        <p>Привет! Твой ID: <b id="display-id"></b></p>
+        <p>Привет! Твой ID: <b id="display-id" style="color:#ff007f;"></b></p>
         <p>Отправь его организатору, чтобы тебя добавили в игру.</p>
     </div>
 
     <div id="game-ui" style="display:none;">
         <h1>✨ Disney Battle 50 ✨</h1>
-        <p>Игрок: <b id="my-name-display"></b></p>
+        <p>Ты: <b id="my-name-display" style="color:#ff007f;"></b></p>
         <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
         <p id="status">Нажми на кубик!</p>
         <div class="grid" id="grid"></div>
 
         <div id="admin-panel" class="admin-section">
-            <p style="font-weight:bold; color:#ff007f;">👑 Админка</p>
-            <button onclick="openAdminModal()" style="background:#333; color:white; border:none; padding:10px; border-radius:10px; cursor:pointer;">➕ Добавить игрока</button>
-            <br><br>
-            <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:12px; cursor:pointer;">Сбросить всю сетку</button>
+            <p style="font-weight:bold; color:#ff007f; margin:0;">👑 Панель управления</p>
+            <button onclick="openAdminModal()" style="background:#333; color:white; border:none; padding:8px 15px; border-radius:10px; cursor:pointer; margin-top:10px;">➕ Добавить игрока</button>
+            <div id="active-players" class="user-list">Загрузка списка...</div>
+            <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:10px; cursor:pointer; margin-top:10px;">Сбросить всю сетку</button>
         </div>
     </div>
 
     <div id="overlay"></div>
     <div id="modal">
-        <h2 id="mTitle"></h2>
-        <div id="mContent"><p id="mText"></p></div>
+        <h2 id="mTitle" style="font-size:18px; margin:0;"></h2>
+        <div id="mContent" style="margin: 15px 0; max-height: 250px; overflow-y: auto;"><p id="mText"></p></div>
         <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; width:100%; font-weight:bold;">Я ВЫПОЛНИЛА! ✅</button>
     </div>
 
     <div id="admin-modal">
-        <h3>Добавить доступ</h3>
-        <input type="number" id="new-user-id" placeholder="Telegram ID игрока">
-        <select id="new-user-char">
-            <option value="0">Межгалактический почеркушка</option>
-            <option value="1">Марсианин ищет синий</option>
-            <option value="2">Краска вытекла</option>
-            <option value="3">Паста «Красный жуть»</option>
-            <option value="4">Баклажан с претензией</option>
-            <option value="5">Кусь за контур</option>
-            <option value="6">Квадратный корень из краски</option>
-            <option value="7">Крадущийся ленивец</option>
-            <option value="8">Графон на ультрах</option>
-            <option value="9">Пиксельный Мазок</option>
-            <option value="10">Залипаю в контур</option>
-        </select>
+        <h3>Новый участник</h3>
+        <p style="font-size: 12px; color: gray;">Введите ID, а персонаж выберется случайно</p>
+        <input type="number" id="new-user-id" placeholder="Telegram ID">
         <br><br>
-        <button onclick="saveNewUser()" style="padding:10px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%;">СОХРАНИТЬ</button>
-        <button onclick="closeAdminModal()" style="margin-top:5px; background:none; border:none; color:gray;">Закрыть</button>
+        <button onclick="saveNewUserRandomly()" style="padding:10px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; font-weight:bold;">ДОБАВИТЬ В ИГРУ</button>
+        <button onclick="closeAdminModal()" style="margin-top:10px; background:none; border:none; color:gray; cursor:pointer;">Отмена</button>
     </div>
 
     <script>
@@ -81,7 +70,7 @@
         const tg = window.Telegram.WebApp;
         tg.ready();
 
-        const ADMIN_ID = 341995937; // ТВОЙ ID
+        const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
 
         const players = [
@@ -93,69 +82,22 @@
             { n: "Залипаю в контур", c: "p10" }
         ];
 
-        // Тут твои 50 загадок (я их сократил для краткости примера, но в твоем коде они должны быть все!)
+        // [Твои 50 загадок без изменений - они остаются здесь]
         const tasks = [
-            { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" },
-            { text: "Разгадаешь ребус?", img: "rebus2.png" },
-            { text: "Что-то на умном", img: "rebus3.png" },
-            { text: "Красиво, разноцветно", img: "rebus4.png" },
-            { text: "Бляяяяяяястяще", img: "rebus5.png" },
-            { text: "Может быть и такое", img: "rebus6.png" },
-            { text: "Твой герой тонет что ли? Тогда почему он под водой?" },
-            { text: "Грибы.. Я вижу, что грибы повсюду" },
-            { text: "Мышек видишь? А они есть. Ну, уши точно вижу" },
-            { text: "Давай сделаем дорого-богато! Добавь блестяшек!" },
-            { text: "Сосед сверху выберет тебе самый красивый из всех цветов радуги!" },
-            { text: "Да, это жестко. Мы, любители ГП заколебем всех. Добавь волшебства на иллюстрацию, давай, не расстраивай меня!" },
-            { text: "Уф, понимаю, не у всех... но, может, у тебя есть авторская раскраска? Время нарисовать что-то клёвое!" },
-            { text: "Любишь снеговиков? Я нет, но придется." },
-            { text: "Усики - пропуск сама знаешь куда ;)" },
-            { text: "Усложнение подъехало. Раскрась кривляку" },   
-            { text: "Это не просто тыква, а карета, которая забыла переодеться обратно." },  
-            { text: "Цвет «Стыдливый Флин Райдер» (смущенно-розовый)" },   
-            { text: "Они только что съели целого жука! Акуна Матата!" },   
-            { text: "Он притворяется милым и безобидным, чтобы стащить кофе. Цвет — «Лживое очарование» (ну синенький, ну Ститч)" },
-            { text: "Задание-сюрприз: Закрой глаза и ткни пальцем в любой номер. Всё для тебя!" },
-            { text: "Раскрась что-нибудь съедобное. Господи, я всегда голодна!" },   
-            { text: "Я живу в лесу с семью друзьями, Сплю глубоким сном под хрусталями. Мачеха боится красоты моей, Угостила яблоком... ответь скорей!" },  
-            { text: "У меня есть голос, но нет ног, Мой отец — подводный царь и бог." },   
-            { text: "Мой замок изо льда, и в сердце холода, Я строю стены там, где раньше была пустота. Сестру свою невольно я чуть не погубила, Но песня «Отпусти и забудь» меня освободила." }, 
-            { text: "Я живу в тесноте, в золотом сосуде, Но творю чудеса, каких не видели люди. Стоит лишь потереть — и я тут как тут, Три желанья твои меня в гости зовут!" },   
-            { text: "У меня большие уши и перчатки белого цвета, Я — самый главный символ на планете этой. Моя подружка — Минни, а собака — Плуто, Со мной всегда весело и очень круто!" },   
-            { text: "Я заперта в башне высокой-высокой, Мечтаю о мире, где свет одинокий. Мои волосы — лестница, магия в них, А сковородка — мой лучший защитник от злых." },
-            { text: "Я вырос среди диких кошек и лиан, Мой дом — густой лес, а не берег и океан. По деревьям скольжу, словно птица в полете, И «своим» меня в стае волков назовете." }, 
-            { text: "Я синего цвета, и память — беда, Забыла я всё: и зачем, и куда..." },
-            { text: "Мой папа погиб в пыли от копыт, А дядя мой злой на меня был сердит. Я вырос в пустыне под песню друзей, Вернулся домой, чтоб стать властью земель!" },
-            { text: "Я не колдун, не монстр и не зверь, Но в жажде власти я открыл к предательству дверь. Я видел, как брат мой со скал полетел вниз, А племяннику в страхе устроил «сюрприз». Мой шрам на лице — мой единственный знак, Я сделал так, чтобы в царстве воцарился мрак." },
-            { text: "Я жду на дне, среди костей и мглы, Мои контракты — острые углы. Я забрала то, чем девчонка дорожила, И в человечий облик хвост её вложила." },
-            { text: "Я лучший в деревне, мой бицепс горой, Для каждой девчонки я — местный герой. Но та, что с книгой, меня не оценит, И сердце её чудовище пленит." },
-            { text: "Обаятельный гад", img: "aid.png" },
-            { text: "Я «связан» с друзьями из мира теней", img: "Facilie.png" },
-            { text: "Я мал, суетлив и вечно в заботах, Мой панцирь — броня, а жизнь — как работа. Я должен следить, чтоб принцесса не пела, И в мире людей оказаться не смела. Я дирижёр, хоть и ростом с ладонь, Но в музыке сердца — мой вечный огонь." },
-            { text: "Не важно, как сильно ты о чем-то мечтаешь, важно, что ты для этого делаешь", img: "djudi.png" },
-            { text: "Мои первые шаги видел весь лес, Я принц, хоть и мал, и лишен был чудес. Мой враг — человек, мой учитель — сова, А лучший мой друг — это кролик-молва." },
-            { text: "Я живу в Мире Мертвых, но я не скелет... Хотя, подождите, волос-то и нет! Я гитару украл, чтобы правду найти, И предков своих на мосту обрести." },
-            { text: "Я не хочу взрослеть, в Нетландию лечу, И каждого ребёнка за собою увлечу. Мой враг — пират с крюком, мой друг — Динь-Динь, Я феи пыль рассыплю в неба синь." },
-            { text: "Я создан из снега, но лето люблю, О тёплых объятиях вечно молю." },
-            { text: "Я косы остригла, доспехи надела, Спасти своего я отца захотела." },
-            { text: "Я в Новом Орлеане мечтаю о деле — Чтоб свой ресторан я открыла на деле. Но поцелуй обернулся бедой: Я стала зелёной и очень прыгучей... ой!" },
-            { text: "Я в доме волшебном живу, где всё дышит, Но магия предков меня не услышит. У всех есть таланты, а я — лишь «своя», Но именно я спасу Каситу, друзья!" },
-            { text: "Я монстр огромный, мой мех — бирюза, Пугать малышей — это просто гроза." },
-            { text: "Я уколола палец о веретено, И небо для царства в тот миг потемнело. Три феи хранили мой сон вековой, Пока не пришел мой спаситель за мной." },
-            { text: "Я был человеком, но стал я рабом, Свой голос отдал, чтоб не быть бедняком. Я тенью хожу за своим господином, И в лампе застрял я, как в склепе едином." },
-            { text: "Мои волосы — рыжий безумный костер, Мой нрав непокорный, и глаз мой остер." },
-            { text: "Я был эгоистом, но стал я... ламой, И жизнь моя стала сплошною драмой." }
+            { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" }, { text: "Разгадаешь ребус?", img: "rebus2.png" }, { text: "Что-то на умном", img: "rebus3.png" }, { text: "Красиво, разноцветно", img: "rebus4.png" }, { text: "Бляяяяяяястяще", img: "rebus5.png" }, { text: "Может быть и такое", img: "rebus6.png" }, { text: "Твой герой тонет что ли? Тогда почему он под водой?" }, { text: "Грибы.. Я вижу, что грибы повсюду" }, { text: "Мышек видишь? А они есть. Ну, уши точно вижу" }, { text: "Давай сделаем дорого-богато! Добавь блестяшек!" }, { text: "Сосед сверху выберет тебе самый красивый из всех цветов радуги!" }, { text: "Да, это жестко. Мы, любители ГП заколебем всех. Добавь волшебства на иллюстрацию, давай, не расстраивай меня!" }, { text: "Уф, понимаю, не у всех... но, может, у тебя есть авторская раскраска? Время нарисовать что-то клёвое!" }, { text: "Любишь снеговиков? Я нет, но придется." }, { text: "Усики - пропуск сама знаешь куда ;)" }, { text: "Усложнение подъехало. Раскрась кривляку" }, { text: "Это не просто тыква, а карета, которая забыла переодеться обратно." }, { text: "Цвет «Стыдливый Флин Райдер» (смущенно-розовый)" }, { text: "Они только что съели целого жука! Акуна Матата!" }, { text: "Он притворяется милым и безобидным, чтобы стащить кофе. Цвет — «Лживое очарование» (ну синенький, ну Ститч)" }, { text: "Задание-сюрприз: Закрой глаза и ткни пальцем в любой номер. Всё для тебя!" }, { text: "Раскрась что-нибудь съедобное. Господи, я всегда голодна!" }, { text: "Я живу в лесу с семью друзьями, Сплю глубоким сном под хрусталями. Мачеха боится красоты моей, Угостила яблоком... ответь скорей!" }, { text: "У меня есть голос, но нет ног, Мой отец — подводный царь и бог." }, { text: "Мой замок изо льда, и в сердце холода, Я строю стены там, где раньше была пустота. Сестру свою невольно я чуть не погубила, Но песня «Отпусти и забудь» меня освободила." }, { text: "Я живу в тесноте, в золотом сосуде, Но творю чудеса, каких не видели люди. Стоит лишь потереть — и я тут как тут, Три желанья твои меня в гости зовут!" }, { text: "У меня большие уши и перчатки белого цвета, Я — самый главный символ на планете этой. Моя подружка — Минни, а собака — Плуто, Со мной всегда весело и очень круто!" }, { text: "Я заперта в башне высокой-высокой, Мечтаю о мире, где свет одинокий. Мои волосы — лестница, магия в них, А сковородка — мой лучший защитник от злых." }, { text: "Я вырос среди диких кошек и лиан, Мой дом — густой лес, а не берег и океан. По деревьям скольжу, словно птица в полете, И «своим» меня в стае волков назовете." }, { text: "Я синего цвета, и память — беда, Забыла я всё: и зачем, и куда..." }, { text: "Мой папа погиб в пыли от копыт, А дядя мой злой на меня был сердит. Я вырос в пустыне под песню друзей, Вернулся домой, чтоб стать властью земель!" }, { text: "Я не колдун, не монстр и не зверь, Но в жажде власти я открыл к предательству дверь. Я видел, как брат мой со скал полетел вниз, А племяннику в страхе устроил «сюрприз». Мой шрам на лице — мой единственный знак, Я сделал так, чтобы в царстве воцарился мрак." }, { text: "Я жду на дне, среди костей и мглы, Мои контракты — острые углы. Я забрала то, чем девчонка дорожила, И в человечий облик хвост её вложила." }, { text: "Я лучший в деревне, мой бицепс горой, Для каждой девчонки я — местный герой. Но та, что с книгой, меня не оценит, И сердце её чудовище пленит." }, { text: "Обаятельный гад", img: "aid.png" }, { text: "Я «связан» с друзьями из мира теней", img: "Facilie.png" }, { text: "Я мал, суетлив и вечно в заботах, Мой панцирь — броня, а жизнь — как работа. Я должен следить, чтоб принцесса не пела, И в мире людей оказаться не смела. Я дирижёр, хоть и ростом с ладонь, Но в музыке сердца — мой вечный огонь." }, { text: "Не важно, как сильно ты о чем-то мечтаешь, важно, что ты для этого делаешь", img: "djudi.png" }, { text: "Мои первые шаги видел весь лес, Я принц, хоть и мал, и лишен был чудес. Мой враг — человек, мой учитель — сова, А лучший мой друг — это кролик-молва." }, { text: "Я живу в Мире Мертвых, но я не скелет... Хотя, подождите, волос-то и нет! Я гитару украл, чтобы правду найти, И предков своих на мосту обрести." }, { text: "Я не хочу взрослеть, в Нетландию лечу, И каждого ребёнка за собою увлечу. Мой враг — пират с крюком, мой друг — Динь-Динь, Я феи пыль рассыплю в неба синь." }, { text: "Я создан из снега, но лето люблю, О тёплых объятиях вечно молю." }, { text: "Я косы остригла, доспехи надела, Спасти своего я отца захотела." }, { text: "Я в Новом Орлеане мечтаю о деле — Чтоб свой ресторан я открыла на деле. Но поцелуй обернулся бедой: Я стала зелёной и очень прыгучей... ой!" }, { text: "Я в доме волшебном живу, где всё дышит, Но магия предков меня не услышит. У всех есть таланты, а я — лишь «своя», Но именно я спасу Каситу, друзья!" }, { text: "Я монстр огромный, мой мех — бирюза, Пугать малышей — это просто гроза." }, { text: "Я уколола палец о веретено, И небо для царства в тот миг потемнело. Три феи хранили мой сон вековой, Пока не пришел мой спаситель за мной." }, { text: "Я был человеком, но стал я рабом, Свой голос отдал, чтоб не быть бедняком. Я тенью хожу за своим господином, И в лампе застрял я, как в склепе едином." }, { text: "Мои волосы — рыжий безумный костер, Мой нрав непокорный, и глаз мой остер." }, { text: "Я был эгоистом, но стал я... ламой, И жизнь моя стала сплошною драмой." }
         ];
 
         let myIndex = null;
         let selectedCell = null;
 
-        // ПРОВЕРКА ДОСТУПА
         function checkAccess() {
             db.ref('whitelist/' + currentUserId).once('value', (s) => {
                 if (s.exists() || currentUserId === ADMIN_ID) {
-                    myIndex = s.val()?.charIndex || 0;
-                    if (currentUserId === ADMIN_ID) document.getElementById('admin-panel').style.display = 'block';
+                    myIndex = s.exists() ? s.val().charIndex : 0;
+                    if (currentUserId === ADMIN_ID) {
+                        document.getElementById('admin-panel').style.display = 'block';
+                        updateAdminPlayerList();
+                    }
                     startApp();
                 } else {
                     document.getElementById('auth-screen').style.display = 'block';
@@ -182,7 +124,6 @@
             syncBoard();
         }
 
-        // Синхронизация
         function syncBoard() {
             db.ref('board').on('value', (snap) => {
                 const data = snap.val() || {};
@@ -191,9 +132,11 @@
                     if (!cell) continue;
                     if (data[i]) {
                         const p = players[data[i].owner];
-                        cell.className = 'cell ' + p.c;
-                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
-                        cell.onclick = null;
+                        if(p) {
+                            cell.className = 'cell ' + p.c;
+                            cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                            cell.onclick = null;
+                        }
                     } else {
                         cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
                     }
@@ -207,7 +150,7 @@
                 const data = snap.val() || {};
                 let free = [];
                 for(let i=0; i<50; i++) if(!data[i]) free.push(i);
-                if(free.length === 0) return;
+                if(free.length === 0) return alert("Все клетки захвачены!");
                 selectedCell = free[Math.floor(Math.random() * free.length)];
                 document.getElementById('status').innerText = "Твоя цель: №" + (selectedCell + 1);
                 const target = document.getElementById('cell-' + selectedCell);
@@ -231,25 +174,50 @@
                 document.getElementById('modal').style.display = 'none';
                 document.getElementById('overlay').style.display = 'none';
                 document.getElementById('dice-btn').disabled = false;
+                document.getElementById('status').innerText = "Готово! Жми кубик снова.";
                 selectedCell = null;
             });
         }
 
-        // АДМИН ФУНКЦИИ
+        // --- АДМИН ЛОГИКА ---
         function openAdminModal() { document.getElementById('admin-modal').style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
         function closeAdminModal() { document.getElementById('admin-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
         
-        function saveNewUser() {
+        function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value;
-            const char = document.getElementById('new-user-char').value;
             if(!id) return alert("Введи ID!");
-            db.ref('whitelist/' + id).set({ charIndex: parseInt(char) }).then(() => {
-                alert("Игрок добавлен!");
-                closeAdminModal();
+
+            db.ref('whitelist').once('value', (snap) => {
+                const usedIndices = [];
+                snap.forEach(child => { usedIndices.push(child.val().charIndex); });
+
+                const availableIndices = players.map((_, i) => i).filter(i => !usedIndices.includes(i));
+
+                if(availableIndices.length === 0) return alert("Все персонажи уже заняты!");
+
+                const randomIdx = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+                
+                db.ref('whitelist/' + id).set({ charIndex: randomIdx }).then(() => {
+                    alert("Игрок добавлен! Ему достался ник: " + players[randomIdx].n);
+                    document.getElementById('new-user-id').value = "";
+                    closeAdminModal();
+                    updateAdminPlayerList();
+                });
             });
         }
 
-        function adminResetGame() { if(confirm("Очистить поле?")) db.ref('board').remove(); }
+        function updateAdminPlayerList() {
+            db.ref('whitelist').on('value', (snap) => {
+                let html = "<b>Активные игроки:</b><br>";
+                snap.forEach(child => {
+                    const p = players[child.val().charIndex];
+                    html += `• ${child.key}: ${p ? p.n : '?'}<br>`;
+                });
+                document.getElementById('active-players').innerHTML = html;
+            });
+        }
+
+        function adminResetGame() { if(confirm("Очистить все клетки?")) db.ref('board').remove(); }
 
         checkAccess();
     </script>
