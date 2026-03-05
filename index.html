@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: 50 Artists Edition</title>
+    <title>Disney Battle: 50 Artists Final</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -78,9 +78,14 @@
             <h1>⚙️ Управление</h1>
             <div class="admin-section">
                 <button onclick="adminStartNewRound()" style="width:100%; padding:12px; background:#4CAF50; color:white; border:none; border-radius:10px; font-weight:bold; margin-bottom:10px;">🚀 НОВЫЙ РАУНД (24ч)</button>
-                <div id="admin-tickets-list" style="font-size:10px; background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:15px; max-height:80px; overflow-y:auto;"></div>
+                
+                <h4 style="margin:10px 0 5px 0;">🎟 Список билетов:</h4>
+                <div id="admin-tickets-list" style="font-size:11px; background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:15px; max-height:200px; overflow-y:auto; border:1px solid #ddd; line-height:1.6;"></div>
+
                 <button onclick="openAdminModal()" style="width:100%; padding:10px; background:#2196F3; color:white; border:none; border-radius:10px; font-weight:bold;">➕ Добавить игрока</button>
+                
                 <div id="active-players" style="margin-top:15px;"></div>
+                
                 <hr style="margin:20px 0;">
                 <button onclick="adminFullReset()" style="width:100%; padding:10px; background:#f44336; color:white; border:none; border-radius:10px; font-size:12px;">⚠️ ПОЛНЫЙ СБРОС</button>
             </div>
@@ -154,15 +159,12 @@
         async function init() {
             try {
                 const res = await fetch(JSON_URL); tasks = await res.json();
-                checkAccess();
-                syncRound();
-                initGrid();
-                syncWheelEvent();
-            } catch (e) { console.error("Error init:", e); }
+                checkAccess(); syncRound(); initGrid(); syncWheelEvent();
+            } catch (e) { console.error(e); }
         }
 
         function checkAccess() {
-            db.ref('whitelist/' + currentUserId).on('value', (s) => {
+            db.ref('whitelist/' + currentUserId).on('value', s => {
                 if (s.exists() || currentUserId === ADMIN_ID) {
                     myIndex = s.exists() ? s.val().charIndex : 0;
                     document.getElementById('my-name-display').innerText = players[myIndex]?.n || "Админ";
@@ -172,18 +174,16 @@
                         syncAdminData();
                     }
                 } else {
-                    document.body.innerHTML = `<div style="padding:40px;"><h3>Доступ только для участников</h3><p>Ваш ID: ${currentUserId}</p></div>`;
+                    document.body.innerHTML = `<div style="padding:40px;"><h3>Доступ ограничен</h3><p>ID: ${currentUserId}</p></div>`;
                 }
             });
         }
 
-        // --- ЛОГИКА ТАЙМЕРА ---
         function syncRound() {
             db.ref('current_round').on('value', snap => {
                 const data = snap.val();
                 if (data) {
-                    currentRoundNum = data.number;
-                    roundEndTime = data.endTime;
+                    currentRoundNum = data.number; roundEndTime = data.endTime;
                     document.getElementById('round-info').innerText = "РАУНД №" + currentRoundNum;
                     startTimer();
                 }
@@ -196,9 +196,7 @@
             const itv = setInterval(async () => {
                 const diff = roundEndTime - Date.now();
                 if (diff <= 0) {
-                    clearInterval(itv);
-                    timerDiv.innerText = "00:00:00";
-                    btn.disabled = true;
+                    clearInterval(itv); timerDiv.innerText = "00:00:00"; btn.disabled = true;
                 } else {
                     const h = Math.floor(diff/3600000).toString().padStart(2,'0');
                     const m = Math.floor((diff%3600000)/60000).toString().padStart(2,'0');
@@ -210,20 +208,19 @@
             }, 1000);
         }
 
-        // --- ЛОГИКА КОЛЕСА ---
         function syncWheelEvent() {
             db.ref('wheel_event').on('value', snap => {
                 const data = snap.val(); if (!data) return;
                 const canvas = document.getElementById('wheel-canvas');
                 canvas.style.transform = `rotate(${data.rotation}deg)`;
-                document.getElementById('winner-display').innerText = "Колесо крутится...";
+                document.getElementById('winner-display').innerText = "Вращение...";
                 setTimeout(() => {
                     if (wheelTickets.length === 0) return;
                     const segments = wheelTickets.length;
                     const actualDeg = (360 - (data.rotation % 360)) % 360;
                     const winnerIdx = Math.floor(actualDeg / (360 / segments));
                     const winner = wheelTickets[winnerIdx];
-                    document.getElementById('winner-display').innerHTML = `🎉 Билет №${winner.num}<br><small>${winner.owner}</small>`;
+                    document.getElementById('winner-display').innerHTML = `🎉 №${winner.num}<br><small>${winner.owner}</small>`;
                     if (currentUserId !== ADMIN_ID) tg.HapticFeedback.notificationOccurred('success');
                 }, 4000);
             });
@@ -243,12 +240,10 @@
             const angle = 2 * Math.PI / segments;
             ctx.clearRect(0,0,300,300);
             wheelTickets.forEach((t, i) => {
-                ctx.beginPath(); ctx.moveTo(150,150);
-                ctx.arc(150,150,140, i*angle, (i+1)*angle);
+                ctx.beginPath(); ctx.moveTo(150,150); ctx.arc(150,150,140, i*angle, (i+1)*angle);
                 ctx.fillStyle = i % 2 === 0 ? '#ffb2d9' : '#ff007f'; ctx.fill();
                 ctx.save(); ctx.translate(150,150); ctx.rotate(i*angle + angle/2);
-                ctx.fillStyle = "white"; ctx.font = "bold 11px Arial";
-                ctx.fillText(t.num, 85, 5); ctx.restore();
+                ctx.fillStyle = "white"; ctx.font = "bold 10px Arial"; ctx.fillText(t.num, 85, 5); ctx.restore();
             });
         }
 
@@ -258,23 +253,18 @@
             db.ref('wheel_event').set({ rotation: newRotation, ts: Date.now() });
         }
 
-        // --- ИГРОВОЙ ПРОЦЕСС ---
         async function roll() {
             const btn = document.getElementById('dice-btn'); btn.disabled = true;
             const boardSnap = await db.ref('board').once('value');
             const boardData = boardSnap.val() || {};
             let free = []; for(let i=0; i<50; i++) if(!boardData[i]) free.push(i);
-            if(free.length === 0) return alert("Поле заполнено!");
-
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
             let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
-            if(avail.length === 0) return alert("Задания кончились!");
-
+            if(avail.length === 0 || free.length === 0) return alert("Ошибка!");
             const ticketRes = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             const ticket = ticketRes.snapshot.val();
             const cell = free[Math.floor(Math.random()*free.length)];
             const taskIdx = avail[Math.floor(Math.random()*avail.length)];
-
             await db.ref('board/'+cell).set({ owner: myIndex, taskIdx, ticket });
             used.push(taskIdx);
             await db.ref(`whitelist/${currentUserId}`).update({ used_tasks: used, last_round: currentRoundNum });
@@ -283,8 +273,7 @@
 
         function initGrid() {
             db.ref('board').on('value', snap => {
-                const data = snap.val() || {}, grid = document.getElementById('grid');
-                grid.innerHTML = "";
+                const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
                 for(let i=0; i<50; i++) {
                     let d = document.createElement('div');
                     d.className = 'cell' + (data[i] ? ' p' + data[i].owner : '');
@@ -297,25 +286,22 @@
 
         async function showTaskInfo(i) {
             const s = await db.ref('board/'+i).once('value');
-            if(!s.exists()) return;
             const d = s.val(), t = tasks[d.taskIdx];
             document.getElementById('mTitle').innerText = "Клетка №" + (i+1);
-            let h = `<div style="background:#fff5cc; padding:8px; border-radius:10px; margin-bottom:10px; font-weight:bold; color:#d48806; font-size:13px;">🎟 БИЛЕТ №${d.ticket}</div>`;
+            let h = `<div style="background:#fff5cc; padding:8px; border-radius:10px; margin-bottom:10px; font-weight:bold; color:#d48806;">🎟 БИЛЕТ №${d.ticket}</div>`;
             if(t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px;" onclick="zoomImg('${t.img}')">`;
-            if(t.text) h += `<p style="margin:0; font-size:14px; line-height:1.4;">${t.text}</p>`;
+            if(t.text) h += `<p style="font-size:14px;">${t.text}</p>`;
             document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
         }
 
         function zoomImg(src) { document.getElementById('zoomed-img').src = src; document.getElementById('zoom-overlay').style.display = 'flex'; }
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
-
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            el.classList.add('active');
-            if(id === 'tab-wheel') updateWheelData();
+            el.classList.add('active'); if(id === 'tab-wheel') updateWheelData();
         }
 
         // --- АДМИН ПАНЕЛЬ ---
@@ -324,41 +310,39 @@
                 let h = "<b>Участники (ID | Ник):</b>";
                 snap.forEach(u => {
                     const uid = u.key, name = players[u.val().charIndex]?.n || "???";
-                    h += `<div class="player-row">
-                        <span><code>${uid}</code> — ${name}</span>
-                        <button onclick="kick('${uid}')" style="color:red; border:none; background:none; font-size:16px;">✕</button>
-                    </div>`;
+                    h += `<div class="player-row"><span><code>${uid}</code> — ${name}</span><button onclick="kick('${uid}')" style="color:red; border:none; background:none; font-size:16px;">✕</button></div>`;
                 });
                 document.getElementById('active-players').innerHTML = h;
             });
+
             db.ref('board').on('value', snap => {
-                let list = []; snap.forEach(c => list.push(`№${c.val().ticket}`));
-                document.getElementById('admin-tickets-list').innerHTML = list.length ? "Выдано: " + list.join(', ') : "Билетов нет";
+                let tickets = [];
+                snap.forEach(c => {
+                    const data = c.val();
+                    tickets.push({ num: data.ticket, name: players[data.owner].n });
+                });
+                tickets.sort((a, b) => a.num - b.num);
+                let listHTML = tickets.map(t => `<b>№${t.num}</b> — ${t.name}`).join('<br>');
+                document.getElementById('admin-tickets-list').innerHTML = listHTML || "Билетов нет";
             });
         }
 
         async function adminStartNewRound() {
             const s = await db.ref('current_round/number').once('value');
             db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + 86400000 });
-            alert("Новый раунд запущен!");
         }
 
         function adminFullReset() {
-            if(!confirm("СБРОСИТЬ ВСЮ ИГРУ? Это удалит билеты, поле и прогресс игроков.")) return;
+            if(!confirm("Сбросить всё?")) return;
             db.ref('board').remove(); db.ref('ticket_counter').set(0); db.ref('wheel_event').remove(); db.ref('current_round').remove();
             db.ref('whitelist').once('value', s => s.forEach(u => db.ref('whitelist/'+u.key).update({used_tasks:[], last_round:0})));
-            alert("Игра обнулена!");
         }
 
         function kick(id) { if(confirm("Удалить игрока " + id + "?")) db.ref('whitelist/' + id).remove(); }
         function openAdminModal() { document.getElementById('admin-modal').style.display='block'; document.getElementById('overlay').style.display='block'; }
         function closeAdminModal() { document.getElementById('admin-modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
-        
         function saveNewUserRandomly() {
-            const id = document.getElementById('new-user-id').value;
-            if(!id) return;
-            // Выбираем случайного персонажа, который еще не занят (если хочешь уникальности), 
-            // но для 50 игроков просто берем рандомный индекс:
+            const id = document.getElementById('new-user-id').value; if(!id) return;
             db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*players.length), used_tasks: [], last_round: 0 }).then(closeAdminModal);
         }
 
