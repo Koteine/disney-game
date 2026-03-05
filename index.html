@@ -2,173 +2,164 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Дисней: Магия Раскрасок</title>
+    <title>Disney Online Battle</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f0f4f8;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
+        body { font-family: 'Comic Sans MS', cursive; background: #fff5f8; text-align: center; color: #444; }
+        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; max-width: 500px; margin: 20px auto; }
+        .cell { 
+            width: 85px; height: 85px; border: 2px solid #ddd; border-radius: 12px; 
+            background: white; display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; cursor: default; transition: 0.3s; position: relative; font-weight: bold;
         }
-        h1 { color: #5a67d8; text-shadow: 1px 1px 2px #fff; }
+        .target { border: 4px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 15px #ff007f; }
         
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(6, 1fr);
-            gap: 15px;
-            max-width: 800px;
-            background: white;
-            padding: 20px;
-            border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        }
-
-        .cell {
-            width: 80px;
-            height: 80px;
-            background: #edf2f7;
-            border: 2px solid #cbd5e0;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
-            position: relative;
-        }
-
-        .cell:hover {
-            transform: scale(1.05);
-            background: #e2e8f0;
-        }
-
-        /* Интерактивные клетки */
-        .interactive {
-            background: #fefcbf;
-            border-color: #ecc94b;
-        }
-        .interactive::after {
-            content: "⭐";
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            font-size: 12px;
-        }
-
-        /* Окно задания */
-        #modal {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 0 50px rgba(0,0,0,0.3);
-            z-index: 100;
-            max-width: 400px;
-            text-align: center;
-        }
+        /* Цвета игроков */
+        .p0 { background: #ffcdd2 !important; border-color: #f44336; } /* Королева Блесток */
+        .p1 { background: #e1f5fe !important; border-color: #03a9f4; } /* Мастер Кисточки */
+        .p2 { background: #f3e5f5 !important; border-color: #9c27b0; } /* Эльф Раскрасок */
+        .p3 { background: #e8f5e9 !important; border-color: #4caf50; } /* Леди Палитра */
         
-        #overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 50;
-        }
-
-        button {
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: #5a67d8;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
+        .owner-tag { position: absolute; bottom: 4px; font-size: 9px; text-transform: uppercase; color: #333; }
+        
+        #dice-btn { padding: 15px 30px; font-size: 20px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #dice-btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 300px; }
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
+        
+        .btn-select { padding: 10px; margin: 5px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; }
+        .active-p { background: #ffcdd2; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h1>✨ Дисней: Карта Заданий ✨</h1>
-    <div class="grid" id="gameGrid"></div>
+    <h1>✨ Disney Online Battle ✨</h1>
+    
+    <div id="player-setup">
+        <h3>Выбери, кто ты сегодня:</h3>
+        <button class="btn-select" onclick="setMe(0)">✨ Королева Блесток</button>
+        <button class="btn-select" onclick="setMe(1)">🖌️ Мастер Кисточки</button>
+        <button class="btn-select" onclick="setMe(2)">🦄 Эльф Раскрасок</button>
+        <button class="btn-select" onclick="setMe(3)">🍭 Леди Палитра</button>
+    </div>
+
+    <div id="game-ui" style="display:none;">
+        <p>Привет, <b id="my-name-display"></b>!</p>
+        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
+        <p id="status">Нажми на кубик, чтобы получить задание!</p>
+        <div class="grid" id="grid"></div>
+    </div>
 
     <div id="overlay"></div>
     <div id="modal">
-        <h2 id="taskTitle">Задание №</h2>
-        <p id="taskText"></p>
-        <button onclick="closeModal()">Принято!</button>
+        <h2 id="mTitle"></h2>
+        <p id="mText" style="font-size: 18px; color: #d81b60;"></p>
+        <button onclick="confirmTask()" style="padding:15px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
     </div>
 
     <script>
-        const tasks = [
-            "Нарисуй любые очки на персонаже.",
-            "Раскрась воду (море, озеро или капли).",
-            "Найди и раскрась персонажа с большими ушами.",
-            "ИНТЕРАКТИВ: Раскрась 2 картинки вместо одной!",
-            "Нарисуй желтый цветок в углу страницы.",
-            "Раскрась только головной убор героя.",
-            "Найди персонажа, который умеет летать.",
-            "Нарисуй маленькое яблоко рядом с героем.",
-            "Используй только три любых цвета для всей страницы.",
-            "Раскрась фон ярко-розовым цветом.",
-            "ИНТЕРАКТИВ: Закрой глаза и выбери карандаш наугад. Им начни раскрашивать!",
-            "Нарисуй Белоснежку или любого гнома.",
-            "Найди персонажа из мультфильма 'Король Лев'.",
-            "Раскрась самого маленького персонажа на листе.",
-            "Дорисуй персонажу волшебную палочку.",
-            "Раскрась героя из 'Холодного сердца'.",
-            "Нарисуй замок на заднем плане.",
-            "ИНТЕРАКТИВ: Попроси друга/маму выбрать тебе следующий цвет.",
-            "Раскрась персонажа, который живет в лесу.",
-            "Нарисуй морковку (привет Олафу!).",
-            "Раскрась фон градиентом (от темного к светлому).",
-            "Найди и раскрась злодея из любого мультика.",
-            "Сделай небо на картинке ночным (черным или темно-синим).",
-            "ИНТЕРАКТИВ: Раскрась один элемент левой рукой!",
-            "Раскрась целый разворот (две страницы).",
-            "Добавь много блесток или узоров на одежду героя.",
-            "Нарисуй ассоциацию к мультфильму и опиши её.",
-            "Раскрась персонажа так, будто он светится.",
-            "Нарисуй рядом с героем его лучшего друга.",
-            "ФИНАЛ: Выбери самую сложную страницу и раскрась её идеально!"
+        // ТВОИ НАСТРОЙКИ FIREBASE (УЖЕ ВСТАВЛЕНЫ)
+        const firebaseConfig = {
+            databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const players = [
+            { n: "Королева Блесток", c: "p0" },
+            { n: "Мастер Кисточки", c: "p1" },
+            { n: "Эльф Раскрасок", c: "p2" },
+            { n: "Леди Палитра", c: "p3" }
         ];
 
-        const grid = document.getElementById('gameGrid');
-        const modal = document.getElementById('modal');
-        const overlay = document.getElementById('overlay');
-        const taskTitle = document.getElementById('taskTitle');
-        const taskText = document.getElementById('taskText');
+        const tasks = [
+            "Нарисуй очки любому герою", "Раскрась воду голубым", "Найди героя с ушами", "⭐ РАСКРАСЬ ДВЕ КАРТИНКИ", 
+            "Нарисуй цветок", "Раскрась шляпу", "Найди летающего героя", "Нарисуй яблоко", 
+            "Только 3 цвета на страницу", "Розовый фон", "⭐ ВЫБЕРИ ЦВЕТ С ЗАКРЫТЫМИ ГЛАЗАМИ", "Нарисуй Белоснежку",
+            "Герой из Короля Льва", "Маленький персонаж", "Дорисуй палочку", "Герой Холодного Сердца",
+            "Нарисуй замок", "⭐ ЦВЕТ ВЫБИРАЕТ ПОДРУГА", "Лесной житель", "Нарисуй морковку",
+            "Сделай градиент на фоне", "Раскрась злодея", "Ночное небо", "⭐ КРАСЬ ЛЕВОЙ РУКОЙ",
+            "Раскрась разворот", "Добавь узоры на платье", "Нарисуй ассоциацию", "Эффект свечения",
+            "Нарисуй друга герою", "👑 ФИНАЛЬНЫЙ ШЕДЕВР"
+        ];
 
-        for (let i = 0; i < 30; i++) {
-            const cell = document.createElement('div');
-            cell.className = 'cell';
-            // Делаем клетки 4, 11, 18, 24 интерактивными
-            if ([3, 10, 17, 23].includes(i)) {
-                cell.classList.add('interactive');
+        let myIndex = null;
+        let selectedCell = null;
+
+        function setMe(idx) {
+            myIndex = idx;
+            document.getElementById('player-setup').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            document.getElementById('my-name-display').innerText = players[idx].n;
+        }
+
+        // Создаем сетку
+        const gridDiv = document.getElementById('grid');
+        for(let i=0; i<30; i++) {
+            let div = document.createElement('div');
+            div.className = 'cell';
+            div.id = 'cell-' + i;
+            div.innerHTML = `<div>${i+1}</div>`;
+            gridDiv.appendChild(div);
+        }
+
+        function roll() {
+            document.getElementById('dice-btn').disabled = true;
+            // Убираем старую цель, если была
+            if(selectedCell !== null) document.getElementById('cell-' + selectedCell).classList.remove('target');
+
+            db.ref('board').once('value', (snap) => {
+                const data = snap.val() || {};
+                let free = [];
+                for(let i=0; i<30; i++) if(!data[i]) free.push(i);
+                
+                if(free.length === 0) {
+                    alert("Ура! Все раскраски закончены!");
+                    return;
+                }
+                
+                selectedCell = free[Math.floor(Math.random() * free.length)];
+                document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
+                
+                const target = document.getElementById('cell-' + selectedCell);
+                target.classList.add('target');
+                target.onclick = function() {
+                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
+                    document.getElementById('mText').innerText = tasks[selectedCell];
+                    document.getElementById('modal').style.display = 'block';
+                    document.getElementById('overlay').style.display = 'block';
+                };
+            });
+        }
+
+        function confirmTask() {
+            db.ref('board/' + selectedCell).set({
+                owner: myIndex,
+                name: players[myIndex].n
+            });
+            
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('dice-btn').disabled = false;
+            document.getElementById('status').innerText = "Клетка захвачена! Ход следующей девочки.";
+            document.getElementById('cell-' + selectedCell).classList.remove('target');
+            document.getElementById('cell-' + selectedCell).onclick = null;
+            selectedCell = null;
+        }
+
+        // Обновление в реальном времени у всех игроков
+        db.ref('board').on('value', (snap) => {
+            const data = snap.val() || {};
+            for(let i in data) {
+                const cell = document.getElementById('cell-' + i);
+                const p = players[data[i].owner];
+                cell.className = 'cell ' + p.c;
+                cell.innerHTML = `<div>${parseInt(i)+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                cell.onclick = null;
             }
-            cell.textContent = i + 1;
-            cell.onclick = () => showTask(i);
-            grid.appendChild(cell);
-        }
-
-        function showTask(index) {
-            taskTitle.textContent = "Задание №" + (index + 1);
-            taskText.textContent = tasks[index];
-            modal.style.display = 'block';
-            overlay.style.display = 'block';
-        }
-
-        function closeModal() {
-            modal.style.display = 'none';
-            overlay.style.display = 'none';
-        }
+        });
     </script>
 </body>
 </html>
