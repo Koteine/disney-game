@@ -131,13 +131,14 @@
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Админ</h1>
             <div class="admin-section">
-                <b>Запустить раунд (💥 +2 ловушки):</b>
-                <div style="display:flex; gap:5px; margin:5px 0;">
-                    <input type="number" id="r-days" placeholder="Дни" class="admin-input" value="1">
-                    <input type="number" id="r-hours" placeholder="Часы" class="admin-input" value="0">
-                </div>
-                <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0;">СТАРТ</button>
-            </div>
+    <b>Установить длительность раунда:</b>
+    <div style="display:flex; gap:5px; margin:10px 0;">
+        <div style="flex:1;"><small>Дни</small><input type="number" id="r-days" class="admin-input" value="1"></div>
+        <div style="flex:1;"><small>Часы</small><input type="number" id="r-hours" class="admin-input" value="0"></div>
+        <div style="flex:1;"><small>Мин</small><input type="number" id="r-mins" class="admin-input" value="0"></div>
+    </div>
+    <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0; height:45px;">🚀 ЗАПУСТИТЬ РАУНД</button>
+</div>
             <div class="admin-section">
                 <b>Игроки:</b>
                 <div id="active-players" style="max-height:100px; overflow-y:auto;"></div>
@@ -271,7 +272,20 @@
         function updateTimerDisplay() {
             if (window.timerInt) clearInterval(window.timerInt);
             window.timerInt = setInterval(async () => {
-                const diff = roundEndTime - Date.now(), btn = document.getElementById('dice-btn');
+                const diff = roundEndTime - Date.now();
+if (diff <= 0) {
+    document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
+    document.getElementById('dice-btn').disabled = true;
+} else {
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    
+    // Красивое форматирование: 0д 00:00:00
+    document.getElementById('round-timer').innerText = 
+        `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
                 if (diff <= 0) { document.getElementById('round-timer').innerText = "ОКОНЧЕН"; btn.disabled = true; } 
                 else {
                     const d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
@@ -373,17 +387,40 @@
         }
 
         async function adminStartNewRound() {
-            const d = parseInt(document.getElementById('r-days').value)||0, h = parseInt(document.getElementById('r-hours').value)||0;
-            const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
-            let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
-            
-            let traps = [];
-            for(let j=0; j<2; j++) { if(free.length) traps.push(free.splice(Math.floor(Math.random()*free.length), 1)[0]); }
-            
-            const s = await db.ref('current_round/number').once('value');
-            await db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now() + (d*86400000 + h*3600000 || 3600000), traps: traps });
-            alert(`Раунд ${ (s.val()||0)+1 } запущен!`);
-        }
+    // Получаем значения из полей
+    const d = parseInt(document.getElementById('r-days').value) || 0;
+    const h = parseInt(document.getElementById('r-hours').value) || 0;
+    const m = parseInt(document.getElementById('r-mins').value) || 0;
+
+    // Переводим всё в миллисекунды
+    const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+    
+    if (durationMs <= 0) return alert("Укажите время раунда!");
+
+    const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
+    let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
+    
+    let traps = [];
+    // Ставим 2 ловушки на свободные клетки
+    for(let j=0; j<2; j++) { 
+        if(free.length) {
+            const randomIndex = Math.floor(Math.random() * free.length);
+            traps.push(free.splice(randomIndex, 1)[0]);
+        } 
+    }
+    
+    const s = await db.ref('current_round/number').once('value');
+    const newRoundNum = (s.val() || 0) + 1;
+
+    // Сохраняем в Firebase
+    await db.ref('current_round').set({ 
+        number: newRoundNum, 
+        endTime: Date.now() + durationMs, 
+        traps: traps 
+    });
+
+    alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
+}
 
         async function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value; if(!id) return;
@@ -429,6 +466,7 @@
     </script>
 </body>
 </html>
+
 
 
 
