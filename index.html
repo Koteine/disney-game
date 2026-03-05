@@ -56,6 +56,19 @@
         <button class="btn-select" onclick="setMe(10)">👀 Залипаю в контур</button>
     </div>
 
+    function backToSetup() {
+    // Если была выбрана клетка, убираем подсветку перед выходом
+    if (selectedCell !== null) {
+        document.getElementById('cell-' + selectedCell).classList.remove('target');
+        selectedCell = null;
+        document.getElementById('dice-btn').disabled = false;
+        document.getElementById('status').innerText = "Нажми на кубик!";
+    }
+    // Переключаем экраны
+    document.getElementById('game-ui').style.display = 'none';
+    document.getElementById('player-setup').style.display = 'block';
+}
+    
     <div id="game-ui" style="display:none;">
         <div style="margin-bottom: 15px;">
     <button onclick="backToSetup()" style="background: none; border: 1px solid #ffcdd2; color: #d81b60; padding: 5px 15px; border-radius: 20px; font-size: 13px; cursor: pointer;">
@@ -224,5 +237,6 @@
     </script>
 </body>
 </html>
+
 
 
