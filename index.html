@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Disney Online Battle</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        body { font-family: 'Comic Sans MS', cursive; background: #fff5f8; text-align: center; color: #444; }
+        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; max-width: 500px; margin: 20px auto; }
+        .cell { 
+            width: 85px; height: 85px; border: 2px solid #ddd; border-radius: 12px; 
+            background: white; display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; cursor: default; transition: 0.3s; position: relative; font-weight: bold;
+        }
+        .target { border: 4px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 15px #ff007f; }
+        
+        /* Цвета игроков */
+        .p0 { background: #ffcdd2 !important; border-color: #f44336; } /* Королева Блесток */
+        .p1 { background: #e1f5fe !important; border-color: #03a9f4; } /* Мастер Кисточки */
+        .p2 { background: #f3e5f5 !important; border-color: #9c27b0; } /* Эльф Раскрасок */
+        .p3 { background: #e8f5e9 !important; border-color: #4caf50; } /* Леди Палитра */
+        
+        .owner-tag { position: absolute; bottom: 4px; font-size: 9px; text-transform: uppercase; color: #333; }
+        
+        #dice-btn { padding: 15px 30px; font-size: 20px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #dice-btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 300px; }
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
+        
+        .btn-select { padding: 10px; margin: 5px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; }
+        .active-p { background: #ffcdd2; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>✨ Disney Online Battle ✨</h1>
+    
+    <div id="player-setup">
+        <h3>Выбери, кто ты сегодня:</h3>
+        <button class="btn-select" onclick="setMe(0)">✨ Королева Блесток</button>
+        <button class="btn-select" onclick="setMe(1)">🖌️ Мастер Кисточки</button>
+        <button class="btn-select" onclick="setMe(2)">🦄 Эльф Раскрасок</button>
+        <button class="btn-select" onclick="setMe(3)">🍭 Леди Палитра</button>
+    </div>
+
+    <div id="game-ui" style="display:none;">
+        <p>Привет, <b id="my-name-display"></b>!</p>
+        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
+        <p id="status">Нажми на кубик, чтобы получить задание!</p>
+        <div class="grid" id="grid"></div>
+    </div>
+
+    <div id="overlay"></div>
+    <div id="modal">
+        <h2 id="mTitle"></h2>
+        <p id="mText" style="font-size: 18px; color: #d81b60;"></p>
+        <button onclick="confirmTask()" style="padding:15px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
+    </div>
+
+    <script>
+        // ТВОИ НАСТРОЙКИ FIREBASE (УЖЕ ВСТАВЛЕНЫ)
+        const firebaseConfig = {
+            databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const players = [
+            { n: "Королева Блесток", c: "p0" },
+            { n: "Мастер Кисточки", c: "p1" },
+            { n: "Эльф Раскрасок", c: "p2" },
+            { n: "Леди Палитра", c: "p3" }
+        ];
+
+        const tasks = [
+            "Нарисуй очки любому герою", "Раскрась воду голубым", "Найди героя с ушами", "⭐ РАСКРАСЬ ДВЕ КАРТИНКИ", 
+            "Нарисуй цветок", "Раскрась шляпу", "Найди летающего героя", "Нарисуй яблоко", 
+            "Только 3 цвета на страницу", "Розовый фон", "⭐ ВЫБЕРИ ЦВЕТ С ЗАКРЫТЫМИ ГЛАЗАМИ", "Нарисуй Белоснежку",
+            "Герой из Короля Льва", "Маленький персонаж", "Дорисуй палочку", "Герой Холодного Сердца",
+            "Нарисуй замок", "⭐ ЦВЕТ ВЫБИРАЕТ ПОДРУГА", "Лесной житель", "Нарисуй морковку",
+            "Сделай градиент на фоне", "Раскрась злодея", "Ночное небо", "⭐ КРАСЬ ЛЕВОЙ РУКОЙ",
+            "Раскрась разворот", "Добавь узоры на платье", "Нарисуй ассоциацию", "Эффект свечения",
+            "Нарисуй друга герою", "👑 ФИНАЛЬНЫЙ ШЕДЕВР"
+        ];
+
+        let myIndex = null;
+        let selectedCell = null;
+
+        function setMe(idx) {
+            myIndex = idx;
+            document.getElementById('player-setup').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            document.getElementById('my-name-display').innerText = players[idx].n;
+        }
+
+        // Создаем сетку
+        const gridDiv = document.getElementById('grid');
+        for(let i=0; i<30; i++) {
+            let div = document.createElement('div');
+            div.className = 'cell';
+            div.id = 'cell-' + i;
+            div.innerHTML = `<div>${i+1}</div>`;
+            gridDiv.appendChild(div);
+        }
+
+        function roll() {
+            document.getElementById('dice-btn').disabled = true;
+            // Убираем старую цель, если была
+            if(selectedCell !== null) document.getElementById('cell-' + selectedCell).classList.remove('target');
+
+            db.ref('board').once('value', (snap) => {
+                const data = snap.val() || {};
+                let free = [];
+                for(let i=0; i<30; i++) if(!data[i]) free.push(i);
+                
+                if(free.length === 0) {
+                    alert("Ура! Все раскраски закончены!");
+                    return;
+                }
+                
+                selectedCell = free[Math.floor(Math.random() * free.length)];
+                document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
+                
+                const target = document.getElementById('cell-' + selectedCell);
+                target.classList.add('target');
+                target.onclick = function() {
+                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
+                    document.getElementById('mText').innerText = tasks[selectedCell];
+                    document.getElementById('modal').style.display = 'block';
+                    document.getElementById('overlay').style.display = 'block';
+                };
+            });
+        }
+
+        function confirmTask() {
+            db.ref('board/' + selectedCell).set({
+                owner: myIndex,
+                name: players[myIndex].n
+            });
+            
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            document.getElementById('dice-btn').disabled = false;
+            document.getElementById('status').innerText = "Клетка захвачена! Ход следующей девочки.";
+            document.getElementById('cell-' + selectedCell).classList.remove('target');
+            document.getElementById('cell-' + selectedCell).onclick = null;
+            selectedCell = null;
+        }
+
+        // Обновление в реальном времени у всех игроков
+        db.ref('board').on('value', (snap) => {
+            const data = snap.val() || {};
+            for(let i in data) {
+                const cell = document.getElementById('cell-' + i);
+                const p = players[data[i].owner];
+                cell.className = 'cell ' + p.c;
+                cell.innerHTML = `<div>${parseInt(i)+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                cell.onclick = null;
+            }
+        });
+    </script>
+</body>
+</html>
