@@ -9,146 +9,24 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         body { font-family: sans-serif; background: #fff5f8; text-align: center; margin: 0; padding: 10px; }
-        .btn-select { 
-            padding: 15px; margin: 10px auto; border: 2px solid #ffcdd2; 
-            border-radius: 12px; background: white; width: 250px; 
-            display: block; cursor: pointer; font-size: 16px; font-weight: bold;
-        }
-        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 350px; margin: 20px auto; }
+        .btn-select { padding: 15px; margin: 10px auto; border: 2px solid #ffcdd2; border-radius: 12px; background: white; width: 250px; display: block; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 350px; margin: 15px auto; }
         .cell { width: 60px; height: 60px; border: 1px solid #ccc; background: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 8px; position: relative; }
         .target { border: 3px solid #ff007f !important; background: #fff0f5 !important; }
         .p0 { background: #ffcdd2 !important; } .p1 { background: #e1f5fe !important; } 
         .p2 { background: #f3e5f5 !important; } .p3 { background: #e8f5e9 !important; } 
         .owner-tag { position: absolute; bottom: 2px; font-size: 8px; width: 100%; text-align: center; }
-        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
-        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 2000; width: 250px; }
-        #dice-btn { padding: 15px 30px; background: #ff007f; color: white; border: none; border-radius: 50px; font-size: 18px; cursor: pointer; margin: 10px; }
+        #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 2000; width: 250px; box-shadow: 0 0 20px rgba(0,0,0,0.2); }
+        #dice-btn { padding: 15px 30px; background: #ff007f; color: white; border: none; border-radius: 50px; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-    <div id="admin-panel" style="display: none;">
-        <button onclick="resetGame()" style="background:red; color:white; border:none; padding:10px; border-radius:10px; margin-bottom:10px;">СБРОС КАРТЫ (ХОЗЯЙКА)</button>
+    <div id="admin-panel" style="display: none; padding: 10px;">
+        <button onclick="resetGame()" style="background:red; color:white; border:none; padding:10px; border-radius:10px;">СБРОС КАРТЫ (АДМИН)</button>
     </div>
 
     <div id="setup-screen">
         <h2>Выбери героя:</h2>
-        <button class="btn-select" onclick="setPlayer(0)">✨ Королева Блесток</button>
-        <button class="btn-select" onclick="setPlayer(1)">🖌️ Мастер Кисточки</button>
-        <button class="btn-select" onclick="setPlayer(2)">🦄 Эльф Раскрасок</button>
-        <button class="btn-select" onclick="setMe(3)">🍭 Леди Палитра</button>
-    </div>
-
-    <div id="game-screen" style="display: none;">
-        <p>Игрок: <b id="player-name"></b></p>
-        <button id="dice-btn" onclick="rollDice()">🎲 КИНУТЬ КУБИК</button>
-        <div id="status-text">Нажми на кубик!</div>
-        <div class="grid" id="grid"></div>
-    </div>
-
-    <div id="overlay"></div>
-    <div id="modal">
-        <h3 id="mTitle" style="margin-top:0">Задание</h3>
-        <p id="mText"></p>
-        <button onclick="saveTask()" style="width:100%; padding:15px; background:green; color:white; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">ГОТОВО ✅</button>
-    </div>
-
-    <script>
-        // 1. Настройка Firebase
-        const config = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
-        firebase.initializeApp(config);
-        const db = firebase.database();
-
-        const pData = [
-            { n: "Королева Блесток", c: "p0" }, { n: "Мастер Кисточки", c: "p1" },
-            { n: "Эльф Раскрасок", c: "p2" }, { n: "Леди Палитра", c: "p3" }
-        ];
-        const tasks = ["Очки герою", "Голубая вода", "Уши", "2 КАРТИНКИ", "Цветок", "Шляпа", "Летает", "Яблоко", "3 цвета", "Розовый фон", "Глаза закрыты", "Белоснежка", "Король Лев", "Мини", "Палочка", "Эльза", "Замок", "Выбор подруги", "Лес", "Морковка", "Градиент", "Злодей", "Ночь", "Левая рука", "Разворот", "Узоры", "Ассоциация", "Свечение", "Друг", "ФИНАЛ"];
-
-        let myIdx = null;
-        let curCell = null;
-
-        // 2. Основные функции
-        window.setPlayer = function(idx) {
-            myIdx = idx;
-            document.getElementById('setup-screen').style.display = 'none';
-            document.getElementById('game-screen').style.display = 'block';
-            document.getElementById('player-name').innerText = pData[idx].n;
-        };
-
-        // Дублируем функцию для Леди Палитры (в HTML была опечатка setMe)
-        window.setMe = window.setPlayer;
-
-        window.rollDice = function() {
-            document.getElementById('dice-btn').disabled = true;
-            db.ref('board').once('value', (s) => {
-                const d = s.val() || {};
-                let free = [];
-                for(let i=0; i<30; i++) if(!d[i]) free.push(i);
-                if(free.length === 0) { alert("Все раскрашено!"); return; }
-                
-                curCell = free[Math.floor(Math.random() * free.length)];
-                document.getElementById('status-text').innerText = "Твоя клетка: " + (curCell + 1);
-                
-                // Подсвечиваем клетку
-                const cells = document.getElementsByClassName('cell');
-                for(let c of cells) c.classList.remove('target');
-                
-                const targetEl = document.getElementById('cell-' + curCell);
-                targetEl.classList.add('target');
-                targetEl.onclick = function() {
-                    document.getElementById('mText').innerText = tasks[curCell];
-                    document.getElementById('modal').style.display = 'block';
-                    document.getElementById('overlay').style.display = 'block';
-                };
-            });
-        };
-
-        window.saveTask = function() {
-            if(curCell === null) return;
-            db.ref('board/' + curCell).set({ o: myIdx }).then(() => {
-                document.getElementById('modal').style.display = 'none';
-                document.getElementById('overlay').style.display = 'none';
-                document.getElementById('dice-btn').disabled = false;
-                document.getElementById('status-text').innerText = "Клетка захвачена!";
-            });
-        };
-
-        // 3. Создание сетки
-        const grid = document.getElementById('grid');
-        for(let i=0; i<30; i++) {
-            let d = document.createElement('div');
-            d.id = 'cell-' + i; d.className = 'cell'; d.innerText = i+1;
-            grid.appendChild(d);
-        }
-
-        // 4. Синхронизация данных
-        db.ref('board').on('value', (s) => {
-            const data = s.val() || {};
-            for(let i=0; i<30; i++) {
-                const el = document.getElementById('cell-' + i);
-                if(data[i]) {
-                    const player = pData[data[i].o];
-                    el.className = 'cell ' + player.c;
-                    el.innerHTML = (i+1) + '<div class="owner-tag">' + player.n.split(' ')[0] + '</div>';
-                    el.onclick = null;
-                } else {
-                    el.className = 'cell';
-                    el.innerText = i+1;
-                }
-            }
-        });
-
-        window.resetGame = function() {
-            if(confirm("Очистить всё поле?")) {
-                db.ref('board').remove();
-            }
-        };
-
-        // 5. Telegram (БЕЗОПАСНАЯ ПРОВЕРКА)
-        try {
-            const tg = window.Telegram.WebApp;
-            tg.ready();
-            tg.expand();
-            
-            // Проверка ад
+        <button class="btn-select" onclick="go(0)">✨ Королева Блесток</button>
+        <button class="btn-select" onclick="go(1)">🖌️ Мастер Кисточки</
