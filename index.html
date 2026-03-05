@@ -60,4 +60,134 @@
             { n: "Межгалактический почеркушка", c: "p0" }, { n: "Марсианин ищет синий", c: "p1" },
             { n: "Краска вытекла", c: "p2" }, { n: "Паста «Красный жуть»", c: "p3" },
             { n: "Баклажан с претензией", c: "p4" }, { n: "Кусь за контур", c: "p5" },
-            {
+            { n: "Квадратный корень из краски", c: "p6" }, { n: "Крадущийся ленивец", c: "p7" },
+            { n: "Графон на ультрах", c: "p8" }, { n: "Пиксельный Мазок", c: "p9" },
+            { n: "Залипаю в контур", c: "p10" }
+        ];
+
+        // ТВОЙ ТЕКСТ БЕЗ ИЗМЕНЕНИЙ (только исправлены запятые в массиве)
+        const tasks = [
+            { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" },
+            { text: "Разгадаешь ребус?", img: "rebus2.png" },
+            { text: "Что-то на умном", img: "rebus3.png" },
+            { text: "Красиво, разноцветно", img: "rebus4.png" },
+            { text: "Бляяяяяяястяще", img: "rebus5.png" },
+            { text: "Может быть и такое", img: "rebus6.png" },
+            { text: "Твой герой тонет что ли? Тогда почему он под водой?" },
+            { text: "Грибы.. Я вижу, что грибы повсюду" },
+            { text: "Мышек видишь? А они есть. Ну, уши точно вижу" },
+            { text: "Давай сделаем дорого-богато! Добавь блестяшек!" },
+            { text: "Сосед сверху выберет тебе самый красивый из всех цветов радуги!" },
+            { text: "Да, это жестко. Мы, любители ГП заколебем всех. Добавь волшебства на иллюстрацию, давай, не расстраивай меня!" },
+            { text: "Уф, понимаю, не у всех... но, может, у тебя есть авторская раскраска? Время нарисовать что-то клёвое!" },
+            { text: "Любишь снеговиков? Я нет, но придется." },
+            { text: "Усики - пропуск сама знаешь куда ;)" },
+            { text: "Усложнение подъехало. Раскрась кривляку" },   
+            { text: "Это не просто тыква, а карета, которая забыла переодеться обратно." },  
+            { text: "Цвет «Стыдливый Флин Райдер» (смущенно-розовый)" },   
+            { text: "Они только что съели целого жука! Акуна Матата!" },   
+            { text: "Он притворяется милым и безобидным, чтобы стащить кофе. Цвет — «Лживое очарование» (ну синенький, ну Ститч)" },
+            { text: "Задание-сюрприз: Закрой глаза и ткни пальцем в любой номер. Всё для тебя!" },
+            { text: "Раскрась что-нибудь съедобное. Господи, я всегда голодна!" },   
+            { text: "Я живу в лесу с семью друзьями, Сплю глубоким сном под хрусталями. Мачеха боится красоты моей, Угостила яблоком... ответь скорей!" },  
+            { text: "У меня есть голос, но нет ног, Мой отец — подводный царь и бог." },   
+            { text: "Мой замок изо льда, и в сердце холода, Я строю стены там, где раньше была пустота. Сестру свою невольно я чуть не погубила, Но песня «Отпусти и забудь» меня освободила." }, 
+            { text: "Я живу в тесноте, в золотом сосуде, Но творю чудеса, каких не видели люди. Стоит лишь потереть — и я тут как тут, Три желанья твои меня в гости зовут!" },   
+            { text: "У меня большие уши и перчатки белого цвета, Я — самый главный символ на планете этой. Моя подружка — Минни, а собака — Плуто, Со мной всегда весело и очень круто!" },   
+            { text: "Я заперта в башне высокой-высокой, Мечтаю о мире, где свет одинокий. Мои волосы — лестница, магия в них, А сковородка — мой лучший защитник от злых." },
+            { text: "Я вырос среди диких кошек и лиан, Мой дом — густой лес, а не берег и океан. По деревьям скольжу, словно птица в полете, И «своим» меня в стае волков назовете." }, 
+            { text: "Я синего цвета, и память — беда, Забыла я всё: и зачем, и куда..." }
+        ];
+
+        let myIndex = null;
+        let selectedCell = null;
+
+        // Генерация кнопок выбора
+        const setupDiv = document.getElementById('setup-buttons');
+        players.forEach((p, idx) => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-select';
+            btn.innerText = p.n;
+            btn.onclick = () => setMe(idx);
+            setupDiv.appendChild(btn);
+        });
+
+        // Создание сетки (50)
+        const gridDiv = document.getElementById('grid');
+        for(let i=0; i<50; i++) {
+            let div = document.createElement('div');
+            div.className = 'cell'; div.id = 'cell-' + i;
+            div.innerHTML = `<div>${i+1}</div>`;
+            gridDiv.appendChild(div);
+        }
+
+        function setMe(idx) {
+            myIndex = idx;
+            document.getElementById('player-setup').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            document.getElementById('my-name-display').innerText = players[idx].n;
+        }
+
+        function roll() {
+            document.getElementById('dice-btn').disabled = true;
+            db.ref('board').once('value', (snap) => {
+                const data = snap.val() || {};
+                let free = [];
+                for(let i=0; i<50; i++) if(!data[i]) free.push(i);
+                if(free.length === 0) { alert("Ура! Все выполнено!"); return; }
+                selectedCell = free[Math.floor(Math.random() * free.length)];
+                document.getElementById('status').innerText = "Твоя цель: клетка №" + (selectedCell + 1);
+                const target = document.getElementById('cell-' + selectedCell);
+                target.classList.add('target');
+                target.onclick = function() {
+                    const task = tasks[selectedCell] || { text: "Просто раскрась!" };
+                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
+                    let html = "";
+                    if (task.img) html += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">`;
+                    html += `<p>${task.text}</p>`;
+                    document.getElementById('mText').innerHTML = html;
+                    document.getElementById('modal').style.display = 'block';
+                    document.getElementById('overlay').style.display = 'block';
+                };
+            });
+        }
+
+        function confirmTask() {
+            db.ref('board/' + selectedCell).set({ owner: myIndex }).then(() => {
+                document.getElementById('modal').style.display = 'none';
+                document.getElementById('overlay').style.display = 'none';
+                document.getElementById('dice-btn').disabled = false;
+                document.getElementById('status').innerText = "Захвачено!";
+                document.getElementById('cell-' + selectedCell).classList.remove('target');
+                selectedCell = null;
+            });
+        }
+
+        db.ref('board').on('value', (snap) => {
+            const data = snap.val() || {};
+            for(let i=0; i<50; i++) {
+                const cell = document.getElementById('cell-' + i);
+                if (!cell) continue;
+                if (data[i]) {
+                    const p = players[data[i].owner];
+                    if (p) {
+                        cell.className = 'cell ' + p.c;
+                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
+                        cell.onclick = null;
+                    }
+                } else {
+                    cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
+                }
+            }
+        });
+
+        function adminResetGame() { if(confirm("Сбросить всё?")) db.ref('board').remove(); }
+
+        try {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            if (tg.initDataUnsafe?.user?.id === 341995937) document.getElementById('admin-panel').style.display = 'block';
+        } catch(e) {}
+    </script>
+</body>
+</html>
