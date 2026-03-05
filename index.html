@@ -3,112 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle 50: Color Edition</title>
+    <title>Disney Battle: Smart Edition</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px 10px 80px 10px; -webkit-tap-highlight-color: transparent; }
-        
-        /* Вкладки */
         .tab-content { display: none; animation: fadeIn 0.3s; }
         .tab-active { display: block; }
-        
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 11px; color: #888; cursor: pointer; display: flex; flex-direction: column; align-items: center; flex: 1; }
         .nav-item.active { color: #ff007f; font-weight: bold; }
         .nav-icon { font-size: 20px; margin-bottom: 2px; }
-
-        /* Игровая сетка */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
-        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; transition: 0.3s; box-sizing: border-box; }
-        
-        /* Цвета игроков */
+        .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 10px; }
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
-        
-        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; pointer-events: none; overflow: hidden; white-space: nowrap; padding: 0 2px; }
+        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; overflow: hidden; white-space: nowrap; }
         #dice-btn { padding: 15px 30px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; font-weight: bold; }
-        #dice-btn:disabled { background: #ccc; box-shadow: none; transform: translateY(4px); }
-        
-        /* Рандомайзер заданий */
+        #dice-btn:disabled { background: #ccc; box-shadow: none; }
         .random-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 20px; }
-        .num-btn { padding: 12px 0; border: 1px solid #ffb2d9; background: white; border-radius: 10px; font-weight: bold; color: #ff007f; font-size: 14px; }
+        .num-btn { padding: 12px 0; border: 1px solid #ffb2d9; background: white; border-radius: 10px; font-weight: bold; color: #ff007f; }
         .num-btn.used { background: #eee; color: #bbb; border-color: #ddd; }
-
-        /* Модальные окна */
         #modal, #admin-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 1100; width: 85%; max-width: 320px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1050; }
-        
         .admin-section { margin-top: 10px; padding: 15px; border: 2px dashed #ff007f; border-radius: 15px; background: #fff; }
-        .user-list { text-align: left; font-size: 12px; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 10px; margin-top: 10px; }
-        .user-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; }
-        .kick-btn { color: red; background: none; border: 1px solid red; border-radius: 5px; cursor: pointer; font-size: 10px; padding: 2px 6px; }
-
+        .user-list { text-align: left; font-size: 12px; max-height: 200px; overflow-y: auto; margin-top: 10px; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
     <div id="auth-screen" style="display:none; padding-top: 50px;">
-        <h2>Доступ ограничен 🛑</h2>
-        <p>Твой ID: <b id="display-id" style="color:#ff007f;"></b></p>
-        <p>Отправь его организатору!</p>
+        <h2>Загрузка... ⏳</h2>
+        <p id="auth-status">Минутку, готовим игру.</p>
+        <p id="display-id" style="font-size:10px; color:gray;"></p>
     </div>
 
     <div id="game-ui" style="display:none;">
-        
         <div id="tab-game" class="tab-content tab-active">
-            <h1>✨ Disney Battle ✨</h1>
-            <p>Художник: <b id="my-name-display" style="color:#ff007f;"></b></p>
+            <h1>🏰 Disney Battle</h1>
+            <p>Вы: <b id="my-name-display" style="color:#ff007f;"></b></p>
             <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
             <p id="status">Твой ход!</p>
             <div class="grid" id="grid"></div>
         </div>
 
         <div id="tab-random" class="tab-content">
-            <h1>📜 Список заданий</h1>
-            <p style="font-size: 12px;">Нажми на номер, чтобы узнать задание</p>
+            <h1>📜 Номера заданий</h1>
             <div class="random-grid" id="random-grid"></div>
         </div>
 
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Админка</h1>
-            <div id="admin-panel" class="admin-section">
-                <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%; font-weight:bold;">➕ Добавить участника</button>
-                <div id="active-players" class="user-list">Загрузка...</div>
-                <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:11px; margin-top:20px; cursor:pointer; text-decoration: underline;">⚠️ ПОЛНЫЙ СБРОС ИГРЫ</button>
+            <div class="admin-section">
+                <button onclick="openAdminModal()" style="background:#ff007f; color:white; border:none; padding:12px; border-radius:12px; width:100%;">➕ Добавить игрока</button>
+                <div id="active-players" class="user-list"></div>
+                <button onclick="adminResetGame()" style="color:red; background:none; border:none; font-size:11px; margin-top:20px; cursor:pointer;">⚠️ Сбросить поле и историю заданий</button>
             </div>
         </div>
 
         <nav class="nav-bar">
-            <button class="nav-item active" onclick="switchTab('tab-game', this)">
-                <span class="nav-icon">🏰</span><span>Поле</span>
-            </button>
-            <button class="nav-item" onclick="switchTab('tab-random', this)">
-                <span class="nav-icon">🎲</span><span>Номера</span>
-            </button>
-            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)">
-                <span class="nav-icon">⚙️</span><span>Админ</span>
-            </button>
+            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
+            <button class="nav-item" onclick="switchTab('tab-random', this)"><span>🎲 Номера</span></button>
+            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>
 
     <div id="overlay"></div>
     <div id="modal">
-        <h2 id="mTitle" style="font-size:18px; margin:0;"></h2>
-        <div id="mContent" style="margin: 15px 0; max-height: 300px; overflow-y: auto;"><p id="mText"></p></div>
-        <button onclick="closeModal()" style="margin-top:10px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; padding:12px; font-weight:bold;">Понятно!</button>
+        <h2 id="mTitle" style="font-size:18px;"></h2>
+        <div id="mText"></div>
+        <button onclick="closeModal()" style="margin-top:15px; background:#ff007f; color:white; border:none; border-radius:10px; width:100%; padding:12px;">Понятно!</button>
     </div>
 
     <div id="admin-modal">
-        <h3>Новый игрок</h3>
-        <input type="number" id="new-user-id" placeholder="ID пользователя" style="width:90%; padding:10px; border-radius:10px; border:1px solid #ccc;">
-        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#ff007f; color:white; border:none; border-radius:12px; width:100%; margin-top:15px; font-weight:bold;">ВКЛЮЧИТЬ</button>
+        <h3>Новый участник</h3>
+        <input type="number" id="new-user-id" placeholder="Telegram ID" style="width:90%; padding:10px; border-radius:10px;">
+        <button onclick="saveNewUserRandomly()" style="padding:12px; background:#ff007f; color:white; border:none; border-radius:12px; width:100%; margin-top:15px;">ДОБАВИТЬ</button>
         <button onclick="closeAdminModal()" style="margin-top:10px; background:none; border:none; color:gray; width:100%;">Отмена</button>
     </div>
 
     <script>
+        const JSON_URL = 'https://raw.githubusercontent.com/Koteine/disney-game/refs/heads/main/tasks.json';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -117,6 +94,8 @@
 
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
+        let tasks = [];
+        let myIndex = null;
 
         const players = [
             { n: "Межгалактический почеркушка", c: "p0" }, { n: "Марсианин ищет синий", c: "p1" },
@@ -146,17 +125,14 @@
             { n: "Перфекционист холста", c: "p4" }, { n: "Оживший натюрморт", c: "p5" }
         ];
 
-        const tasks = [
-            { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" }, { text: "Разгадаешь ребус?", img: "rebus2.png" }, { text: "Что-то на умном", img: "rebus3.png" }, { text: "Красиво, разноцветно", img: "rebus4.png" }, { text: "Бляяяяяяястяще", img: "rebus5.png" }, { text: "Может быть и такое", img: "rebus6.png" }, { text: "Твой герой тонет что ли? Тогда почему он под водой?" }, { text: "Грибы.. Я вижу, что грибы повсюду" }, { text: "Мышек видишь? А они есть. Ну, уши точно вижу" }, { text: "Давай сделаем дорого-богато! Добавь блестяшек!" }, { text: "Сосед сверху выберет тебе самый красивый из всех цветов радуги!" }, { text: "Да, это жестко. Мы, любители ГП заколебем всех. Добавь волшебства на иллюстрацию, давай, не расстраивай меня!" }, { text: "Уф, понимаю, не у всех... но, может, у тебя есть авторская раскраска? Время нарисовать что-то клёвое!" }, { text: "Любишь снеговиков? Я нет, но придется." }, { text: "Усики - пропуск сама знаешь куда ;)" }, { text: "Усложнение подъехало. Раскрась кривляку" }, { text: "Это не просто тыква, а карета, которая забыла переодеться обратно." }, { text: "Цвет «Стыдливый Флин Райдер» (смущенно-розовый)" }, { text: "Они только что съели целого жука! Акуна Матата!" }, { text: "Он притворяется милым и безобидным, чтобы стащить кофе. Цвет — «Лживое очарование» (ну синенький, ну Ститч)" }, { text: "Задание-сюрприз: Закрой глаза и ткни пальцем в любой номер. Всё для тебя!" }, { text: "Раскрась что-нибудь съедобное. Господи, я всегда голодна!" }, { text: "Я живу в лесу с семью друзьями, Сплю глубоким сном под хрусталями. Мачеха боится красоты моей, Угостила яблоком... ответь скорей!" }, { text: "У меня есть голос, но нет ног, Мой отец — подводный царь и бог." }, { text: "Мой замок изо льда, и в сердце холода, Я строю стены там, где раньше была пустота. Сестру свою невольно я чуть не погубила, Но песня «Отпусти и забудь» меня освободила." }, { text: "Я живу в тесноте, в золотом сосуде, Но творю чудеса, каких не видели люди. Стоит лишь потереть — и я тут как тут, Три желанья твои меня в гости зовут!" }, { text: "У меня большие уши и перчатки белого цвета, Я — самый главный символ на планете этой. Моя подружка — Минни, а собака — Плуто, Со мной всегда весело и очень круто!" }, { text: "Я заперта в башне высокой-высокой, Мечтаю о мире, где свет одинокий. Мои волосы — лестница, магия в них, А сковородка — мой лучший защитник от злых." }, { text: "Я вырос среди диких кошек и лиан, Мой дом — густой лес, а не берег и океан. По деревьям скольжу, словно птица в полете, И «своим» меня в стае волков назовете." }, { text: "Я синего цвета, и память — беда, Забыла я всё: и зачем, и куда..." }, { text: "Мой папа погиб в пыли от копыт, А дядя мой злой на меня был сердит. Я вырос в пустыне под песню друзей, Вернулся домой, чтоб стать властью земель!" }, { text: "Я не колдун, не монстр и не зверь, Но в жажде власти я открыл к предательству дверь. Я видел, как брат мой со скал полетел вниз, А племяннику в страхе устроил «сюрприз». Мой шрам на лице — мой единственный знак, Я сделал так, чтобы в царстве воцарился мрак." }, { text: "Я жду на дне, среди костей и мглы, Мои контракты — острые углы. Я забрала то, чем девчонка дорожила, И в человечий облик хвост её вложила." }, { text: "Я лучший в деревне, мой бицепс горой, Для каждой девчонки я — местный герой. Но та, что с книгой, меня не оценит, И сердце её чудовище пленит." }, { text: "Обаятельный гад", img: "aid.png" }, { text: "Я «связан» с друзьями из мира теней", img: "Facilie.png" }, { text: "Я мал, суетлив и вечно в заботах, Мой панцирь — броня, а жизнь — как работа. Я должен следить, чтоб принцесса не пела, И в мире людей оказаться не смела. Я дирижёр, хоть и ростом с ладонь, Но в музыке сердца — мой вечный огонь." }, { text: "Не важно, как сильно ты о чем-то мечтаешь, важно, что ты для этого делаешь", img: "djudi.png" }, { text: "Мои первые шаги видел весь лес, Я принц, хоть и мал, и лишен был чудес. Мой враг — человек, мой учитель — сова, А лучший мой друг — это кролик-молва." }, { text: "Я живу в Мире Мертвых, но я не скелет... Хотя, подождите, волос-то и нет! Я гитару украл, чтобы правду найти, И предков своих на мосту обрести." }, { text: "Я не хочу взрослеть, в Нетландию лечу, И каждого ребёнка за собою увлечу. Мой враг — пират с крюком, мой друг — Динь-Динь, Я феи пыль рассыплю в неба синь." }, { text: "Я создан из снега, но лето люблю, О тёплых объятиях вечно молю." }, { text: "Я косы остригла, доспехи надела, Спасти своего я отца захотела." }, { text: "Я в Новом Орлеане мечтаю о деле — Чтоб свой ресторан я открыла на деле. Но поцелуй обернулся бедой: Я стала зелёной и очень прыгучей... ой!" }, { text: "Я в доме волшебном живу, где всё дышит, Но магия предков меня не услышит. У всех есть таланты, а я — лишь «своя», Но именно я спасу Каситу, друзья!" }, { text: "Я монстр огромный, мой мех — бирюза, Пугать малышей — это просто гроза." }, { text: "Я уколола палец о веретено, И небо для царства в тот миг потемнело. Три феи хранили мой сон вековой, Пока не пришел мой спаситель за мной." }, { text: "Я был человеком, но стал я рабом, Свой голос отдал, чтоб не быть бедняком. Я тенью хожу за своим господином, И в лампе застрял я, как в склепе едином." }, { text: "Мои волосы — рыжий безумный костер, Мой нрав непокорный, и глаз мой остер." }, { text: "Я был эгоистом, но стал я... ламой, И жизнь моя стала сплошною драмой." }
-        ];
-
-        let myIndex = null;
-
-        function switchTab(tabId, el) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
-            document.getElementById(tabId).classList.add('tab-active');
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            el.classList.add('active');
+        async function init() {
+            try {
+                const res = await fetch(JSON_URL);
+                tasks = await res.json();
+                checkAccess();
+            } catch (e) {
+                document.getElementById('auth-status').innerText = "Ошибка загрузки JSON!";
+            }
         }
 
         function checkAccess() {
@@ -173,8 +149,8 @@
                     initGrid();
                     initRandomizer();
                 } else {
-                    document.getElementById('game-ui').style.display = 'none';
                     document.getElementById('auth-screen').style.display = 'block';
+                    document.getElementById('auth-status').innerText = "Доступ закрыт. Отправь ID админу.";
                     document.getElementById('display-id').innerText = currentUserId;
                 }
             });
@@ -197,11 +173,10 @@
                 const data = snap.val() || {};
                 for(let i=0; i<50; i++) {
                     const cell = document.getElementById('cell-' + i);
-                    if (!cell) continue;
                     if (data[i]) {
                         const p = players[data[i].owner];
                         cell.className = 'cell ' + (p ? p.c : '');
-                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p ? p.n.split(' ')[0] : '???'}</div>`;
+                        cell.innerHTML = `<div>${i+1}</div><div class="owner-tag">${p ? p.n.split(' ')[0] : '...'}</div>`;
                         cell.onclick = () => showTaskInfo(i);
                     } else {
                         cell.className = 'cell'; cell.innerHTML = `<div>${i+1}</div>`;
@@ -226,69 +201,50 @@
             });
         }
 
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
         async function roll() {
             const btn = document.getElementById('dice-btn');
             btn.disabled = true;
-            btn.innerText = "🎲 Бросок...";
 
-            const gameRef = db.ref('game_map');
-            let gameMapSnap = await gameRef.once('value');
-            
-            if (!gameMapSnap.exists()) {
-                let indices = Array.from({length: 50}, (_, i) => i);
-                shuffle(indices);
-                await gameRef.set(indices);
-                gameMapSnap = await gameRef.once('value');
-            }
-            
-            const taskMapping = gameMapSnap.val();
+            // 1. Получаем список использованных заданий ИМЕННО ЭТИМ игроком
+            const userSnap = await db.ref('whitelist/' + currentUserId + '/used_tasks').once('value');
+            const usedByMe = userSnap.val() || [];
+
+            // 2. Ищем свободные клетки на поле
             const boardSnap = await db.ref('board').once('value');
             const boardData = boardSnap.val() || {};
-            
-            let free = [];
-            for(let i=0; i<50; i++) if(!boardData[i]) free.push(i);
+            let freeCells = [];
+            for(let i=0; i<50; i++) if(!boardData[i]) freeCells.push(i);
 
-            if(free.length === 0) {
-                btn.disabled = false; btn.innerText = "🎲 Бросить кубик";
-                return alert("Все ячейки заняты!");
+            if(freeCells.length === 0) return alert("Поле заполнено!");
+
+            // 3. Фильтруем задания: только те, что игрок еще не видел
+            let availableTasks = tasks.map((t, i) => i).filter(idx => !usedByMe.includes(idx));
+
+            if(availableTasks.length === 0) {
+                alert("Ты выполнил все доступные задания в пуле!");
+                btn.disabled = false; return;
             }
 
-            const rolledCell = free[Math.floor(Math.random() * free.length)];
-            const taskIndexForCell = taskMapping[rolledCell];
+            const rolledCell = freeCells[Math.floor(Math.random() * freeCells.length)];
+            const randomTaskIdx = availableTasks[Math.floor(Math.random() * availableTasks.length)];
 
-            await db.ref('board/' + rolledCell).set({ 
-                owner: myIndex, 
-                taskIdx: taskIndexForCell 
-            });
+            // 4. Сохраняем: клетку в общий борд, а ID задания в личную историю
+            await db.ref('board/' + rolledCell).set({ owner: myIndex, taskIdx: randomTaskIdx });
+            usedByMe.push(randomTaskIdx);
+            await db.ref('whitelist/' + currentUserId + '/used_tasks').set(usedByMe);
 
             showTaskInfo(rolledCell);
-            document.getElementById('status').innerText = "Тебе выпал номер " + (rolledCell + 1);
-            btn.disabled = false; btn.innerText = "🎲 Бросить кубик";
+            btn.disabled = false;
         }
 
         async function showTaskInfo(cellIdx) {
             const snap = await db.ref('board/' + cellIdx).once('value');
-            const mapSnap = await db.ref('game_map').once('value');
+            if (!snap.exists()) return alert("Эта клетка еще свободна!");
             
-            let taskIdx;
-            if (snap.exists() && snap.val().taskIdx !== undefined) {
-                taskIdx = snap.val().taskIdx;
-            } else if (mapSnap.exists()) {
-                taskIdx = mapSnap.val()[cellIdx];
-            } else {
-                return alert("Сначала бросьте кубик!");
-            }
-
-            const task = tasks[taskIdx];
-            document.getElementById('mTitle').innerText = "Задание №" + (cellIdx + 1);
+            const taskIdx = snap.val().taskIdx;
+            const task = tasks[taskIdx] || { text: "Задание не найдено" };
+            
+            document.getElementById('mTitle').innerText = "Задание к номеру " + (cellIdx + 1);
             let h = task.img ? `<img src="${task.img}" style="width:100%; border-radius:10px; margin-bottom:10px;">` : "";
             h += `<p>${task.text}</p>`;
             document.getElementById('mText').innerHTML = h;
@@ -296,9 +252,12 @@
             document.getElementById('overlay').style.display = 'block';
         }
 
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
-            document.getElementById('overlay').style.display = 'none';
+        function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
+        function switchTab(id, el) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById(id).classList.add('tab-active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active');
         }
 
         function openAdminModal() { document.getElementById('admin-modal').style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
@@ -306,39 +265,40 @@
         
         function saveNewUserRandomly() {
             const id = document.getElementById('new-user-id').value;
-            if(!id) return alert("Введите ID!");
             db.ref('whitelist').once('value', (snap) => {
                 const usedIndices = [];
                 snap.forEach(c => usedIndices.push(c.val().charIndex));
                 const available = players.map((_, i) => i).filter(i => !usedIndices.includes(i));
-                if(available.length === 0) return alert("Лимит игроков!");
                 const idx = available[Math.floor(Math.random() * available.length)];
-                db.ref('whitelist/' + id).set({ charIndex: idx }).then(() => {
-                    alert("Добавлен!"); document.getElementById('new-user-id').value = ""; closeAdminModal();
+                db.ref('whitelist/' + id).update({ charIndex: idx, used_tasks: [] }).then(() => {
+                    alert("Добавлен!"); closeAdminModal();
                 });
             });
         }
 
         function updateAdminPlayerList() {
             db.ref('whitelist').on('value', (snap) => {
-                let html = "<b>Игроки в базе:</b><br>";
+                let h = "";
                 snap.forEach(c => {
-                    const p = players[c.val().charIndex];
-                    html += `<div class="user-item"><span>${c.key}: ${p ? p.n : '?'}</span><button class="kick-btn" onclick="kickPlayer('${c.key}')">Удалить</button></div>`;
+                    h += `<div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                        <span>${c.key} (${players[c.val().charIndex].n})</span>
+                        <button onclick="db.ref('whitelist/${c.key}').remove()" style="color:red;">X</button>
+                    </div>`;
                 });
-                document.getElementById('active-players').innerHTML = html;
+                document.getElementById('active-players').innerHTML = h;
             });
         }
 
-        function kickPlayer(id) { if(confirm("Удалить игрока?")) db.ref('whitelist/' + id).remove(); }
-        function adminResetGame() { 
-            if(confirm("ВНИМАНИЕ! Это очистит всё поле и перемешает задания заново. Продолжить?")) {
+        function adminResetGame() {
+            if(confirm("Сбросить всё?")) {
                 db.ref('board').remove();
-                db.ref('game_map').remove();
+                db.ref('whitelist').once('value', snap => {
+                    snap.forEach(c => db.ref('whitelist/' + c.key + '/used_tasks').remove());
+                });
             }
         }
 
-        checkAccess();
+        init();
     </script>
 </body>
 </html>
