@@ -3,90 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Ultimate Edition</title>
+    <title>Disney Battle: Gossips & Magic</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         :root { --p-pink: #ff007f; --p-bg: #fff5f8; --p-purple: #a020f0; }
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--p-bg); text-align: center; color: #333; margin: 0; padding: 5px 5px 80px 5px; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--p-bg); text-align: center; color: #333; margin: 0; padding: 5px 5px 80px 5px; overflow-x: hidden; }
         
+        /* Сплетни */
+        .gossip-box { background: white; border-left: 4px solid var(--p-pink); margin: 8px auto; width: 95%; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); text-align: left; }
+        .gossip-title { font-size: 10px; text-transform: uppercase; color: #888; font-weight: bold; margin-bottom: 4px; }
+        .gossip-item { font-size: 12px; line-height: 1.3; color: #444; margin-bottom: 3px; animation: fadeIn 0.5s; }
+
+        /* Поле */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; max-width: 500px; margin: 10px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 6px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; font-size: 10px; position: relative; }
+        .cell span { font-size: 7px; margin-top: 2px; }
         .cell.gold { border: 2px solid #ffaa00 !important; background: #fffdf0; }
-        .cell.coop { border: 2px solid var(--p-purple) !important; animation: pulse-purple 2s infinite; }
+        .cell.coop { border: 2px solid var(--p-purple) !important; animation: pulse-purple 2s infinite; background: #fdf0ff; }
         @keyframes pulse-purple { 0% { box-shadow: 0 0 0 0 rgba(160,32,240,0.4); } 70% { box-shadow: 0 0 0 6px rgba(160,32,240,0); } 100% { box-shadow: 0 0 0 0 rgba(160,32,240,0); } }
         
-        .rules-container { text-align: left; background: white; padding: 15px; border-radius: 15px; margin: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .rule-item { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-        .rule-item b { color: var(--p-pink); }
+        /* Таймер */
+        .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        #round-timer { font-size: 20px; font-weight: 900; color: #222; }
 
+        /* Навигация */
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #eee; z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 9px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
         
         #dice-btn, .admin-btn { padding: 12px; font-size: 15px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 8px auto; display: block; }
+        #dice-btn:disabled { background: #ccc; }
+
         #modal, #overlay { display: none; }
-        #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 80vh; overflow-y: auto; }
+        #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 0 30px rgba(0,0,0,0.2); }
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1050; }
+        
         .tab-content { display: none; }
         .tab-active { display: block; }
-        @keyframes shake { 0%, 100% { transform: translate(0,0); } 20%, 60% { transform: translate(-5px,0); } 40%, 80% { transform: translate(5px,0); } }
-        .apply-shake { animation: shake 0.4s; }
+        @keyframes shake { 0%, 100% { transform: translate(0,0); } 10%, 30%, 50%, 70%, 90% { transform: translate(-4px,0); } 20%, 40%, 60%, 80% { transform: translate(4px,0); } }
+        .apply-shake { animation: shake 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
 
     <div id="tab-game" class="tab-content tab-active">
         <h1>🏰 Disney Battle</h1>
-        <div id="player-identity" style="font-size:11px;">Загрузка...</div>
-        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
+        <div id="player-identity" style="font-size:11px; margin-bottom:5px;">Загрузка профиля...</div>
+        
+        <div class="timer-box">
+            <div id="round-info" style="font-size:11px; color:var(--p-pink); font-weight:bold;">Раунд №--</div>
+            <div id="round-timer">00:00:00</div>
+        </div>
+
+        <div class="gossip-box">
+            <div class="gossip-title">📢 Сплетни Королевства:</div>
+            <div id="gossip-list"></div>
+        </div>
+
+        <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
         <div class="grid" id="grid"></div>
     </div>
 
     <div id="tab-tickets" class="tab-content">
         <h1>🎫 Билеты</h1>
         <table style="width:100%; border-collapse: collapse; font-size:12px;">
+            <thead style="background:var(--p-pink); color:white;">
+                <tr><th>Игрок</th><th>Билеты</th><th>Действие</th></tr>
+            </thead>
             <tbody id="tickets-body"></tbody>
         </table>
     </div>
 
     <div id="tab-rules" class="tab-content">
-        <h1>📜 Правила игры</h1>
-        <div class="rules-container">
-            <div class="rule-item"><b>🎲 Как играть:</b> Нажимай на кубик раз в раунд. Тебе выпадет клетка с персонажем, которого нужно нарисовать. За сданную работу ты получаешь билет на розыгрыш.</div>
-            <div class="rule-item"><b>👑 Золотая клетка:</b> Если повезет, выпадет золото! Рисуй любого персонажа Disney на свой вкус.</div>
-            <div class="rule-item"><b>💣 Ловушки:</b> Осторожно! Капитан Крюк расставил мины. Если попадешь — придется рисовать левой рукой или выполнять «разворот».</div>
-            <div class="rule-item"><b>✨ Магическая связь:</b> Редкое событие! Ты и еще одна художница получаете общее задание. 
-                <br>• Договоритесь в ЛС и создайте совместный арт.
-                <br>• Базово дается 1 билет, но если админ подтвердит крутой коллаб — получите по <b>3 билета</b> каждой!</div>
-            <div class="rule-item"><b>🎡 Финал:</b> В конце сезона мы крутим колесо. Чем больше у тебя билетов, тем выше шанс забрать главный приз!</div>
+        <h1>📜 Королевский Указ</h1>
+        <div style="text-align:left; padding:15px; background:white; margin:10px; border-radius:12px; font-size:14px; line-height:1.5;">
+            <b>1. Бросок кубика:</b> Раз в раунд жми на кнопку, чтобы получить задание.<br><br>
+            <b>2. 💣 Ловушки:</b> Если попадешь на мину — задание усложняется (левая рука, разворот и т.д.).<br><br>
+            <b>3. 👑 Золото:</b> Дает право рисовать любого персонажа на выбор.<br><br>
+            <b>4. ✨ Магическая связь:</b> Выпадает паре игроков. Нужно договориться и нарисовать совместную работу. Если админ одобрит — получите по <b>3 билета</b>!<br><br>
+            <b>5. 🎡 Колесо:</b> В конце сезона билеты превратятся в шансы на победу.
         </div>
     </div>
 
     <div id="tab-wheel" class="tab-content">
-        <h1>🎡 Розыгрыш</h1>
-        <canvas id="wheel-canvas" width="280" height="280" style="margin: 0 auto; display: block;"></canvas>
+        <h1>🎡 Колесо Удачи</h1>
+        <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:30px;"></div>
+        <canvas id="wheel-canvas" width="280" height="280" style="transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block;"></canvas>
         <div id="wheel-admin-btn"></div>
     </div>
 
     <div id="tab-admin" class="tab-content">
-        <h1>⚙️ Админ</h1>
-        <button onclick="adminStartNewRound()" class="admin-btn">НОВЫЙ РАУНД + ЛОВУШКИ</button>
-        <button onclick="adminFullReset()" class="admin-btn" style="background:red">СБРОС БАЗЫ</button>
+        <h1>⚙️ Тронный зал</h1>
+        <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50">СТАРТ РАУНДА + ЛОВУШКИ</button>
+        <button onclick="adminFullReset()" class="admin-btn" style="background:red; font-size:10px; margin-top:50px;">ПОЛНЫЙ СБРОС БАЗЫ</button>
     </div>
 
     <nav class="nav-bar">
-        <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
-        <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
-        <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
-        <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
-        <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
+        <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>Поле</span></button>
+        <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>Билеты</span></button>
+        <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>Правила</span></button>
+        <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>Колесо</span></button>
+        <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>Админ</span></button>
     </nav>
 
     <div id="overlay" onclick="closeModal()"></div>
-    <div id="modal"><h2 id="mTitle"></h2><div id="mText"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
+    <div id="modal"><h2 id="mTitle"></h2><div id="mText"></div><button onclick="closeModal()" class="admin-btn">Понятно</button></div>
 
     <script>
         const JSON_URL = 'tasks.json';
@@ -96,21 +121,23 @@
         const tg = window.Telegram.WebApp;
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
+        
         const charColors = ["#FFADAD","#FFD6A5","#FDFFB6","#CAFFBF","#9BF6FF","#A0C4FF","#BDB2FF","#FFC6FF","#FFFFFC","#FF8585","#FFB347","#F0E68C","#90EE90","#87CEFA","#6495ED","#9370DB","#FF69B4","#F5F5DC","#CD5C5C","#FFA500","#EEDD82","#3CB371","#00CED1","#4169E1","#8A2BE2","#C71585","#D3D3D3","#FA8072","#FF8C00","#BDB76B","#2E8B57","#20B2AA","#1E90FF","#9400D3","#FF1493","#A9A9A9","#E9967A","#DAA520","#8FBC8F","#008080","#0000CD","#800080","#DC143C","#808080","#B0C4DE","#FF4500","#556B2F","#008B8B","#000080","#4B0082"];
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
         const coopTasks = [
             "Магическая связь: «Две стороны медали». Одна рисует героя, вторая — его злодея.",
             "Магическая связь: «Взгляд сквозь время». Одна рисует baby-версию, вторая — в старости.",
-            "Магическая связь: «Сквозь зеркало». Одна рисует в теплых тонах, вторая — в холодных.",
+            "Магическая связь: «Сквозь зеркало». Одна рисует в теплых тонах, вторая — в ночных.",
             "Магическая связь: «Портал». Одна рисует вход в портал, вторая — выход персонажа.",
-            "Магическая связь: «Смена стиля». Дисней vs Аниме (поменяйтесь ролями).",
-            "Магическая связь: «Повтори как я». Максимально похожие оттенки в одной картинке."
+            "Магическая связь: «Смена стиля». Дисней vs Аниме.",
+            "Магическая связь: «Повтори как я». Максимально похожие оттенки."
         ];
 
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
 
         async function init() {
-            try { const res = await fetch(JSON_URL); tasks = await res.json(); checkAccess(); syncData(); } catch(e) {}
+            try { const res = await fetch(JSON_URL); tasks = await res.json(); } catch(e) { tasks = [{text:"Задание по умолчанию"}]; }
+            checkAccess(); syncData();
         }
 
         function checkAccess() {
@@ -118,25 +145,50 @@
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
             }
-            db.ref('whitelist/' + currentUserId).on('value', s => { if (s.exists()) { myIndex = s.val().charIndex; document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; } });
+            db.ref('whitelist/' + currentUserId).on('value', s => { 
+                if (s.exists()) { 
+                    myIndex = s.val().charIndex; 
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; 
+                } 
+            });
         }
 
         function syncData() {
-            db.ref('current_round').on('value', snap => { if (snap.exists()) { currentRoundNum = snap.val().number; roundEndTime = snap.val().endTime; updateTimer(); } });
+            db.ref('current_round').on('value', snap => {
+                if (snap.exists()) {
+                    currentRoundNum = snap.val().number;
+                    roundEndTime = snap.val().endTime;
+                    document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
+                    updateTimer();
+                }
+            });
+            
             db.ref('board').on('value', snap => {
-                const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
-                allTicketsData = [];
+                const data = snap.val() || {}, grid = document.getElementById('grid');
+                grid.innerHTML = ""; allTicketsData = [];
                 for(let i=0; i<50; i++) {
-                    const cell = data[i]; let d = document.createElement('div');
-                    d.className = 'cell' + (cell?.isGold?' gold':'') + (cell?.isCoop?' coop':'');
+                    const cell = data[i];
+                    let d = document.createElement('div');
+                    d.className = 'cell' + (cell?.isGold?' gold':'') + (cell?.isCoop?' coop':'') + (cell?.excluded?' excluded':'');
                     if (cell) {
-                        d.style.borderColor = charColors[cell.owner]; d.style.background = charColors[cell.owner]+"15";
+                        d.style.borderColor = charColors[cell.owner];
+                        d.style.background = charColors[cell.owner]+"15";
                         d.innerHTML = (cell.isTrap?"💣":(cell.isCoop?"✨":(i+1))) + `<span>🎟${cell.ticket}</span>`;
-                        allTicketsData.push({...cell, cell: i+1});
+                        allTicketsData.push({...cell, cellIdx: i});
                     } else d.innerHTML = (i+1);
-                    d.onclick = () => showCell(i, cell); grid.appendChild(d);
+                    d.onclick = () => showCell(i, cell);
+                    grid.appendChild(d);
                 }
                 updateTicketsTable();
+            });
+
+            db.ref('gossips').limitToLast(3).on('value', snap => {
+                const list = document.getElementById('gossip-list');
+                list.innerHTML = "";
+                const data = snap.val() || {};
+                Object.values(data).reverse().forEach(t => {
+                    list.innerHTML += `<div class="gossip-item">${t}</div>`;
+                });
             });
         }
 
@@ -144,32 +196,34 @@
             const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
             const rSnap = await db.ref('current_round').once('value'), rData = rSnap.val();
             let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
-            if (!free.length || (roundEndTime-Date.now() <= 0)) return;
+            if (!free.length || (roundEndTime - Date.now() <= 0)) return;
 
             const cellIdx = free[Math.floor(Math.random()*free.length)];
             const isTrap = rData.traps && rData.traps.includes(cellIdx);
+            const isGold = !isTrap && Math.random() < 0.05;
             
             let isCoop = false, coopText = "", partnerId = null;
             const pSnap = await db.ref('pending_coop').once('value');
-            
-            if (!isTrap && pSnap.exists() && pSnap.val().owner !== myIndex) {
+
+            if (!isTrap && !isGold && pSnap.exists() && pSnap.val().owner !== myIndex) {
                 const wait = pSnap.val(); isCoop = true; partnerId = wait.owner; coopText = wait.task;
                 await db.ref('pending_coop').remove();
-                await db.ref(`board/${wait.cellIdx}/trapText`).set(`Связь установлена с ${players[myIndex].n}! ${coopText}`);
-            } else if (!isTrap && Math.random() < 0.1) {
+                await db.ref(`board/${wait.cellIdx}/trapText`).set(`Связь с ${players[myIndex].n}! Задание: ${coopText}`);
+                db.ref('gossips').push(`Связь объединила <b>${players[partnerId].n}</b> и <b>${players[myIndex].n}</b>! ✨`);
+            } else if (!isTrap && !isGold && Math.random() < 0.1) {
                 isCoop = true; coopText = coopTasks[Math.floor(Math.random()*coopTasks.length)];
                 await db.ref('pending_coop').set({ owner: myIndex, cellIdx: cellIdx, task: coopText });
             }
 
-            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            let tStr = tCounter.snapshot.val().toString();
+            if (isTrap) db.ref('gossips').push(`<b>${players[myIndex].n}</b> подорвалась на мине! 💥`);
+            if (isGold) db.ref('gossips').push(`Золотой билет у <b>${players[myIndex].n}</b>! 👑`);
 
+            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             const cellData = {
-                owner: myIndex, ticket: tStr, isTrap: isTrap, isCoop: isCoop,
-                isGold: !isTrap && !isCoop && Math.random() < 0.05,
-                trapText: isTrap ? "Ловушка Крюка! Рисуй не ведущей рукой!" : (isCoop ? (partnerId ? `Пара: ${players[partnerId].n}! ${coopText}` : "Ждем напарника для связи...") : ""),
+                owner: myIndex, ticket: tCounter.snapshot.val().toString(),
+                isTrap, isCoop, isGold, round: currentRoundNum,
                 taskIdx: (isTrap || isCoop) ? -1 : Math.floor(Math.random()*tasks.length),
-                round: currentRoundNum
+                trapText: isTrap ? "Мина! Рисуй не ведущей рукой!" : (isCoop ? (partnerId ? `Пара найден! ${coopText}` : "Ждем напарника...") : "")
             };
             await db.ref('board/'+cellIdx).set(cellData);
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -181,44 +235,55 @@
             const isAdmin = (currentUserId === ADMIN_ID), isOwner = (cell.owner === myIndex);
             if (cell.isTrap && (isOwner || isAdmin)) { 
                 new Audio('https://www.soundjay.com/mechanical/explosion-01.mp3').play();
-                document.body.classList.add('apply-shake'); setTimeout(()=>document.body.classList.remove('apply-shake'), 400);
+                document.body.classList.add('apply-shake'); setTimeout(()=>document.body.classList.remove('apply-shake'), 500);
             }
-            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 ЛОВУШКА" : (cell.isCoop ? "✨ МАГИЧЕСКАЯ СВЯЗЬ" : "Клетка "+(i+1));
-            let h = `<p>Художник: <b>${players[cell.owner].n}</b><br>Билеты: ${cell.ticket}</p>`;
+            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 БУМ!" : (cell.isCoop ? "✨ СВЯЗЬ" : "Клетка "+(i+1));
+            let h = `<p>Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b><br>Билет: ${cell.ticket}</p>`;
             if (isOwner || isAdmin) {
-                if(cell.isTrap || cell.isCoop) h += `<div style="color:red; font-weight:bold;">${cell.trapText}</div>`;
-                else { const t = tasks[cell.taskIdx]; if(t) h += `<p>${t.text}</p>`; }
-            }
+                if(cell.isTrap || cell.isCoop) h += `<div style="padding:10px; border:1px solid #ff007f; border-radius:10px;">${cell.trapText}</div>`;
+                else h += `<p>${tasks[cell.taskIdx]?.text || 'Рисуй любимого героя!'}</p>`;
+            } else h += `<p>🔒 Задание скрыто</p>`;
             document.getElementById('mText').innerHTML = h;
             document.getElementById('modal').style.display='block'; document.getElementById('overlay').style.display='block';
         }
 
-        async function adminBonus(cellIdx) {
-            const snap = await db.ref(`board/${cellIdx}`).once('value');
-            const cell = snap.val();
-            const t1 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            const t2 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            await db.ref(`board/${cellIdx}/ticket`).set(`${cell.ticket}, ${t1.snapshot.val()}, ${t2.snapshot.val()}`);
-            alert("Билеты начислены!");
-        }
-
         function updateTicketsTable() {
             const body = document.getElementById('tickets-body'), isAdmin = (currentUserId === ADMIN_ID);
-            body.innerHTML = allTicketsData.map(t => `<tr style="border-bottom:1px solid #eee">
-                <td style="padding:8px">${players[t.owner].n}</td>
-                <td style="padding:8px">🎟 ${t.ticket}</td>
-                ${isAdmin ? `<td style="padding:8px">
-                    <button onclick="db.ref('board/${t.cell-1}/excluded').set(!${t.excluded})">✅</button>
-                    ${t.isCoop ? `<button onclick="adminBonus(${t.cell-1})">⭐</button>` : ''}
-                </td>` : ''}
-            </tr>`).join('');
+            body.innerHTML = allTicketsData.map(t => `
+                <tr>
+                    <td style="color:${charColors[t.owner]}">${players[t.owner].n}</td>
+                    <td>🎟 ${t.ticket}</td>
+                    <td>
+                        ${isAdmin ? `<button onclick="db.ref('board/${t.cellIdx}/excluded').set(!${t.excluded})">${t.excluded?'❌':'✅'}</button>` : ''}
+                        ${isAdmin && t.isCoop ? `<button onclick="adminGiveBonus(${t.cellIdx})">⭐</button>` : ''}
+                    </td>
+                </tr>`).join('');
         }
 
-        function switchTab(id, el) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
-            document.getElementById(id).classList.add('tab-active');
-            document.querySelectorAll('.nav-bar button').forEach(b => b.classList.remove('active'));
-            el.classList.add('active');
+        async function adminGiveBonus(idx) {
+            const t1 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+            const t2 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+            const snap = await db.ref(`board/${idx}/ticket`).once('value');
+            await db.ref(`board/${idx}/ticket`).set(snap.val() + ", " + t1.snapshot.val() + ", " + t2.snapshot.val());
+            alert("Бонус +2 билета выдан!");
+        }
+
+        function updateTimer() {
+            if(window.tInt) clearInterval(window.tInt);
+            window.tInt = setInterval(() => {
+                const diff = roundEndTime - Date.now();
+                if (diff <= 0) {
+                    document.getElementById('round-timer').innerText = "ОКОНЧЕН";
+                    document.getElementById('dice-btn').disabled = true;
+                } else {
+                    const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
+                    document.getElementById('round-timer').innerText = `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+                    db.ref(`whitelist/${currentUserId}/last_round`).once('value', s => {
+                        document.getElementById('dice-btn').disabled = (s.val() === currentRoundNum);
+                        document.getElementById('dice-btn').innerText = (s.val() === currentRoundNum) ? "✅ Ход сделан" : "🎲 Бросить кубик";
+                    });
+                }
+            }, 1000);
         }
 
         async function adminStartNewRound() {
@@ -226,19 +291,17 @@
             let traps = []; for(let i=0; i<2; i++) traps.push(Math.floor(Math.random()*50));
             await db.ref('current_round').set({ number: (s.val()||0)+1, endTime: Date.now()+86400000, traps: traps });
             await db.ref('pending_coop').remove();
-            alert("Новый раунд!");
+            alert("Раунд №"+((s.val()||0)+1)+" запущен!");
         }
 
-        function updateTimer() {
-            setInterval(() => {
-                const diff = roundEndTime - Date.now();
-                db.ref(`whitelist/${currentUserId}/last_round`).once('value', s => {
-                    document.getElementById('dice-btn').disabled = (s.val() === currentRoundNum || diff <= 0);
-                });
-            }, 1000);
+        function switchTab(id, el) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
+            document.getElementById(id).classList.add('tab-active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active');
         }
-
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+        function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
         init();
     </script>
 </body>
