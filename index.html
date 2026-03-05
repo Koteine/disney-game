@@ -10,8 +10,6 @@
     <style>
         body { font-family: 'Comic Sans MS', cursive; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
         h1 { cursor: pointer; user-select: none; font-size: 24px; }
-        
-        /* Сетка теперь 5 колонок, но клетки чуть меньше для 50 штук */
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
         .cell { 
             width: 100%; aspect-ratio: 1 / 1; border: 1px solid #ddd; border-radius: 8px; 
@@ -19,25 +17,17 @@
             justify-content: center; transition: 0.2s; position: relative; font-weight: bold; font-size: 12px;
         }
         .target { border: 3px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 10px #ff007f; z-index: 10; }
-        
-        /* Цвета игроков */
         .p0, .p4, .p8 { background: #ffcdd2 !important; border-color: #f44336; } 
         .p1, .p5, .p9 { background: #e1f5fe !important; border-color: #03a9f4; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; border-color: #9c27b0; }
         .p3, .p7 { background: #e8f5e9 !important; border-color: #4caf50; }
-        
         .owner-tag { position: absolute; bottom: 1px; font-size: 7px; text-transform: uppercase; color: #333; width: 100%; text-align: center; pointer-events: none; white-space: nowrap; overflow: hidden; }
-        
         #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         #dice-btn:disabled { background: #ccc; cursor: not-allowed; }
-        
         .back-btn { background: white; border: 1px solid #ffcdd2; color: #d81b60; padding: 4px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; margin-bottom: 8px; font-weight: bold; }
-        
         #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
-        
         .btn-select { padding: 10px; margin: 4px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; width: 90%; max-width: 250px; font-size: 14px; display: inline-block; }
-        
         #admin-panel { display: none; margin: 30px auto 10px; padding: 10px; border: 2px dashed #ff007f; border-radius: 15px; max-width: 300px; }
         .admin-btn { background: #333; color: white; border: none; padding: 10px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; }
     </style>
@@ -52,187 +42,4 @@
         <button class="btn-select" onclick="setMe(1)">🖌️ Марсианин ищет синий</button>
         <button class="btn-select" onclick="setMe(2)">🦄 Краска вытекла</button>
         <button class="btn-select" onclick="setMe(3)">🍭 Паста «Красный жуть»</button>
-        <button class="btn-select" onclick="setMe(4)">🍆 Баклажан с претензией</button>
-        <button class="btn-select" onclick="setMe(5)">👿 Кусь за контур</button>
-        <button class="btn-select" onclick="setMe(6)">🌼 Квадратный корень из краски</button>
-        <button class="btn-select" onclick="setMe(7)">🐨 Крадущийся ленивец</button>
-        <button class="btn-select" onclick="setMe(8)">🔥 Графон на ультрах</button>
-        <button class="btn-select" onclick="setMe(9)">🌈 Пиксельный Мазок</button>
-        <button class="btn-select" onclick="setMe(10)">👀 Залипаю в контур</button>
-    </div>
-
-    <div id="game-ui" style="display:none;">
-        <p>Привет, <b id="my-name-display"></b>!</p>
-        <button class="back-btn" onclick="backToSetup()">🔄 Сменить персонажа</button>
-        <br>
-        <button id="dice-btn" onclick="roll()">🎲 Бросить кубик</button>
-        <p id="status">Нажми на кубик!</p>
-        <div class="grid" id="grid"></div>
-    </div>
-
-    <div id="admin-panel">
-        <p style="font-weight: bold; color: #ff007f; margin: 5px;">Админ-панель</p>
-        <button class="admin-btn" onclick="adminResetGame()">🚫 СБРОСИТЬ ВСЮ ИГРУ</button>
-    </div>
-
-    <div id="overlay"></div>
-    <div id="modal">
-        <h2 id="mTitle" style="margin-top:0; font-size: 20px;"></h2>
-        <p id="mText" style="font-size: 16px; color: #d81b60;"></p>
-        <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%;">Я ВЫПОЛНИЛА! ✅</button>
-    </div>
-
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-
-        const firebaseConfig = {
-            databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        const players = [
-            { n: "Межгалактический почеркушка", c: "p0" },
-            { n: "Марсианин ищет синий", c: "p1" },
-            { n: "Краска вытекла", c: "p2" },
-            { n: "Паста Красный жуть", c: "p3" },
-            { n: "Баклажан с претензией", c: "p4" },
-            { n: "Кусь за контур", c: "p5" },
-            { n: "Квадратный корень из краски", c: "p6" },
-            { n: "Крадущийся ленивец", c: "p7" },
-            { n: "Графон на ультрах", c: "p8" },
-            { n: "Пиксельный Мазок", c: "p9" },
-            { n: "Залипаю в контур", c: "p10" }
-        ];
-
-        // Добавлено 50 заданий
-        const tasks = [
-          const tasks = [
-            { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" },
-            { text: "Разгадаешь ребус?", img: "rebus2.png" },
-            { text: "Что-то на умном", img: "rebus3.png" },
-            { text: "Красиво, разноцветно", img: "rebus4.png" },
-            { text: "Бляяяяяяястяще", img: "rebus5.png" },
-            { text: "Может быть и такое", img: "rebus6.png" },
-            { text: Твой герой тонет что ли? Тогда почему он под водой? },
-            { text: Грибы.. Я вижу, что грибы повсюду },
-            { text: Мышек видишь? А они есть. Ну, уши точно вижу },
-            { text: Давай сделаем дорого-богато! Добавь блестяшек! }, // это 10 - ое задание
-            
-        ];
-
-        let myIndex = null;
-        let selectedCell = null;
-        const ADMIN_ID = 341995937;
-
-        const adminPanel = document.getElementById('admin-panel');
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id === ADMIN_ID) {
-            adminPanel.style.display = 'block';
-        }
-
-        let clicks = 0;
-        document.getElementById('game-title').onclick = () => {
-            clicks++;
-            if (clicks === 5) {
-                adminPanel.style.display = 'block';
-                alert("Админ-режим включен!");
-            }
-        };
-
-        function adminResetGame() {
-            if (confirm("Вы точно хотите полностью очистить игровое поле (50 клеток)?")) {
-                db.ref('board').set(null).then(() => {
-                    alert("Игра сброшена!");
-                    location.reload();
-                });
-            }
-        }
-
-        function setMe(idx) {
-            myIndex = idx;
-            document.getElementById('player-setup').style.display = 'none';
-            document.getElementById('game-ui').style.display = 'block';
-            document.getElementById('my-name-display').innerText = players[idx].n;
-        }
-
-        function backToSetup() {
-            if (selectedCell !== null) {
-                const prev = document.getElementById('cell-' + selectedCell);
-                if (prev) prev.classList.remove('target');
-                selectedCell = null;
-                document.getElementById('dice-btn').disabled = false;
-                document.getElementById('status').innerText = "Нажми на кубик!";
-            }
-            document.getElementById('game-ui').style.display = 'none';
-            document.getElementById('player-setup').style.display = 'block';
-        }
-
-        // Генерируем 50 клеток
-        const gridDiv = document.getElementById('grid');
-        for(let i=0; i<50; i++) {
-            let div = document.createElement('div');
-            div.className = 'cell';
-            div.id = 'cell-' + i;
-            div.innerHTML = `<div>${i+1}</div>`;
-            gridDiv.appendChild(div);
-        }
-
-        function roll() target.onclick = function() {
-                    const task = tasks[selectedCell];
-                    document.getElementById('mTitle').innerText = "Задание №" + (selectedCell + 1);
-                    
-                    // Проверяем: если задание — это объект с картинкой
-                    if (typeof task === 'object' && task !== null) {
-                        document.getElementById('mText').innerHTML = `
-                            <img src="${task.img}" style="width: 100%; max-width: 250px; border-radius: 12px; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;">
-                            <div style="text-align: center;">${task.text}</div>
-                        `;
-                    } else {
-                        // Если это обычная строка текста
-                        document.getElementById('mText').innerHTML = `<div style="text-align: center; padding: 20px;">${task}</div>`;
-                    }
-                    
-                    document.getElementById('modal').style.display = 'block';
-                    document.getElementById('overlay').style.display = 'block';
-                };
-
-        function confirmTask() {
-            db.ref('board/' + selectedCell).set({
-                owner: myIndex,
-                name: players[myIndex].n
-            });
-            
-            document.getElementById('modal').style.display = 'none';
-            document.getElementById('overlay').style.display = 'none';
-            document.getElementById('dice-btn').disabled = false;
-            document.getElementById('status').innerText = "Клетка захвачена!";
-            document.getElementById('cell-' + selectedCell).classList.remove('target');
-            document.getElementById('cell-' + selectedCell).onclick = null;
-            selectedCell = null;
-        }
-
-        db.ref('board').on('value', (snap) => {
-            const data = snap.val() || {};
-            for(let i=0; i<50; i++) {
-                const cell = document.getElementById('cell-' + i);
-                if (!cell) continue;
-                if (!data[i]) {
-                    cell.className = 'cell';
-                    cell.innerHTML = `<div>${i+1}</div>`;
-                } else {
-                    const p = players[data[i].owner];
-                    if (p) {
-                        cell.className = 'cell ' + p.c;
-                        cell.innerHTML = `<div>${parseInt(i)+1}</div><div class="owner-tag">${p.n.split(' ')[0]}</div>`;
-                        cell.onclick = null;
-                    }
-                }
-            }
-        });
-    </script>
-</body>
-</html>
-
-
+        <button class="btn-select" onclick="setMe
