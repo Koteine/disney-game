@@ -8,15 +8,16 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
-        body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; }
+        body { font-family: 'Comic Sans MS', cursive, sans-serif; background: #fff5f8; text-align: center; color: #444; margin: 0; padding: 10px; -webkit-tap-highlight-color: transparent; }
         .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; max-width: 500px; margin: 15px auto; }
         .cell { width: 100%; aspect-ratio: 1/1; border: 1px solid #ddd; border-radius: 8px; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; font-weight: bold; font-size: 12px; }
         .target { border: 3px solid #ff007f !important; transform: scale(1.05); cursor: pointer; background: #fff0f5; box-shadow: 0 0 10px #ff007f; z-index: 10; }
         .p0, .p4, .p8 { background: #ffcdd2 !important; } .p1, .p5, .p9 { background: #e1f5fe !important; }
         .p2, .p6, .p10 { background: #f3e5f5 !important; } .p3, .p7 { background: #e8f5e9 !important; }
-        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; }
-        #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; }
-        #dice-btn:disabled { background: #ccc; }
+        .owner-tag { position: absolute; bottom: 1px; font-size: 7px; width: 100%; text-align: center; pointer-events: none; }
+        #dice-btn { padding: 12px 25px; font-size: 18px; border-radius: 50px; border: none; background: #ff007f; color: white; cursor: pointer; margin: 10px; box-shadow: 0 4px 0 #d81b60; }
+        #dice-btn:active { transform: translateY(2px); box-shadow: none; }
+        #dice-btn:disabled { background: #ccc; box-shadow: none; }
         #modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); z-index: 100; width: 85%; max-width: 300px; }
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 90; }
         .btn-select { padding: 10px; margin: 4px; border: 2px solid #ffcdd2; border-radius: 10px; background: white; cursor: pointer; width: 90%; max-width: 250px; font-weight: bold; }
@@ -46,8 +47,8 @@
 
     <div id="overlay"></div>
     <div id="modal">
-        <h2 id="mTitle" style="font-size:18px;"></h2>
-        <div id="mContent" style="margin: 15px 0;"><p id="mText"></p></div>
+        <h2 id="mTitle" style="font-size:18px; margin-top:0;"></h2>
+        <div id="mContent" style="margin: 15px 0; max-height: 300px; overflow-y: auto;"><p id="mText"></p></div>
         <button onclick="confirmTask()" style="padding:12px; background:#4caf50; color:white; border:none; border-radius:10px; cursor:pointer; width:100%; font-weight:bold;">Я ВЫПОЛНИЛА! ✅</button>
     </div>
 
@@ -65,7 +66,6 @@
             { n: "Залипаю в контур", c: "p10" }
         ];
 
-        // ТВОЙ ТЕКСТ БЕЗ ИЗМЕНЕНИЙ (только исправлены запятые в массиве)
         const tasks = [
             { text: "Ну ка, гений, что же здесь?!", img: "rebus1.png" },
             { text: "Разгадаешь ребус?", img: "rebus2.png" },
@@ -116,13 +116,12 @@
             { text: "Я уколола палец о веретено, И небо для царства в тот миг потемнело. Три феи хранили мой сон вековой, Пока не пришел мой спаситель за мной." },
             { text: "Я был человеком, но стал я рабом, Свой голос отдал, чтоб не быть бедняком. Я тенью хожу за своим господином, И в лампе застрял я, как в склепе едином." },
             { text: "Мои волосы — рыжий безумный костер, Мой нрав непокорный, и глаз мой остер." },
-            { text: "Я был эгоистом, но стал я... ламой, И жизнь моя стала сплошною драмой." },
+            { text: "Я был эгоистом, но стал я... ламой, И жизнь моя стала сплошною драмой." }
         ];
 
         let myIndex = null;
         let selectedCell = null;
 
-        // Генерация кнопок выбора
         const setupDiv = document.getElementById('setup-buttons');
         players.forEach((p, idx) => {
             const btn = document.createElement('button');
@@ -132,7 +131,6 @@
             setupDiv.appendChild(btn);
         });
 
-        // Создание сетки (50)
         const gridDiv = document.getElementById('grid');
         for(let i=0; i<50; i++) {
             let div = document.createElement('div');
@@ -188,7 +186,7 @@
             for(let i=0; i<50; i++) {
                 const cell = document.getElementById('cell-' + i);
                 if (!cell) continue;
-                if (data[i]) {
+                if (data[i] !== undefined && data[i].owner !== undefined) {
                     const p = players[data[i].owner];
                     if (p) {
                         cell.className = 'cell ' + p.c;
@@ -211,6 +209,3 @@
     </script>
 </body>
 </html>
-
-
-
