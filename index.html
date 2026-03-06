@@ -64,10 +64,14 @@
         .inventory-title { font-size: 11px; color: var(--p-pink); font-weight: bold; margin-bottom: 6px; }
         .inventory-row { display: flex; gap: 6px; flex-wrap: wrap; }
         .inv-chip { background:#f8f8f8; border:1px solid #eee; border-radius:999px; padding:4px 8px; font-size:12px; }
-        .news-title { font-size: 11px; color: var(--p-pink); font-weight: bold; margin-bottom: 5px; }
-        .news-ticker { overflow: hidden; white-space: nowrap; font-size: 12px; color: #444; }
-        .news-track { display: inline-block; padding-left: 100%; animation: tickerMove 18s linear infinite; }
-        @keyframes tickerMove { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+        .news-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom: 6px; }
+        .news-title { font-size: 11px; color: var(--p-pink); font-weight: bold; margin: 0; }
+        .news-toggle-btn { border:1px solid #f8bbd0; border-radius:999px; background:#fff; color:#c2185b; font-size:11px; padding:3px 10px; }
+        .news-list { max-height: 0; overflow: hidden; transition: max-height 0.22s ease; }
+        .news-list.expanded { max-height: 150px; overflow-y: auto; }
+        .news-item { font-size:12px; color:#444; padding:4px 0; border-bottom:1px dashed #f1f1f1; }
+        .news-item:last-child { border-bottom:none; }
+        .news-preview { font-size:12px; color:#666; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #eee; z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 10px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -152,8 +156,12 @@
                 <div id="round-timer">0д 00:00:00</div>
             </div>
             <div class="news-box">
-                <div class="news-title">📰 Лента событий</div>
-                <div class="news-ticker"><div id="news-track" class="news-track">Пока новостей нет — откройте первую клетку! ✨</div></div>
+                <div class="news-header">
+                    <div class="news-title">📰 Лента событий</div>
+                    <button id="news-toggle-btn" class="news-toggle-btn" onclick="toggleNewsPanel()">Развернуть</button>
+                </div>
+                <div id="news-preview" class="news-preview">Пока новостей нет — откройте первую клетку! ✨</div>
+                <div id="news-list" class="news-list"></div>
             </div>
             <div class="inventory-box">
                 <div class="inventory-title">🎒 Рюкзачок</div>
@@ -219,7 +227,7 @@
                 <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
-                <button onclick="adminShuffleNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin-top:8px;">🔀 ПЕРЕМЕШАТЬ НИКНЕЙМЫ ВСЕХ</button>
+                <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin-top:8px;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
             </div>
             <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
             <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
@@ -239,7 +247,7 @@
                 <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
                 <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
                 <p><b>11. 🎆 Волшебная палочка:</b> Получив палочку, выбери игрока, который ещё не бросал кубик — его задание станет проще.</p>
-                <p><b>12. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". После подтверждения билетик за этот раунд не начисляется.</p>
+                <p><b>12. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". Можно сдаться не чаще <b>1 раза за каждые 3 раунда</b> (минимум 1 раз за игру). Если лимит исчерпан и снова нажать "Сдаюсь", можно подтвердить выход из игры: в текущем раунде билетик не начислится, а в следующих раундах участие будет недоступно.</p>
                 <p><b>13. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
 
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
@@ -270,8 +278,18 @@
 
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
-        const charColors = ["#FFADAD","#FFD6A5","#FDFFB6","#CAFFBF","#9BF6FF","#A0C4FF","#BDB2FF","#FFC6FF","#FFFFFC","#FF8585","#FFB347","#F0E68C","#90EE90","#87CEFA","#6495ED","#9370DB","#FF69B4","#F5F5DC","#CD5C5C","#FFA500","#EEDD82","#3CB371","#00CED1","#4169E1","#8A2BE2","#C71585","#D3D3D3","#FA8072","#FF8C00","#BDB76B","#2E8B57","#20B2AA","#1E90FF","#9400D3","#FF1493","#A9A9A9","#E9967A","#DAA520","#8FBC8F","#008080","#0000CD","#800080","#DC143C","#808080","#B0C4DE","#FF4500","#556B2F","#008B8B","#000080","#4B0082"];
-        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"}];
+        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
+
+        function generateBrightColors(count) {
+            const palette = [];
+            for (let i = 0; i < count; i++) {
+                const hue = Math.round((i * 360) / Math.max(1, count));
+                palette.push(`hsl(${hue}, 85%, 42%)`);
+            }
+            return palette;
+        }
+
+        const charColors = generateBrightColors(players.length);
 
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
         let shownMagicLinks = {};
@@ -793,17 +811,19 @@
             });
 
             if (newsFeedRef) newsFeedRef.off();
-            newsFeedRef = db.ref('news_feed').limitToLast(15);
+            newsFeedRef = db.ref('news_feed').limitToLast(30);
             newsFeedRef.on('value', snap => {
                 const items = [];
                 snap.forEach(item => {
                     const v = item.val();
                     if (v?.text) items.push(v.text);
                 });
-                const text = items.length
-                    ? items.reverse().join('   ✦   ')
-                    : 'Пока новостей нет — откройте первую клетку! ✨';
-                document.getElementById('news-track').innerText = text;
+                const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
+
+                const preview = document.getElementById('news-preview');
+                const list = document.getElementById('news-list');
+                preview.innerText = ordered[0] || 'Пока новостей нет — откройте первую клетку! ✨';
+                list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
             });
 
             db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
@@ -1035,6 +1055,44 @@
             const cell = cellSnap.val();
             if (!cell || cell.userId !== currentUserId) return alert('Сдаться можно только в своём задании.');
             if (cell.excluded) return alert('Ты уже сдался(ась) в этой клетке.');
+
+            const roundSnap = await db.ref('current_round').once('value');
+            const roundData = roundSnap.val() || {};
+            const totalRounds = Math.max(1, Number(roundData.totalRounds || roundData.plannedRounds || roundData.number || currentRoundNum || 1));
+            const surrenderLimit = Math.max(1, Math.floor(totalRounds / 3));
+
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const usedSurrenders = Object.values(board)
+                .filter(Boolean)
+                .filter(c => c.userId === currentUserId && c.excluded)
+                .length;
+
+            if (usedSurrenders >= surrenderLimit) {
+                const confirmedExit = await askForcedSurrenderExit();
+                if (!confirmedExit) return;
+
+                await db.ref(`board/${cellIdx}`).update({ excluded: true, ticket: '' });
+                await db.ref(`whitelist/${currentUserId}`).update({
+                    isEliminated: true,
+                    eliminatedAtRound: currentRoundNum,
+                    eliminatedAt: Date.now(),
+                    eliminationReason: 'forced_surrender'
+                });
+                if (cell.isInkChallenge) {
+                    await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, surrendered: true });
+                }
+                if (cell.isWandBlessing) {
+                    await db.ref(`whitelist/${currentUserId}/wand_blessing`).update({ isResolved: true, surrendered: true });
+                }
+
+                await postNews(`🏳️ ${players[myIndex].n} подтвердил(а) выход из игры: за раунд билет не начисляется, дальнейшие раунды недоступны.`);
+                alert('Ты покидаешь игру. Билет за текущий раунд не начислен, но ранее полученные билетики сохранены.');
+                const updated = await db.ref(`board/${cellIdx}`).once('value');
+                showCell(cellIdx, updated.val());
+                return;
+            }
+
             if (!confirm('Сдаёшься в этом задании?')) return;
             if (!confirm('Точно-точно?')) return;
 
@@ -1051,6 +1109,44 @@
             showCell(cellIdx, updated.val());
         }
 
+        function askForcedSurrenderExit() {
+            return new Promise(resolve => {
+                const existing = document.getElementById('forced-surrender-dialog');
+                if (existing) existing.remove();
+
+                const dialog = document.createElement('div');
+                dialog.id = 'forced-surrender-dialog';
+                dialog.style.position = 'fixed';
+                dialog.style.inset = '0';
+                dialog.style.background = 'rgba(0,0,0,0.45)';
+                dialog.style.display = 'flex';
+                dialog.style.alignItems = 'center';
+                dialog.style.justifyContent = 'center';
+                dialog.style.zIndex = '2200';
+                dialog.innerHTML = `
+                    <div style="width:90%; max-width:420px; background:#fff; border-radius:16px; padding:16px; box-shadow:0 8px 28px rgba(0,0,0,0.25); text-align:center;">
+                        <div style="font-size:16px; font-weight:700; margin-bottom:12px; color:#212121;">Точно хочешь сдаться? После подтверждения ты покинешь игру</div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <button id="forced-surrender-yes" class="admin-btn" style="margin:0; background:#d32f2f;">Да, сдаюсь</button>
+                            <button id="forced-surrender-no" class="admin-btn" style="margin:0; background:#757575;">Нет, останусь</button>
+                        </div>
+                    </div>
+                `;
+
+                const cleanup = result => {
+                    dialog.remove();
+                    resolve(result);
+                };
+
+                dialog.addEventListener('click', e => {
+                    if (e.target === dialog) cleanup(false);
+                });
+                document.body.appendChild(dialog);
+                document.getElementById('forced-surrender-yes').onclick = () => cleanup(true);
+                document.getElementById('forced-surrender-no').onclick = () => cleanup(false);
+            });
+        }
+
         function postNews(text) {
             if (!text) return;
             return db.ref('news_feed').push({
@@ -1058,6 +1154,15 @@
                 round: currentRoundNum,
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
+        }
+
+        function toggleNewsPanel() {
+            const list = document.getElementById('news-list');
+            const btn = document.getElementById('news-toggle-btn');
+            if (!list || !btn) return;
+
+            const isExpanded = list.classList.toggle('expanded');
+            btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
         }
 
         function extractTicketNumbers(ticketValue) {
@@ -1171,13 +1276,24 @@
                     return;
                 }
 
-                const last = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
-                btn.disabled = (last.val() === currentRoundNum);
+                const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
+                const userState = userStateSnap.val() || {};
+                if (userState.isEliminated) {
+                    btn.disabled = true;
+                    btn.innerText = "🚫 Ты выбыл(а) из игры";
+                    return;
+                }
+
+                btn.disabled = (userState.last_round === currentRoundNum);
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
             }, 1000);
         }
 
         async function roll() {
+            const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
+            const userState = userStateSnap.val() || {};
+            if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
+
             const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
             const roundSnap = await db.ref('current_round').once('value'), rData = roundSnap.val();
             let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
@@ -1571,9 +1687,9 @@
             document.getElementById('new-user-id').value = "";
         }
 
-        async function adminShuffleNicknames() {
+        async function adminReplaceAllNicknames() {
             if (currentUserId !== ADMIN_ID) return;
-            if (!confirm('Случайно назначить всем игрокам новые никнеймы из полного пула?')) return;
+            if (!confirm('Заменить всем игрокам никнеймы на новые случайные из полного пула?')) return;
 
             const snap = await db.ref('whitelist').once('value');
             const users = [];
@@ -1596,7 +1712,7 @@
             });
 
             await db.ref().update(updates);
-            alert('Никнеймы всех игроков успешно перемешаны.');
+            alert('Никнеймы всех игроков успешно заменены.');
         }
 
       function syncAdminList() {
@@ -1638,7 +1754,20 @@
         }
 
         function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
-        function adminResetRounds() { if(confirm("Сбросить?")) { db.ref('current_round').set({ number: 1, endTime: Date.now() + 3600000 }); location.reload(); } }
+        async function adminResetRounds() {
+            if (!confirm("Сбросить раунды к началу? Игра не начнется, пока не нажмешь \"Запустить раунд\".")) return;
+            await db.ref('current_round').set({
+                number: 0,
+                endTime: 0,
+                traps: [],
+                magicCell: null,
+                miniGameCell: null,
+                magnetCell: null,
+                itemCells: {}
+            });
+            alert('Раунды сброшены. Нажми «Запустить раунд», чтобы начать игру с первого раунда.');
+            location.reload();
+        }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
         async function adminTriggerSpin() { if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет работ!"); await db.ref('wheel_event').set({ rotation: 3600 + Math.floor(Math.random()*3600), timestamp: Date.now() }); }
 
@@ -1658,5 +1787,3 @@
     </script>
 </body>
 </html>
-
-
