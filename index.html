@@ -246,12 +246,13 @@
                 <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
                 <p><b>6. 👯 Тянет к тебе как магнитом:</b> В каждом раунде есть 1 такая клетка. Попав на неё, ты получаешь задание случайного игрока, который уже получил любое задание, кроме механики магической связи.</p>
                 <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 2 мини-игры на случайных клетках: пятнашки 5×5 и «Словесный скетч». В «Словесном скетче» нужно угадать слово из списка за 3 попытки.  При успехе вы получаете кодовое слово и билет; при ошибке после 3 попыток — без билета и с пропуском раунда.</p>
-                <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 3 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b> и <b>Волшебной палочкой 🎆</b>.</p>
+                <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 4 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b>, <b>Волшебной палочкой 🎆</b> и <b>Лупой 🔎</b>.</p>
                 <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
                 <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
                 <p><b>11. 🎆 Волшебная палочка:</b> Получив палочку, выбери игрока, который ещё не бросал кубик — его задание станет проще.</p>
-                <p><b>12. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". Можно сдаться не чаще <b>1 раза за каждые 3 раунда</b> (минимум 1 раз за игру). Если лимит исчерпан и снова нажать "Сдаюсь", можно подтвердить выход из игры: в текущем раунде билетик не начислится, а в следующих раундах участие будет недоступно.</p>
-                <p><b>13. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
+                <p><b>12. 🔎 Лупа:</b> Даёт возможность один раз за раунд посмотреть задание в выбранной свободной обычной ячейке и решить: «Беру» (пересесть на новую клетку, освободив прежнюю) или «Не беру» (остаться на текущей клетке). В обоих случаях Лупа сгорает.</p>
+                <p><b>13. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". Можно сдаться не чаще <b>1 раза за каждые 3 раунда</b> (минимум 1 раз за игру). Если лимит исчерпан и снова нажать "Сдаюсь", можно подтвердить выход из игры: в текущем раунде билетик не начислится, а в следующих раундах участие будет недоступно.</p>
+                <p><b>14. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
 
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
                 <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
@@ -304,7 +305,7 @@
         let inventoryRef = null;
         let challengeRef = null;
         let wandBlessingRef = null;
-        let myInventory = { goldenPollen: 0, inkSaboteur: 0 };
+        let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
         let myInkChallenge = null;
         let myWandBlessing = null;
         let allSubmissions = [];
@@ -312,7 +313,8 @@
         const itemTypes = {
             goldenPollen: { emoji: "🎇", name: "Золотая пыльца" },
             inkSaboteur: { emoji: "🫧", name: "Клякса-диверсант" },
-            magicWand: { emoji: "🎆", name: "Волшебная палочка" }
+            magicWand: { emoji: "🎆", name: "Волшебная палочка" },
+            magnifier: { emoji: "🔎", name: "Лупа" }
         };
 
         const wandBlessingTasks = [
@@ -634,6 +636,7 @@
             const chips = [];
             if ((myInventory.goldenPollen || 0) > 0) chips.push(`<span class="inv-chip">🎇 Золотая пыльца ×${myInventory.goldenPollen}</span>`);
             if ((myInventory.inkSaboteur || 0) > 0) chips.push(`<span class="inv-chip">🫧 Клякса-диверсант ×${myInventory.inkSaboteur}</span>`);
+            if ((myInventory.magnifier || 0) > 0) chips.push(`<span class="inv-chip">🔎 Лупа ×${myInventory.magnifier}</span>`);
 
             row.innerHTML = chips.length ? chips.join('') : '<span class="inv-chip">Пусто</span>';
         }
@@ -646,6 +649,148 @@
         async function consumeInventoryItem(itemKey, amount = 1) {
             const invRef = db.ref(`whitelist/${currentUserId}/inventory/${itemKey}`);
             await invRef.transaction(v => Math.max((v || 0) - amount, 0));
+        }
+
+        function isRegularCellForMagnifier(cellIdx, roundData, boardObj) {
+            if (boardObj[cellIdx]) return false;
+            const itemCells = roundData?.itemCells || {};
+            if (roundData?.magicCell === cellIdx) return false;
+            if (roundData?.miniGameCell === cellIdx) return false;
+            if (roundData?.wordSketchCell === cellIdx) return false;
+            if (roundData?.magnetCell === cellIdx) return false;
+            if (itemCells[cellIdx]) return false;
+            if (roundData?.traps && roundData.traps.includes(cellIdx)) return false;
+            return true;
+        }
+
+        async function showMagnifierChoiceDialog(taskText) {
+            return new Promise(resolve => {
+                const existing = document.getElementById('magnifier-choice-dialog');
+                if (existing) existing.remove();
+
+                const dialog = document.createElement('div');
+                dialog.id = 'magnifier-choice-dialog';
+                dialog.style.position = 'fixed';
+                dialog.style.inset = '0';
+                dialog.style.background = 'rgba(0,0,0,0.45)';
+                dialog.style.display = 'flex';
+                dialog.style.alignItems = 'center';
+                dialog.style.justifyContent = 'center';
+                dialog.style.zIndex = '2300';
+                dialog.innerHTML = `
+                    <div style="width:min(92vw, 430px); background:#fff; border-radius:14px; padding:14px; text-align:left; box-shadow:0 8px 28px rgba(0,0,0,0.22);">
+                        <div style="font-weight:bold; color:#4a148c; margin-bottom:8px;">🔎 Лупа показала задание</div>
+                        <div style="font-size:14px; color:#333; line-height:1.45; max-height:38vh; overflow:auto; white-space:pre-wrap;">${taskText}</div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;">
+                            <button id="magnifier-take" style="border:1px solid #2e7d32; background:#e8f5e9; color:#1b5e20; border-radius:10px; padding:10px; font-weight:bold;">✅ Беру</button>
+                            <button id="magnifier-skip" style="border:1px solid #8d6e63; background:#efebe9; color:#4e342e; border-radius:10px; padding:10px; font-weight:bold;">↩️ Не беру</button>
+                        </div>
+                    </div>
+                `;
+
+                const finish = (result) => {
+                    dialog.remove();
+                    resolve(result);
+                };
+                dialog.addEventListener('click', (e) => {
+                    if (e.target === dialog) finish(false);
+                });
+                document.body.appendChild(dialog);
+                document.getElementById('magnifier-take').onclick = () => finish(true);
+                document.getElementById('magnifier-skip').onclick = () => finish(false);
+            });
+        }
+
+        async function activateMagnifier(sourceCellIdx) {
+            if ((myInventory.magnifier || 0) <= 0) return alert('В рюкзаке нет Лупы.');
+
+            const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
+            const userState = userStateSnap.val() || {};
+            if ((userState.magnifier_used_round || 0) === currentRoundNum) {
+                return alert('В этом раунде Лупа уже использована.');
+            }
+
+            const srcSnap = await db.ref(`board/${sourceCellIdx}`).once('value');
+            const sourceCell = srcSnap.val();
+            if (!sourceCell || sourceCell.userId !== currentUserId) return alert('Лупу можно применить только в своей клетке.');
+            if (sourceCell.excluded) return alert('Нельзя применить Лупу в сданной клетке.');
+            if (sourceCell.isTrap || sourceCell.isMagic || sourceCell.isMiniGame || sourceCell.isWordSketch || sourceCell.isInkChallenge || sourceCell.isWandBlessing || sourceCell.isMagnet) {
+                return alert('Лупа работает только для обычных заданий.');
+            }
+
+            const [boardSnap, roundSnap, userTasksSnap] = await Promise.all([
+                db.ref('board').once('value'),
+                db.ref('current_round').once('value'),
+                db.ref(`whitelist/${currentUserId}/used_tasks`).once('value')
+            ]);
+            const board = boardSnap.val() || {};
+            const rData = roundSnap.val() || {};
+            const used = userTasksSnap.val() || [];
+            const availTasks = tasks.map((_, i) => i).filter(i => !used.includes(i) && i !== sourceCell.taskIdx);
+            if (!availTasks.length) return alert('Нет доступных новых заданий для Лупы.');
+
+            const candidates = [];
+            for (let i = 0; i < 50; i++) if (isRegularCellForMagnifier(i, rData, board)) candidates.push(i);
+            if (!candidates.length) return alert('Нет свободных обычных клеток для просмотра через Лупу.');
+
+            const answer = prompt(`🔎 Выбери номер свободной обычной клетки для просмотра:
+${candidates.map(v => v + 1).join(', ')}`);
+            const targetCellIdx = Number(answer) - 1;
+            if (!Number.isInteger(targetCellIdx) || !candidates.includes(targetCellIdx)) {
+                return alert('Нужно ввести корректный номер свободной обычной клетки.');
+            }
+
+            const previewTaskIdx = availTasks[Math.floor(Math.random() * availTasks.length)];
+            const previewText = tasks[previewTaskIdx]?.text || 'Обычное задание';
+            const takeCell = await showMagnifierChoiceDialog(previewText);
+
+            await consumeInventoryItem('magnifier', 1);
+            await db.ref(`whitelist/${currentUserId}/magnifier_used_round`).set(currentRoundNum);
+
+            if (!takeCell) {
+                await postNews(`🔎 ${players[myIndex].n} использовал(а) Лупу и отказался(ась) от просмотренной клетки.`);
+                alert('Лупа сгорела. Ты остаёшься на своей текущей клетке.');
+                return;
+            }
+
+            const nextCell = {
+                ...sourceCell,
+                taskIdx: previewTaskIdx,
+                itemType: null,
+                inkPendingTicket: '',
+                inkUsed: false,
+                isGold: false,
+                isTrap: false,
+                isMagic: false,
+                isMiniGame: false,
+                isWordSketch: false,
+                isInkChallenge: false,
+                isWandBlessing: false,
+                isMagnet: false,
+                trapText: '',
+                magicLinkId: null,
+                miniGameTiles: null,
+                miniGameWon: false,
+                miniGameFailed: false,
+                miniGameCodeWord: '',
+                wordSketchAnswer: '',
+                wordSketchGuess: '',
+                wordSketchAttempts: [],
+                wordSketchAttemptCount: 0,
+                wordSketchGuessed: false,
+                wordSketchFailed: false,
+                wandOptionLabel: ''
+            };
+
+            const updates = {};
+            updates[`board/${targetCellIdx}`] = nextCell;
+            updates[`board/${sourceCellIdx}`] = null;
+            updates[`whitelist/${currentUserId}/used_tasks`] = [...used, previewTaskIdx];
+            await db.ref().update(updates);
+
+            await postNews(`🔎 ${players[myIndex].n} применил(а) Лупу и пересел(а) на клетку №${targetCellIdx + 1}.`);
+            alert('Отлично! Ты забрал(а) новое задание через Лупу. Старая клетка освобождена.');
+            showCell(targetCellIdx, nextCell);
         }
 
         function getEligibleSabotageTargets(whitelistObj) {
@@ -972,7 +1117,7 @@
                     d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell?.isMiniGame ? ' minigame' : '') + (cell?.isWordSketch ? ' minigame' : '') + (cell?.isMagnet ? ' magnet' : '') + (cell?.itemType ? ' item' : '') + (cell?.isWandBlessing ? ' item' : '') + (cell && cell.excluded ? ' excluded' : '');
                     if (cell) {
                         const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
-                        d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isWordSketch ? '🧩' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (i + 1))) ))))))) + `<span>🎟${cell.ticket}</span>`;
+                        d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isWordSketch ? '🧩' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (cell.itemType === 'magnifier' ? '🔎' : (i + 1)))) ))))))) + `<span>🎟${cell.ticket}</span>`;
                         liveBoardTicketsData.push({ ...cell, cell: i+1, cellIdx: i, isArchived: false });
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
@@ -995,7 +1140,7 @@
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
             inventoryRef.on('value', snap => {
-                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0 };
+                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0 };
                 renderInventory();
             });
 
@@ -1612,6 +1757,8 @@
                     alert(`Я - это ты, ты - это я. Будь как ${sourceName}, рисуй то же самое`);
                     await postNews(`👯 ${players[myIndex].n} попал(а) на магнитную клетку и получил(а) задание игрока ${sourceName}.`);
                 }
+            } else if (itemType === 'magnifier') {
+                taskIdx = avail[Math.floor(Math.random()*avail.length)];
             } else if (itemType) {
                 // В предметной клетке нет обычного задания: либо предмет, либо механика, либо задание.
             } else if (!isGold) {
@@ -1688,6 +1835,8 @@
                     h += `<button onclick="activateInkSaboteur(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🫧 Выбрать игрока для кляксы</button>`;
                 } else if (cell.itemType === 'magicWand') {
                     h += `<div style="padding:12px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:center; color:#5e35b1; font-weight:bold;">Ты просто прелесть! Твоё кодовое слово "Фея", рисуй что дорого твоему добродушному сердцу!</div>`;
+                } else if (cell.itemType === 'magnifier') {
+                    h += `<div style="padding:12px; border:2px solid #3949ab; border-radius:10px; background:#eef2ff; text-align:left; color:#1a237e; font-weight:600;">🔎 Ты нашёл(ла) Лупу! Это обычное задание + предмет в рюкзак. Лупа позволяет посмотреть задание в выбранной свободной обычной клетке и решить: <b>«Беру»</b> или <b>«Не беру»</b>. При «Беру» ты пересаживаешься на новую клетку, а эта клетка освобождается.</div>`;
                 } else if (cell.isMagnet) {
                     h += `<div style="padding:12px; border:2px dashed #ec407a; border-radius:10px; background:#fff1f7; text-align:left;">
                         <div style="font-weight:bold; margin-bottom:8px; color:#ad1457;">Я - это ты, ты - это я. Повтори задание выбранного игрока:</div>
@@ -1728,6 +1877,9 @@
 
                 if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.goldenPollen || 0) > 0) {
                     h += `<button onclick="activateGoldenPollen(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🎇 Использовать Золотую пыльцу (x${myInventory.goldenPollen})</button>`;
+                }
+                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.magnifier || 0) > 0) {
+                    h += `<button onclick="activateMagnifier(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#3949ab;">🔎 Использовать Лупу (x${myInventory.magnifier})</button>`;
                 }
 
                 if (isOwner && !cell.excluded) {
@@ -1852,7 +2004,7 @@
     const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
 
     const itemCells = {};
-    const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand'];
+    const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier'];
     for (const itemType of itemPool) {
         if (!free.length) break;
         const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
@@ -1883,7 +2035,7 @@
         itemCells
     });
 
-    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 3 клетки с предметами.`);
+    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 4 клетки с предметами.`);
 
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
@@ -2085,7 +2237,8 @@
 
             whitelistSnap.forEach(userSnap => {
                 const uid = userSnap.key;
-                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0 };
+                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
+                updates[`whitelist/${uid}/magnifier_used_round`] = 0;
                 updates[`whitelist/${uid}/last_round`] = 0;
                 updates[`whitelist/${uid}/used_tasks`] = [];
                 updates[`whitelist/${uid}/isEliminated`] = false;
