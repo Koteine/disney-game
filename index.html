@@ -116,31 +116,31 @@
         .row-excluded { background: #f0f0f0; color: #aaa; text-decoration: line-through; }
 
         .wheel-wrap { position: relative; width: 320px; margin: 0 auto 10px; padding-top: 16px; }
-        #wheel-canvas { transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.18)); }
+        #wheel-canvas { transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.28)); }
         .wheel-pointer {
             position: absolute;
-            top: -2px;
+            top: -6px;
             left: 50%;
             transform: translateX(-50%);
-            width: 22px;
-            height: 32px;
-            background: linear-gradient(180deg,#ff1744,#b71c1c);
-            clip-path: polygon(50% 100%, 0 0, 100% 0);
-            border-radius: 2px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            width: 34px;
+            height: 48px;
+            background: radial-gradient(circle at 35% 30%, #fff3c4 0%, #f8d978 35%, #d9a431 85%);
+            clip-path: polygon(50% 100%, 8% 34%, 8% 22%, 13% 10%, 22% 3%, 35% 0%, 65% 0%, 78% 3%, 87% 10%, 92% 22%, 92% 34%);
+            border: 1px solid #d09a2b;
+            box-shadow: 0 5px 12px rgba(0,0,0,0.32);
             z-index: 3;
         }
         .wheel-pointer::before {
             content:'';
             position:absolute;
             left:50%;
-            top:-10px;
+            top:-13px;
             transform:translateX(-50%);
-            width:16px;
-            height:16px;
+            width:18px;
+            height:18px;
             border-radius:50%;
-            background:#fff;
-            border:2px solid #d81b60;
+            background: radial-gradient(circle at 35% 30%, #fff7dc 0%, #e9c268 40%, #ca9325 100%);
+            border:1px solid #be8b21;
         }
         .winner-toast {
             position: fixed;
@@ -2592,7 +2592,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
             const ctx = canvas.getContext('2d');
             const tickets = getActiveTicketsForWheel();
             ctx.clearRect(0, 0, 280, 280);
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = '#f2f2f2';
             ctx.fillRect(0, 0, 280, 280);
 
             if (!tickets.length) {
@@ -2609,52 +2609,60 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 const startA = i * angle;
                 const endA = (i + 1) * angle;
 
-                const grad = ctx.createLinearGradient(0, 0, 280, 280);
-                grad.addColorStop(0, charColors[t.owner] || '#ff4081');
-                grad.addColorStop(1, '#ffffff');
-
                 ctx.beginPath();
                 ctx.moveTo(140, 140);
-                ctx.arc(140, 140, 130, startA, endA);
+                ctx.arc(140, 140, 122, startA, endA);
                 ctx.closePath();
-                ctx.fillStyle = grad;
+                ctx.fillStyle = (i % 2 === 0) ? '#ef1e1e' : '#ffffff';
                 ctx.fill();
 
                 ctx.beginPath();
                 ctx.moveTo(140, 140);
-                ctx.lineTo(140 + 130 * Math.cos(startA), 140 + 130 * Math.sin(startA));
-                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-                ctx.lineWidth = 1.4;
+                ctx.lineTo(140 + 122 * Math.cos(startA), 140 + 122 * Math.sin(startA));
+                ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+                ctx.lineWidth = 1;
                 ctx.stroke();
 
                 ctx.save();
                 ctx.translate(140, 140);
                 ctx.rotate(startA + angle / 2);
-                ctx.fillStyle = '#212121';
+                ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#b71c1c';
                 ctx.font = segs > 120 ? 'bold 8px Arial' : 'bold 10px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(t.num, 98, 3);
+                ctx.fillText(t.num, 92, 3);
                 ctx.restore();
             });
 
-            ctx.beginPath();
-            ctx.arc(140, 140, 132, 0, Math.PI * 2);
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 4;
-            ctx.stroke();
+            const rimGradOuter = ctx.createLinearGradient(12, 12, 268, 268);
+            rimGradOuter.addColorStop(0, '#fbe5a6');
+            rimGradOuter.addColorStop(0.55, '#efbe47');
+            rimGradOuter.addColorStop(1, '#d49a2e');
 
             ctx.beginPath();
-            ctx.arc(140, 140, 136, 0, Math.PI * 2);
-            ctx.strokeStyle = '#ad1457';
+            ctx.arc(140, 140, 133, 0, Math.PI * 2);
+            ctx.strokeStyle = rimGradOuter;
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            const rimGradInner = ctx.createLinearGradient(24, 24, 256, 256);
+            rimGradInner.addColorStop(0, '#fff3c8');
+            rimGradInner.addColorStop(1, '#d89d2f');
+            ctx.beginPath();
+            ctx.arc(140, 140, 127, 0, Math.PI * 2);
+            ctx.strokeStyle = rimGradInner;
             ctx.lineWidth = 3;
             ctx.stroke();
 
             ctx.beginPath();
-            ctx.arc(140, 140, 20, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
+            ctx.arc(140, 140, 17, 0, Math.PI * 2);
+            const centerGrad = ctx.createRadialGradient(134, 132, 2, 140, 140, 18);
+            centerGrad.addColorStop(0, '#fff7dc');
+            centerGrad.addColorStop(0.45, '#e7bf65');
+            centerGrad.addColorStop(1, '#ca9224');
+            ctx.fillStyle = centerGrad;
             ctx.fill();
-            ctx.strokeStyle = '#ad1457';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#b37c1f';
+            ctx.lineWidth = 1.2;
             ctx.stroke();
         }
 
