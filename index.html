@@ -245,7 +245,7 @@
                 <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
                 <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
                 <p><b>6. 👯 Тянет к тебе как магнитом:</b> В каждом раунде есть 1 клетка. Попав на неё, ты получаешь задание случайного игрока, который уже получил любое задание, кроме механики магической связи.</p>
-                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 1 клетка с пятнашками 5×5. После открытия она помечается 🎮, а за сборку ты получаешь кодовое слово.</p>
+                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 1 клетка «Словесный скетч». Нужно угадать существительное из 5 букв за 6 попыток. При успехе получаешь кодовое слово «Скетч».</p>
                 <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 3 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b> и <b>Волшебной палочкой 🎆</b>.</p>
                 <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
                 <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
@@ -322,7 +322,7 @@
         ];
 
         const inkChallengeOptions = [
-            "Пройти пятнашки: даже если они уже выпадали в раунде. Если справишься — получишь кодовое слово и билетик, иначе пропуск хода.",
+            "Пройти «Словесный скетч»: угадай слово из 5 букв. Если справишься — получишь кодовое слово и билетик, иначе пропуск хода.",
             "В твоей работе должно быть минимум 60% БЛЯСКУЧЕСТИ! Да, твори!",
             "Возлюби пиксель-арт. Ожидаем красивую пиксельную картинку.",
             "Таймер сдачи работы: с этого момента у тебя всего 24 часа на сдачу работы."
@@ -335,60 +335,46 @@
             "Оригинал против Киберпанка: один человек рисует персонажа в классическом стиле, а второй — в стиле далекого будущего."
         ];
 
-        const miniGameCodeWords = [
-            "Вау!",
-            "Это был бонус!",
-            "Я справилась!",
-            "Пятнашки? Легко!"
+        const miniGameWords = [
+            "КНИГА", "ЛАМПА", "ТЫКВА", "САХАР", "ЛОЖКА", "МАСКА", "КОШКА", "РЫБКА", "ЧАЙКА", "ГОРОД",
+            "ОКЕАН", "ПЕСОК", "ДОСКА", "ВИШНЯ", "СВЕЧА", "БЛЮДО", "АРБУЗ", "ВАЛИК", "ЗАМОК", "ДИВАН"
         ];
 
-        function buildSolvedMiniGameTiles(size = 5) {
-            return [...Array(size * size - 1).keys()].map(i => i + 1).concat(0);
+        function pickRandomMiniGameWord() {
+            return miniGameWords[Math.floor(Math.random() * miniGameWords.length)];
         }
 
-        function isMiniGameSolved(tiles, size = 5) {
-            const solved = buildSolvedMiniGameTiles(size);
-            return tiles.length === solved.length && tiles.every((v, idx) => v === solved[idx]);
+        function normalizeWordGuess(value) {
+            return String(value || '').trim().toUpperCase().replace(/[^А-ЯЁ]/g, '');
         }
 
-        function miniGameIsSolvable(tiles, size = 5) {
-            const nums = tiles.filter(v => v !== 0);
-            let inversions = 0;
-            for (let i = 0; i < nums.length; i++) {
-                for (let j = i + 1; j < nums.length; j++) {
-                    if (nums[i] > nums[j]) inversions++;
+        function buildGuessHint(secretWord, guessWord) {
+            const secret = secretWord.split('');
+            const guess = guessWord.split('');
+            const result = Array(5).fill('⬜');
+            const freeLetters = {};
+
+            for (let i = 0; i < 5; i++) {
+                if (guess[i] === secret[i]) {
+                    result[i] = '🟩';
+                } else {
+                    freeLetters[secret[i]] = (freeLetters[secret[i]] || 0) + 1;
                 }
             }
 
-            if (size % 2 === 1) return inversions % 2 === 0;
-
-            const blankRowFromBottom = size - Math.floor(tiles.indexOf(0) / size);
-            return (blankRowFromBottom % 2 === 0) ? (inversions % 2 === 1) : (inversions % 2 === 0);
-        }
-
-        function createShuffledMiniGameTiles(size = 5) {
-            const tiles = buildSolvedMiniGameTiles(size);
-            do {
-                for (let i = tiles.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+            for (let i = 0; i < 5; i++) {
+                if (result[i] === '🟩') continue;
+                const letter = guess[i];
+                if (freeLetters[letter]) {
+                    result[i] = '🟨';
+                    freeLetters[letter]--;
                 }
-            } while (!miniGameIsSolvable(tiles, size) || isMiniGameSolved(tiles, size));
-            return tiles;
+            }
+
+            return result.join('');
         }
 
-        function canMoveMiniGameTile(emptyIdx, tileIdx, size = 5) {
-            if (tileIdx < 0 || emptyIdx < 0) return false;
-            const er = Math.floor(emptyIdx / size), ec = emptyIdx % size;
-            const tr = Math.floor(tileIdx / size), tc = tileIdx % size;
-            return Math.abs(er - tr) + Math.abs(ec - tc) === 1;
-        }
-
-        function pickRandomMiniGameCodeWord() {
-            return miniGameCodeWords[Math.floor(Math.random() * miniGameCodeWords.length)];
-        }
-
-        async function moveMiniGameTile(cellIdx, tileIdx) {
+        async function submitMiniGameGuess(cellIdx) {
             const cellRef = db.ref('board/' + cellIdx);
             const snap = await cellRef.once('value');
             const cell = snap.val();
@@ -396,22 +382,32 @@
             if (!cell || (!cell.isMiniGame && !isInkMiniGame)) return;
 
             const isOwner = cell.userId === currentUserId;
-            if (!isOwner) return alert('Передвигать плитки может только владелец клетки.');
-            if (cell.miniGameWon) return alert('Мини-игра уже собрана!');
-            if (cell.miniGameFailed || (cell.isMiniGame && cell.round === currentRoundNum && Date.now() >= roundEndTime)) return alert('Раунд завершён — билет за пятнашки уже недоступен.');
+            if (!isOwner) return alert('Играть может только владелец клетки.');
+            if (cell.miniGameWon) return alert('Ты уже прошел(ла) «Словесный скетч»!');
+            if (cell.miniGameFailed || (cell.isMiniGame && cell.round === currentRoundNum && Date.now() >= roundEndTime)) return alert('Раунд завершён — билет за игру уже недоступен.');
 
-            const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
-                ? [...cell.miniGameTiles]
-                : createShuffledMiniGameTiles(5);
+            const input = document.getElementById(`mini-word-input-${cellIdx}`);
+            const guess = normalizeWordGuess(input?.value || '');
+            if (guess.length !== 5) return alert('Нужно ввести существующее слово из 5 букв.');
 
-            const emptyIdx = tiles.indexOf(0);
-            if (!canMoveMiniGameTile(emptyIdx, tileIdx, 5)) return;
+            const secretWord = normalizeWordGuess(cell.miniGameWord || pickRandomMiniGameWord());
+            const attempts = Array.isArray(cell.miniGameAttempts) ? [...cell.miniGameAttempts] : [];
+            const maxAttempts = 6;
 
-            [tiles[emptyIdx], tiles[tileIdx]] = [tiles[tileIdx], tiles[emptyIdx]];
+            if (attempts.length >= maxAttempts) {
+                return alert('Попытки закончились. Билет за эту игру не начисляется.');
+            }
 
-            const updates = { miniGameTiles: tiles };
-            if (isMiniGameSolved(tiles, 5)) {
-                const codeWord = pickRandomMiniGameCodeWord();
+            const hint = buildGuessHint(secretWord, guess);
+            attempts.push({ guess, hint, at: Date.now() });
+
+            const updates = {
+                miniGameWord: secretWord,
+                miniGameAttempts: attempts
+            };
+
+            if (guess === secretWord) {
+                const codeWord = 'Скетч';
                 let ticket = '';
                 if (cell.isInkChallenge && myInkChallenge?.selectedOption === 1) {
                     ticket = myInkChallenge.pendingTicket || '';
@@ -423,7 +419,12 @@
                 updates.miniGameWon = true;
                 updates.miniGameCodeWord = codeWord;
                 updates.ticket = ticket;
-                await postNews(`🎮 ${players[cell.owner].n} собрал(а) пятнашки 5×5 и получил(а) билет №${ticket || '—'}!`);
+                await postNews(`🎮 ${players[cell.owner].n} прошёл(ла) «Словесный скетч» и получил(а) билет №${ticket || '—'}!`);
+                alert('Самый мозговитый на этом холсте! Кодовое слово "Скетч"');
+            } else if (attempts.length >= maxAttempts) {
+                updates.miniGameFailed = true;
+                updates.ticket = '';
+                alert('Попытки закончились — билет за «Словесный скетч» не начисляется.');
             }
 
             await cellRef.update(updates);
@@ -432,35 +433,26 @@
         }
 
         function buildMiniGameMarkup(cellIdx, cell, isOwner) {
-            const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
-                ? cell.miniGameTiles
-                : createShuffledMiniGameTiles(5);
+            const attempts = Array.isArray(cell.miniGameAttempts) ? cell.miniGameAttempts : [];
+            const attemptsMarkup = attempts.length
+                ? `<div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">${attempts.map((a, idx) => `<div style="font-size:12px; color:#004d40; background:#ffffff; border:1px solid #b2dfdb; border-radius:8px; padding:6px 8px;"><b>${idx + 1}.</b> ${a.guess} · ${a.hint}</div>`).join('')}</div>`
+                : '<div style="font-size:12px; color:#006064; margin-top:10px;">Пока попыток нет. Введи слово и проверь себя.</div>';
 
-            const tileButtons = tiles.map((value, idx) => {
-                if (value === 0) {
-                    return `<div style="aspect-ratio:1/1; border:1px dashed #80deea; border-radius:8px; background:#b2ebf2;"></div>`;
-                }
-
-                const emptyIdx = tiles.indexOf(0);
-                const movable = canMoveMiniGameTile(emptyIdx, idx, 5);
-                const commonStyle = `aspect-ratio:1/1; border-radius:8px; font-weight:bold; font-size:15px;`;
-                if (!isOwner || cell.miniGameWon || cell.miniGameFailed || !movable) {
-                    return `<div style="${commonStyle} display:flex; align-items:center; justify-content:center; border:1px solid #4dd0e1; background:#e0f7fa; color:#006064;">${value}</div>`;
-                }
-
-                return `<button onclick="moveMiniGameTile(${cellIdx}, ${idx})" style="${commonStyle} border:1px solid #00acc1; background:white; color:#006064;">${value}</button>`;
-            }).join('');
+            const gameControls = (isOwner && !cell.miniGameWon && !cell.miniGameFailed)
+                ? `<div style="display:flex; gap:8px; margin-top:10px;"><input id="mini-word-input-${cellIdx}" maxlength="5" placeholder="Слово из 5 букв" style="flex:1; border:1px solid #80deea; border-radius:8px; padding:8px; text-transform:uppercase;"><button onclick="submitMiniGameGuess(${cellIdx})" style="border:1px solid #00acc1; background:#fff; color:#006064; border-radius:8px; padding:8px 10px; font-weight:bold;">Проверить</button></div>`
+                : '';
 
             const winText = cell.miniGameWon
-                ? `<div style="font-size:14px; font-weight:bold; color:#2e7d32; margin-top:10px;">Вау! А ты не промах! Вот кодовое слово: <span style="background:#fff; border:1px solid #80cbc4; border-radius:8px; padding:3px 8px;">${cell.miniGameCodeWord || pickRandomMiniGameCodeWord()}</span></div><div style="font-size:12px; color:#006064; margin-top:6px;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`
+                ? `<div style="font-size:14px; font-weight:bold; color:#2e7d32; margin-top:10px;">Самый мозговитый на этом холсте! Кодовое слово "${cell.miniGameCodeWord || 'Скетч'}"</div><div style="font-size:12px; color:#006064; margin-top:6px;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`
                 : (cell.miniGameFailed
-                    ? `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:10px;">Ой, кажется, кому то надо чаще играть в пятнашки!</div><div style="font-size:12px; color:#607d8b; margin-top:6px;">Раунд завершён. Теперь можно закрыть окошко и ждать следующий раунд, чтобы снова бросить кубик.</div>`
-                    : `<div style="font-size:12px; color:#006064; margin-top:10px;">Собери пятнашки 5×5: расставь числа от 1 до 24 по порядку. Билет выдаётся только за успешную сборку до конца раунда.</div>`);
+                    ? `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:10px;">Игра не пройдена — билетик за эту клетку не начисляется.</div>`
+                    : `<div style="font-size:12px; color:#006064; margin-top:10px;">Угадай существительное из 5 букв. У тебя 6 попыток. 🟩 — буква и место верные, 🟨 — буква есть, но место другое, ⬜ — буквы нет.</div>`);
 
             return `
                 <div style="margin-top:12px; padding:12px; border:2px solid #00acc1; border-radius:10px; background:#e0f7fa; text-align:left;">
-                    <div style="font-weight:bold; color:#006064; margin-bottom:8px;">🎮 Мини-игра: пятнашки 5×5</div>
-                    <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">${tileButtons}</div>
+                    <div style="font-weight:bold; color:#006064; margin-bottom:8px;">🎮 Мини-игра: «Словесный скетч»</div>
+                    ${gameControls}
+                    ${attemptsMarkup}
                     ${winText}
                 </div>`;
         }
@@ -574,7 +566,8 @@
                 isMagic: false,
                 isMiniGame: false,
                 isInkChallenge: true,
-                miniGameTiles: createShuffledMiniGameTiles(5),
+                miniGameWord: pickRandomMiniGameWord(),
+                miniGameAttempts: [],
                 miniGameWon: false,
                 miniGameFailed: false,
                 miniGameCodeWord: '',
@@ -660,7 +653,8 @@
                 isWandBlessing: true,
                 wandOptionLabel: '',
                 itemType: null,
-                miniGameTiles: null,
+                miniGameWord: null,
+                miniGameAttempts: [],
                 miniGameWon: false,
                 miniGameFailed: false,
                 miniGameCodeWord: '',
@@ -895,7 +889,7 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
-            if (cell.isMiniGame) { const t = tasks[cell.taskIdx]; return `🎮 Пятнашки 5×5 + рисунок: ${t?.text || 'обычное задание'}`; }
+            if (cell.isMiniGame) { const t = tasks[cell.taskIdx]; return `🎮 Словесный скетч + рисунок: ${t?.text || 'обычное задание'}`; }
             if (cell.isMagnet) return `👯 Тянет к тебе как магнитом: ${cell.magnetTaskLabel || 'повтори задание выбранного игрока'}`;
             if (cell.isInkChallenge) return `🫧 Клякса-диверсант: ${cell.inkOptionLabel || 'усложнение выбирается в карточке клетки'}`;
             if (cell.isWandBlessing) return `🎆 Волшебная палочка: ${cell.wandOptionLabel || 'выбери упрощение в карточке клетки'}`;
@@ -1245,7 +1239,7 @@
                     miniGameFailed: true,
                     ticket: ''
                 });
-                alert('Ой, кажется, кому то надо чаще играть в пятнашки!');
+                alert('Игра «Словесный скетч» не пройдена — билетик не начисляется.');
             }
 
             window.miniGameRoundFailChecked = currentRoundNum;
@@ -1408,7 +1402,7 @@
                 await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
             } else if (isMiniGame) {
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
-                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку с пятнашками и дополнительным заданием.`);
+                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку «Словесный скетч» с дополнительным заданием.`);
                 playFanfare();
             } else if (isMagnet) {
                 const magnetCandidates = getMagnetSourceCandidates(board);
@@ -1440,7 +1434,7 @@
                 await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameWord: isMiniGame ? pickRandomMiniGameWord() : null, miniGameAttempts: [], miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -1464,7 +1458,7 @@
                 if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
             }
 
-            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : ('КЛЕТКА №' + (i + 1))))))));
+            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА «СЛОВЕСНЫЙ СКЕТЧ»' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : ('КЛЕТКА №' + (i + 1))))))));
             const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
 
             let h = `
