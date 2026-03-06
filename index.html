@@ -245,7 +245,7 @@
                 <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
                 <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
                 <p><b>6. 👯 Тянет к тебе как магнитом:</b> В каждом раунде есть 1 клетка. Попав на неё, ты получаешь задание случайного игрока, который уже получил любое задание, кроме механики магической связи.</p>
-                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 1 клетка с пятнашками 5×5. После открытия она помечается 🎮, а за сборку ты получаешь кодовое слово.</p>
+                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 2 мини-игры на случайных клетках: пятнашки 5×5 и «Словесный скетч». Если тебе выпала мини-игра, других загадок/механик в этой клетке нет. В «Словесном скетче» нужно угадать слово из списка за 3 попытки: первая буква сразу открыта, в проверке букв подсветка — оранжевым (буква есть, но не на месте) и зелёным (буква на месте). При успехе кодовое слово «Скетч», рисунок и билет; при ошибке после 3 попыток — без билета и с пропуском раунда.</p>
                 <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 3 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b> и <b>Волшебной палочкой 🎆</b>.</p>
                 <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
                 <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
@@ -341,6 +341,143 @@
             "Я справилась!",
             "Пятнашки? Легко!"
         ];
+
+        const wordSketchWords = [
+            "кисть", "холст", "гуашь", "масло", "уголь", "линер", "пенал", "эскиз", "образ", "мазок",
+            "штрих", "линия", "пятно", "стиль", "бемби", "плуто", "алиса", "валик", "глина", "лампа",
+            "грунт", "лепка", "набор", "смесь", "блеск", "мулан", "ститч", "замок", "принц", "моана",
+            "акрил", "сепия", "губка", "лента", "скотч"
+        ].map(w => w.toLowerCase());
+
+        const WORD_SKETCH_MAX_ATTEMPTS = 3;
+
+        function normalizeWordSketchInput(value) {
+            return (value || '').trim().toLowerCase().replace(/ё/g, 'е');
+        }
+
+        function pickRandomWordSketchWord() {
+            return wordSketchWords[Math.floor(Math.random() * wordSketchWords.length)];
+        }
+
+        function evaluateWordSketchGuess(guess, answer) {
+            return [...guess].map((char, idx) => {
+                if (char === answer[idx]) return 'correct';
+                if (answer.includes(char)) return 'present';
+                return 'absent';
+            });
+        }
+
+        function buildWordSketchHintMarkup(answer) {
+            if (!answer) return '';
+            const first = answer[0]?.toUpperCase() || '';
+            const hidden = Math.max(answer.length - 1, 0);
+            return `
+                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                    <div style="width:34px; height:34px; border-radius:8px; border:1px solid #6d4c41; background:#dcedc8; color:#33691e; display:flex; align-items:center; justify-content:center; font-weight:bold;">${first}</div>
+                    ${Array.from({length: hidden}).map(() => `<div style="width:34px; height:34px; border-radius:8px; border:1px dashed #a1887f; background:#fff;"></div>`).join('')}
+                </div>`;
+        }
+
+        function buildWordSketchAttemptRow(attempt) {
+            const guess = normalizeWordSketchInput(attempt?.guess || '');
+            const marks = Array.isArray(attempt?.marks) ? attempt.marks : [];
+            if (!guess) return '';
+
+            return `
+                <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                    ${[...guess].map((ch, idx) => {
+                        const mark = marks[idx] || 'absent';
+                        const color = mark === 'correct' ? '#2e7d32' : (mark === 'present' ? '#ef6c00' : '#90a4ae');
+                        const bg = mark === 'correct' ? '#e8f5e9' : (mark === 'present' ? '#fff3e0' : '#eceff1');
+                        return `<div style="width:34px; height:34px; border-radius:8px; border:1px solid ${color}; background:${bg}; color:${color}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${ch.toUpperCase()}</div>`;
+                    }).join('')}
+                </div>`;
+        }
+
+        async function submitWordSketchGuess(cellIdx) {
+            const input = document.getElementById(`word-sketch-input-${cellIdx}`);
+            if (!input) return;
+
+            const guess = normalizeWordSketchInput(input.value);
+            const cellRef = db.ref('board/' + cellIdx);
+            const snap = await cellRef.once('value');
+            const cell = snap.val();
+            if (!cell?.isWordSketch) return;
+
+            const isOwner = cell.userId === currentUserId;
+            if (!isOwner) return alert('Угадывать слово может только владелец клетки.');
+            if (cell.wordSketchGuessed || cell.wordSketchFailed) return alert('Для этой клетки попытки уже завершены.');
+
+            const targetWord = normalizeWordSketchInput(cell.wordSketchAnswer || '');
+            if (!targetWord) return alert('Слово для этой клетки ещё не подготовлено.');
+            if (guess.length !== targetWord.length) return alert(`Нужно ввести слово из ${targetWord.length} букв.`);
+
+            const marks = evaluateWordSketchGuess(guess, targetWord);
+            const attempts = Array.isArray(cell.wordSketchAttempts) ? [...cell.wordSketchAttempts] : [];
+            attempts.push({ guess, marks, ts: Date.now() });
+            const attemptsUsed = attempts.length;
+            const attemptsLeft = Math.max(WORD_SKETCH_MAX_ATTEMPTS - attemptsUsed, 0);
+            const isCorrect = guess === targetWord;
+            const isFailed = !isCorrect && attemptsUsed >= WORD_SKETCH_MAX_ATTEMPTS;
+
+            const updates = {
+                wordSketchGuess: guess,
+                wordSketchAttempts: attempts,
+                wordSketchAttemptCount: attemptsUsed,
+                wordSketchGuessed: isCorrect,
+                wordSketchFailed: isFailed
+            };
+
+            if (isCorrect) {
+                const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+                const ticket = tCounter.snapshot.val().toString();
+                updates.ticket = ticket;
+                await postNews(`🧩 ${players[cell.owner].n} угадал(а) слово в игре «Словесный скетч» и получил(а) билет №${ticket}!`);
+                alert('Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет!');
+            } else if (isFailed) {
+                updates.ticket = '';
+                await postNews(`🧩 ${players[cell.owner].n} не угадал(а) слово в игре «Словесный скетч» и пропускает раунд.`);
+                alert('Увы, попытки закончились. В этом раунде билет не начисляется, ход пропущен.');
+            } else {
+                alert(`Неверно. Осталось попыток: ${attemptsLeft}. Подсказка по буквам обновлена в карточке.`);
+            }
+
+            await cellRef.update(updates);
+            const updated = await cellRef.once('value');
+            showCell(cellIdx, updated.val());
+        }
+
+        function buildWordSketchMarkup(cellIdx, cell, isOwner) {
+            const attempts = Array.isArray(cell.wordSketchAttempts) ? cell.wordSketchAttempts : [];
+            const attemptsUsed = attempts.length;
+            const isResolved = !!(cell.wordSketchGuessed || cell.wordSketchFailed);
+            const canGuess = isOwner && !isResolved;
+            const answer = normalizeWordSketchInput(cell.wordSketchAnswer || '');
+            const attemptsLeft = Math.max(WORD_SKETCH_MAX_ATTEMPTS - attemptsUsed, 0);
+
+            let statusText = `<div style="font-size:12px; color:#5d4037; margin-top:8px;">Угадай слово. Есть ${WORD_SKETCH_MAX_ATTEMPTS} попытки. Подсказка: первая буква открыта.</div>`;
+            if (cell.wordSketchGuessed) {
+                statusText = `<div style="font-size:13px; color:#2e7d32; font-weight:bold; margin-top:8px;">Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет.</div><div style="font-size:12px; margin-top:4px; color:#33691e;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`;
+            } else if (cell.wordSketchFailed) {
+                statusText = `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:8px;">Слово не угадано за ${WORD_SKETCH_MAX_ATTEMPTS} попытки. Билет не начисляется, этот раунд пропускается.</div>`;
+            } else {
+                statusText += `<div style="font-size:12px; color:#6d4c41; margin-top:4px;">Попыток осталось: <b>${attemptsLeft}</b></div>`;
+            }
+
+            const attemptsMarkup = attempts.length
+                ? `<div style="margin-top:8px;"><div style="font-size:12px; color:#5d4037;">История попыток:</div>${attempts.map(buildWordSketchAttemptRow).join('')}</div>`
+                : '';
+
+            return `
+                <div style="margin-top:12px; padding:12px; border:2px solid #8d6e63; border-radius:10px; background:#efebe9; text-align:left;">
+                    <div style="font-weight:bold; color:#4e342e; margin-bottom:8px;">🧩 Мини-игра: Словесный скетч</div>
+                    <div style="font-size:12px; color:#5d4037;">Первая буква известна сразу. Цвета в попытках: 🟩 буква и место верные, 🟧 буква есть в слове, но место другое.</div>
+                    ${buildWordSketchHintMarkup(answer)}
+                    ${canGuess ? `<div style="display:flex; gap:6px; margin-top:8px;"><input id="word-sketch-input-${cellIdx}" maxlength="${answer.length || 5}" placeholder="Введи слово" style="flex:1; border:1px solid #bcaaa4; border-radius:8px; padding:8px; text-transform:lowercase;"><button onclick="submitWordSketchGuess(${cellIdx})" style="border:1px solid #6d4c41; background:#fff; color:#4e342e; border-radius:8px; padding:8px 10px;">Проверить</button></div>` : ''}
+                    ${attemptsMarkup}
+                    ${statusText}
+                </div>`;
+        }
 
         function buildSolvedMiniGameTiles(size = 5) {
             return [...Array(size * size - 1).keys()].map(i => i + 1).concat(0);
@@ -679,7 +816,7 @@
             const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
             const cell = cellSnap.val();
             if (!cell || cell.userId !== currentUserId) return alert('Можно менять только своё задание.');
-            if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isGold || cell.isInkChallenge) return alert('Для этой клетки переброс недоступен.');
+            if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isGold || cell.isInkChallenge) return alert('Для этой клетки переброс недоступен.');
 
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
             const used = userSnap.val() || [];
@@ -808,10 +945,10 @@
                 liveBoardTicketsData = [];
                 for(let i=0; i<50; i++) {
                     const cell = data[i]; let d = document.createElement('div');
-                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell?.isMiniGame ? ' minigame' : '') + (cell?.isMagnet ? ' magnet' : '') + (cell?.itemType ? ' item' : '') + (cell?.isWandBlessing ? ' item' : '') + (cell && cell.excluded ? ' excluded' : '');
+                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell?.isMiniGame ? ' minigame' : '') + (cell?.isWordSketch ? ' minigame' : '') + (cell?.isMagnet ? ' magnet' : '') + (cell?.itemType ? ' item' : '') + (cell?.isWandBlessing ? ' item' : '') + (cell && cell.excluded ? ' excluded' : '');
                     if (cell) {
                         const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
-                        d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (i + 1))) )))))) + `<span>🎟${cell.ticket}</span>`;
+                        d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isWordSketch ? '🧩' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (i + 1))) ))))))) + `<span>🎟${cell.ticket}</span>`;
                         liveBoardTicketsData.push({ ...cell, cell: i+1, cellIdx: i, isArchived: false });
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
@@ -895,7 +1032,8 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
-            if (cell.isMiniGame) { const t = tasks[cell.taskIdx]; return `🎮 Пятнашки 5×5 + рисунок: ${t?.text || 'обычное задание'}`; }
+            if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
+            if (cell.isWordSketch) return '🧩 Словесный скетч: мини-игра без дополнительного задания';
             if (cell.isMagnet) return `👯 Тянет к тебе как магнитом: ${cell.magnetTaskLabel || 'повтори задание выбранного игрока'}`;
             if (cell.isInkChallenge) return `🫧 Клякса-диверсант: ${cell.inkOptionLabel || 'усложнение выбирается в карточке клетки'}`;
             if (cell.isWandBlessing) return `🎆 Волшебная палочка: ${cell.wandOptionLabel || 'выбери упрощение в карточке клетки'}`;
@@ -1354,13 +1492,14 @@
             const isMagic = rData?.magicCell === cellIdx;
             const isTrap = rData.traps && rData.traps.includes(cellIdx);
             const isMiniGame = rData?.miniGameCell === cellIdx;
+            const isWordSketch = rData?.wordSketchCell === cellIdx;
             const isMagnet = rData?.magnetCell === cellIdx;
             const itemCells = rData?.itemCells || {};
             const itemType = itemCells[cellIdx] || null;
-            const isGold = !isTrap && !isMagic && !isMiniGame && !isMagnet && !itemType && Math.random() < 0.05;
+            const isGold = !isTrap && !isMagic && !isMiniGame && !isWordSketch && !isMagnet && !itemType && Math.random() < 0.05;
 
             let tStr = '';
-            if (!isMiniGame) {
+            if (!isMiniGame && !isWordSketch) {
                 const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
                 tStr = tCounter.snapshot.val().toString();
                 if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
@@ -1407,8 +1546,12 @@
                 trapText = traps[Math.floor(Math.random()*traps.length)];
                 await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
             } else if (isMiniGame) {
-                taskIdx = avail[Math.floor(Math.random()*avail.length)];
-                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку с пятнашками и дополнительным заданием.`);
+                taskIdx = -1;
+                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку с пятнашками.`);
+                playFanfare();
+            } else if (isWordSketch) {
+                taskIdx = -1;
+                await postNews(`🧩 ${players[myIndex].n} открыл(а) клетку «Словесный скетч».`);
                 playFanfare();
             } else if (isMagnet) {
                 const magnetCandidates = getMagnetSourceCandidates(board);
@@ -1440,7 +1583,7 @@
                 await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -1464,7 +1607,7 @@
                 if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
             }
 
-            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : ('КЛЕТКА №' + (i + 1))))))));
+            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isWordSketch ? '🧩 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : ('КЛЕТКА №' + (i + 1)))))))));
             const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
 
             let h = `
@@ -1521,6 +1664,8 @@
                         <ol style="margin:0 0 8px 18px; padding:0; line-height:1.4;">${wandBlessingTasks.map(o => `<li>${o}</li>`).join('')}</ol>
                         ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Выбрано:</b> вариант №${picked}</div>` : `<div style="display:grid; grid-template-columns:1fr; gap:6px; margin-top:8px;">${[1,2,3].map(n => `<button onclick="chooseWandBlessingOption(${i}, ${n})" style="border:1px solid #ce93d8; background:#fff; color:#6a1b9a; border-radius:8px; padding:8px;">Выбрать №${n}</button>`).join('')}</div>`}
                     </div>`;
+                } else if (cell.isMiniGame || cell.isWordSketch) {
+                    h += `<div style="padding:12px; border:1px dashed #80cbc4; border-radius:10px; background:#f1f8e9; text-align:center; color:#33691e;">В этой клетке только мини-игра. Дополнительных заданий и механик нет.</div>`;
                 } else {
                     const t = tasks[cell.taskIdx];
                     if (t) {
@@ -1529,7 +1674,7 @@
                     }
                 }
 
-                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.goldenPollen || 0) > 0) {
+                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.goldenPollen || 0) > 0) {
                     h += `<button onclick="activateGoldenPollen(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🎇 Использовать Золотую пыльцу (x${myInventory.goldenPollen})</button>`;
                 }
 
@@ -1539,6 +1684,10 @@
 
                 if (cell.isMiniGame || (cell.isInkChallenge && myInkChallenge?.selectedOption === 1)) {
                     h += buildMiniGameMarkup(i, cell, isOwner);
+                }
+
+                if (cell.isWordSketch) {
+                    h += buildWordSketchMarkup(i, cell, isOwner);
                 }
             } else {
                 h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Задание скрыто.<br>Его видит только автор и админ.</p></div>`;
@@ -1647,6 +1796,7 @@
 
     const magicCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
     const miniGameCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
+    const wordSketchCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
     const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
 
     const itemCells = {};
@@ -1676,11 +1826,12 @@
         traps: traps,
         magicCell: magicCell,
         miniGameCell: miniGameCell,
+        wordSketchCell: wordSketchCell,
         magnetCell: magnetCell,
         itemCells
     });
 
-    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 1 клетка-мини-игра, 1 магнитная клетка и 3 клетки с предметами.`);
+    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 3 клетки с предметами.`);
 
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
@@ -1874,6 +2025,7 @@
                     traps: [],
                     magicCell: null,
                     miniGameCell: null,
+                    wordSketchCell: null,
                     magnetCell: null,
                     itemCells: {}
                 }
