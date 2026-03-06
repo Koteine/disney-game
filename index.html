@@ -105,6 +105,19 @@
 </head>
 <body>
 
+    <div id="unauthorized-screen" style="display:none; padding:20px 12px;">
+        <div class="admin-section" style="max-width:520px; margin:20px auto; text-align:center;">
+            <h1 style="margin:5px 0 10px;">👋 Добро пожаловать!</h1>
+            <p style="font-size:14px; line-height:1.5; color:#555; margin:0 0 12px;">
+                Похоже, тебя ещё не добавили в игру.
+            </p>
+            <div id="welcome-user-id" style="font-size:14px; margin-bottom:10px;"></div>
+            <div style="padding:10px; border-radius:10px; background:#fff0f0; color:#c62828; font-size:13px; line-height:1.4;">
+                Ой, кажется, у тебя пока нет доступа к игре. Пожалуйста, передай свой ID @Koteine
+            </div>
+        </div>
+    </div>
+
     <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
@@ -170,7 +183,7 @@
 </div>
             <div class="admin-section">
                 <b>Игроки:</b>
-                <div id="active-players" style="max-height:100px; overflow-y:auto;"></div>
+                <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
             </div>
@@ -242,26 +255,34 @@
             audio.play().catch(e => console.log("Sound blocked"));
         }
 
+        function setAuthorizedView(isAuthorized) {
+            const gameUi = document.getElementById('game-ui');
+            const unauthorizedScreen = document.getElementById('unauthorized-screen');
+            if (!gameUi || !unauthorizedScreen) return;
+            gameUi.style.display = isAuthorized ? 'block' : 'none';
+            unauthorizedScreen.style.display = isAuthorized ? 'none' : 'block';
+        }
+
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
                 syncAdminList();
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                setAuthorizedView(true);
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
                     document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    setAuthorizedView(true);
                     return;
                 }
 
                 myIndex = -1;
                 if (currentUserId !== ADMIN_ID) {
-                    document.getElementById('player-identity').innerHTML = `
-                        <div><b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code></div>
-                        <div style="margin-top:4px; color:#d32f2f;">Ой, кажется, у тебя пока нет доступа к игре. Пожалуйста, передай свой ID @Koteine</div>
-                    `;
+                    document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
+                    setAuthorizedView(false);
                 }
             });
         }
@@ -759,12 +780,26 @@
 
       function syncAdminList() {
             db.ref('whitelist').on('value', snap => {
-                let h = "<b>Список художников:</b><br>"; 
-                snap.forEach(u => { 
-                    const userData = u.val();
-                    const userTgId = u.key; // Ключ в whitelist — это и есть Telegram ID
-                    const charName = players[userData.charIndex]?.n || "Неизвестный";
-                    const charColor = charColors[userData.charIndex] || "#333";
+                const users = [];
+                snap.forEach(u => {
+                    const userData = u.val() || {};
+                    users.push({
+                        userTgId: u.key,
+                        charIndex: userData.charIndex
+                    });
+                });
+
+                users.sort((a, b) => {
+                    const aIdx = Number.isInteger(a.charIndex) ? a.charIndex : 999;
+                    const bIdx = Number.isInteger(b.charIndex) ? b.charIndex : 999;
+                    if (aIdx !== bIdx) return aIdx - bIdx;
+                    return String(a.userTgId).localeCompare(String(b.userTgId));
+                });
+
+                let h = `<b>Список художников (${users.length}):</b><br>`;
+                users.forEach(({ userTgId, charIndex }) => {
+                    const charName = players[charIndex]?.n || "Неизвестный";
+                    const charColor = charColors[charIndex] || "#333";
 
                     h += `
                     <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
@@ -773,8 +808,10 @@
                             <code style="color:#888; font-size:10px;">ID: ${userTgId}</code>
                         </span>
                         <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
-                    </div>`; 
+                    </div>`;
                 });
+
+                if (!users.length) h += '<small style="color:#999;">Пока список пуст.</small>';
                 document.getElementById('active-players').innerHTML = h;
             });
         }
