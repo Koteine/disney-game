@@ -1829,7 +1829,9 @@
             const whitelistSnap = await db.ref('whitelist').once('value');
             const updates = {
                 board: {},
-                tickets_archive: {},
+                tickets_archive: null,
+                news_feed: null,
+                submissions: null,
                 ticket_counter: 0,
                 wheel_event: null,
                 current_round: {
@@ -1857,7 +1859,7 @@
             });
 
             await db.ref().update(updates);
-            alert('Игра сброшена полностью: поле, раунды, билеты и предметы обнулены. Нажми «Запустить раунд», чтобы начать заново.');
+            alert('Игра сброшена полностью: поле, раунды, билеты, предметы, лента событий и работы очищены. Нажми «Запустить раунд», чтобы начать заново.');
             location.reload();
         }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
