@@ -48,6 +48,8 @@
         .cell span { font-size: 7px; line-height: 1; margin-top: 2px; }
         .cell.gold { border: 2px solid #ffaa00 !important; background: #fffdf0; }
         .cell.gold::after { content: "👑"; position: absolute; top: 0; right: 0; font-size: 7px; }
+        .cell.magic { border: 2px solid #7e57c2 !important; background: #f5efff; }
+        .cell.magic::after { content: "🔮"; position: absolute; top: 0; right: 0; font-size: 7px; }
         .cell.excluded { opacity: 0.5; filter: grayscale(1); }
 
         .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
@@ -156,7 +158,8 @@
                 <p><b>2. Задания:</b> Выполни творческое задание и сдай его. Если задание выполнено — твой билет участвует в розыгрыше.</p>
                 <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание.</p>
                 <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
-                <p><b>5. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
+                <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
+                <p><b>6. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
                 <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
             </div>
@@ -188,6 +191,15 @@
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Королева"},{n:"Барон"},{n:"Укротитель"},{n:"Ластик"},{n:"Монстр"},{n:"Клякса"},{n:"Сомелье"},{n:"Дали"},{n:"Мольберт"},{n:"Кисточка"},{n:"Акварель"},{n:"Магнат"},{n:"Джедай"},{n:"Растушевка"},{n:"Творец"},{n:"Холст"},{n:"Террорист"},{n:"Мазила"},{n:"Худо"},{n:"Мазок"},{n:"Гамлет"},{n:"Деспот"},{n:"Маньяк"},{n:"Винчик"},{n:"Шедевр"},{n:"Грозный"},{n:"Повелитель"},{n:"Гуру"},{n:"Судьба"},{n:"Анархист"},{n:"Скотч"},{n:"Рецидивист"},{n:"Рыцарь"},{n:"Гнев"},{n:"Пират"},{n:"Бродяга"},{n:"Эстет"},{n:"Замес"},{n:"Точилка"},{n:"Сечение"},{n:"Масло"},{n:"Фантазер"},{n:"Маратель"},{n:"Делец"},{n:"Призрак"},{n:"Ниндзя"},{n:"Муза"}];
 
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
+        let shownMagicLinks = {};
+        let magicLinksRef = null;
+
+        const magicBondTasks = [
+            "Тема «Время и Эволюция»: один человек рисует персонажа в детстве, другой — в зрелости/старости.",
+            "Тема «День и Ночь» (контраст стилей): персонажи меняют не возраст, а состояние или облик.",
+            "Тема «Добро и Зло» (зеркальное отражение): персонаж один, но характер на рисунке должен быть разным.",
+            "Оригинал против Киберпанка: один человек рисует персонажа в классическом стиле, а второй — в стиле далекого будущего."
+        ];
 
         async function init() {
             try { const res = await fetch(JSON_URL); tasks = await res.json(); checkAccess(); syncData(); } catch(e) { console.error(e); }
@@ -214,16 +226,43 @@
         }
 
         function syncData() {
-            db.ref('current_round').on('value', snap => { if (snap.exists()) { currentRoundNum = snap.val().number; roundEndTime = snap.val().endTime; document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum; updateTimerDisplay(); } });
+            db.ref('current_round').on('value', snap => {
+                if (!snap.exists()) return;
+
+                currentRoundNum = snap.val().number;
+                roundEndTime = snap.val().endTime;
+                document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
+                updateTimerDisplay();
+
+                if (magicLinksRef) magicLinksRef.off();
+                shownMagicLinks = {};
+                magicLinksRef = db.ref(`magic_links/${currentRoundNum}`);
+                magicLinksRef.on('value', linksSnap => {
+                    if (!linksSnap.exists()) return;
+
+                    linksSnap.forEach(linkSnap => {
+                        const link = linkSnap.val();
+                        if (!link || shownMagicLinks[linkSnap.key]) return;
+
+                        const related = link.playerA?.userId === currentUserId || link.playerB?.userId === currentUserId;
+                        if (!related) return;
+
+                        shownMagicLinks[linkSnap.key] = true;
+                        const partner = (link.playerA?.userId === currentUserId) ? link.playerB : link.playerA;
+                        alert(`✨ Магическая связь активна!\nТвой напарник: ${partner?.name || 'Неизвестный'}\nВыберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                    });
+                });
+            });
+
             db.ref('board').on('value', snap => {
                 const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
                 allTicketsData = [];
                 for(let i=0; i<50; i++) {
                     const cell = data[i]; let d = document.createElement('div'); 
-                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell && cell.excluded ? ' excluded' : '');
+                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell && cell.excluded ? ' excluded' : '');
                     if (cell) {
                         const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
-                        d.innerHTML = (cell.isTrap ? "💣" : (i+1)) + `<span>🎟${cell.ticket}</span>`;
+                        d.innerHTML = (cell.isTrap ? "💣" : (cell.isMagic ? "🔮" : (i+1))) + `<span>🎟${cell.ticket}</span>`;
                         allTicketsData.push({ ...cell, cell: i+1 });
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
@@ -309,8 +348,9 @@
             if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
             
             const cellIdx = free[Math.floor(Math.random()*free.length)];
+            const isMagic = rData?.magicCell === cellIdx;
             const isTrap = rData.traps && rData.traps.includes(cellIdx);
-            const isGold = !isTrap && Math.random() < 0.05;
+            const isGold = !isTrap && !isMagic && Math.random() < 0.05;
 
             const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             let tStr = tCounter.snapshot.val().toString();
@@ -318,7 +358,33 @@
             
             let taskIdx = -1;
             let trapText = "";
-            if (isTrap) {
+            let magicLinkId = null;
+            if (isMagic) {
+                const whiteSnap = await db.ref('whitelist').once('value');
+                const candidates = [];
+                whiteSnap.forEach(s => {
+                    const uid = Number(s.key);
+                    const cIdx = s.val()?.charIndex;
+                    if (uid !== currentUserId && Number.isInteger(cIdx) && players[cIdx]) {
+                        candidates.push({ userId: uid, charIndex: cIdx, name: players[cIdx].n });
+                    }
+                });
+
+                if (candidates.length) {
+                    const partner = candidates[Math.floor(Math.random() * candidates.length)];
+                    const linkRef = db.ref(`magic_links/${currentRoundNum}`).push();
+                    await linkRef.set({
+                        createdAt: Date.now(),
+                        playerA: { userId: currentUserId, charIndex: myIndex, name: players[myIndex].n },
+                        playerB: partner,
+                        tasks: magicBondTasks
+                    });
+                    magicLinkId = linkRef.key;
+                    alert(`Вау! Это Магические узы! Свяжись с игроком ${partner.name}.`);
+                } else {
+                    alert("Вау! Это Магические узы! Пока нет второго доступного игрока для связи.");
+                }
+            } else if (isTrap) {
                 const traps = [
                     "Детка, это ловушка Капитана Крюка! Чтобы освободиться, рисуй своей не ведущей рукой! Смотри не мухлюй, злой пират всё видит и порвет твой счастливый билетик у тебя на глазах!",
                     "Ха-ха! Как же тебе не повезло! Задача трудная - за тобой разворот. Рисуй скорее, а то счастливый билетик растворится как утренняя заря!"
@@ -328,9 +394,9 @@
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: tStr, isGold, isTrap, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: tStr, isGold, isTrap, isMagic, magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
-            if(!isGold && !isTrap) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
+            if(!isGold && !isTrap && !isMagic) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             showCell(cellIdx, cellData);
         }
@@ -348,7 +414,7 @@
                 if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
             }
 
-            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 КЛЕТКА С ЛОВУШКОЙ" : (cell.isGold ? "👑 ЗОЛОТАЯ КЛЕТКА" : "КЛЕТКА №" + (i + 1));
+            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 КЛЕТКА С ЛОВУШКОЙ" : (cell.isGold ? "👑 ЗОЛОТАЯ КЛЕТКА" : (cell.isMagic ? "🔮 МАГИЧЕСКАЯ СВЯЗЬ" : "КЛЕТКА №" + (i + 1)));
             const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
 
             let h = `
@@ -362,6 +428,18 @@
             if (isOwner || isAdmin) {
                 if (cell.isTrap) {
                     h += `<div style="padding:15px; border:2px dashed red; border-radius:10px; background:#fff0f0; color:#ff4444; font-weight:bold; text-align:center;">${cell.trapText}</div>`;
+                } else if (cell.isMagic) {
+                    h += `
+                    <div style="padding:15px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:left;">
+                        <div style="font-weight:bold; color:#5e35b1; margin-bottom:8px;">Вау! Это Магические узы! Выберите одно совместное задание:</div>
+                        <ol style="margin:0 0 10px 18px; padding:0; line-height:1.4; font-size:14px; color:#333;">
+                            ${magicBondTasks.map(t => `<li style="margin-bottom:6px;">${t}</li>`).join('')}
+                        </ol>
+                        <div style="font-size:13px; color:#4a148c; background:#ede7f6; border-radius:8px; padding:8px;">
+                            🎟 Если договорились и выполнили задание вместе — <b>по 3 билетика</b> каждому.<br>
+                            🎫 Если не договорились, но выполнили свою часть задания — <b>по 1 билетику</b> каждому.
+                        </div>
+                    </div>`;
                 } else if (cell.isGold) {
                     h += `<div style="padding:15px; border:2px solid #fbc02d; border-radius:10px; background:#fff9c4; text-align:center;">✨ Твое задание: Рисуй на любую свободную тему!</div>`;
                 } else {
@@ -423,6 +501,8 @@
 
     const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
     let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
+
+    const magicCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
     
     let traps = [];
     // Ставим 2 ловушки на свободные клетки
@@ -440,7 +520,8 @@
     await db.ref('current_round').set({ 
         number: newRoundNum, 
         endTime: Date.now() + durationMs, 
-        traps: traps 
+        traps: traps,
+        magicCell: magicCell
     });
 
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
