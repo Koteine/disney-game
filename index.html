@@ -1829,9 +1829,9 @@
             const whitelistSnap = await db.ref('whitelist').once('value');
             const updates = {
                 board: {},
-                tickets_archive: {},
-                news_feed: {},
-                submissions: {},
+                tickets_archive: null,
+                news_feed: null,
+                submissions: null,
                 ticket_counter: 0,
                 wheel_event: null,
                 current_round: {
