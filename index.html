@@ -519,21 +519,21 @@
                 .filter(p => p.last_round !== currentRoundNum);
         }
 
-        async function sendInkChallengeImmediately() {
+        async function sendInkChallengeImmediately(sourceCellIdx = null) {
             const whiteSnap = await db.ref('whitelist').once('value');
             const white = whiteSnap.val() || {};
             const targets = getEligibleSabotageTargets(white);
             if (!targets.length) {
                 alert('Нет игроков, которым можно отправить кляксу в этом раунде (все уже сходили).');
-                return;
+                return false;
             }
 
-            const menu = targets.map((t, idx) => `${idx + 1}) ${players[t.charIndex].n}`).join('\\n');
+            const menu = targets.map((t, idx) => `${idx + 1}) ${players[t.charIndex].n}`).join('\n');
             const answer = prompt(`Выбери игрока для подлянки (введи номер):\n${menu}`);
             const chosen = Number(answer) - 1;
             if (!Number.isInteger(chosen) || !targets[chosen]) {
                 alert('Клякса не отправлена: нужно выбрать корректный номер игрока.');
-                return;
+                return false;
             }
 
             const target = targets[chosen];
@@ -541,7 +541,10 @@
             const board = boardSnap.val() || {};
             const free = [];
             for (let i = 0; i < 50; i++) if (!board[i]) free.push(i);
-            if (!free.length) return alert('Нет свободных клеток, чтобы отправить кляксу.');
+            if (!free.length) {
+                alert('Нет свободных клеток, чтобы отправить кляксу.');
+                return false;
+            }
 
             const targetCellIdx = free[Math.floor(Math.random() * free.length)];
             const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
@@ -582,8 +585,24 @@
             });
 
             await postNews(`🫧 ${players[myIndex].n} отправил(а) кляксу игроку ${players[target.charIndex].n}.`);
+
+            if (Number.isInteger(sourceCellIdx)) {
+                const srcRef = db.ref(`board/${sourceCellIdx}`);
+                const srcSnap = await srcRef.once('value');
+                const srcCell = srcSnap.val() || {};
+                if (srcCell.userId === currentUserId) {
+                    await srcRef.update({
+                        ticket: srcCell.inkPendingTicket || '',
+                        inkPendingTicket: '',
+                        inkUsed: true,
+                        itemType: null
+                    });
+                }
+            }
+
             alert(`Клякса отправлена игроку ${players[target.charIndex].n}!`);
             alert('Сделал гадось - сердцу радость! Кодовое слово "Клякса", нарисовать можешь что хочешь, злючка!');
+            return true;
         }
 
         async function sendWandBlessingImmediately() {
@@ -674,6 +693,19 @@
             await consumeInventoryItem('goldenPollen', 1);
             await postNews(`🎇 ${players[myIndex].n} применил(а) Золотую пыльцу и перебросил(а) задание.`);
             alert('🎇 Золотая пыльца сработала! Получено новое случайное задание на той же клетке.');
+        }
+
+        async function activateInkSaboteur(cellIdx) {
+            const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
+            const cell = cellSnap.val();
+            if (!cell || cell.userId !== currentUserId) return alert('Можно использовать только свою кляксу.');
+            if (cell.itemType !== 'inkSaboteur' || cell.inkUsed) return alert('Клякса уже использована.');
+
+            const ok = await sendInkChallengeImmediately(cellIdx);
+            if (ok) {
+                const updated = await db.ref(`board/${cellIdx}`).once('value');
+                showCell(cellIdx, updated.val());
+            }
         }
 
 
@@ -1334,6 +1366,9 @@
                 if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
             }
 
+            const pendingItemTicket = (itemType === 'inkSaboteur') ? tStr : '';
+            if (itemType === 'inkSaboteur') tStr = '';
+
             let taskIdx = -1;
             let trapText = "";
             let magicLinkId = null;
@@ -1399,21 +1434,18 @@
             }
 
             if (itemType) {
-                if (itemType !== 'magicWand') {
+                if (itemType !== 'magicWand' && itemType !== 'inkSaboteur') {
                     await addInventoryItem(itemType, 1);
                 }
                 await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             showCell(cellIdx, cellData);
 
-            if (itemType === 'inkSaboteur') {
-                await sendInkChallengeImmediately();
-            }
             if (itemType === 'magicWand') {
                 await sendWandBlessingImmediately();
             }
@@ -1463,6 +1495,8 @@
                     h += `<div style="padding:15px; border:2px solid #fbc02d; border-radius:10px; background:#fff9c4; text-align:center;">✨ Твое задание: Рисуй на любую свободную тему!</div>`;
                 } else if (cell.itemType === 'inkSaboteur') {
                     h += `<div style="padding:12px; border:2px solid #ce93d8; border-radius:10px; background:#fff7ff; text-align:center; color:#6a1b9a; font-weight:bold;">Сделал гадось - сердцу радость! Кодовое слово "Клякса", нарисовать можешь что хочешь, злючка!</div>`;
+                    h += `<div style="margin-top:8px; font-size:12px; color:#6a1b9a;">Пока не выберешь цель для кляксы, билетик за клетку не начислится.</div>`;
+                    h += `<button onclick="activateInkSaboteur(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🫧 Выбрать игрока для кляксы</button>`;
                 } else if (cell.itemType === 'magicWand') {
                     h += `<div style="padding:12px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:center; color:#5e35b1; font-weight:bold;">Ты просто прелесть! Твоё кодовое слово "Фея", рисуй что дорого твоему добродушному сердцу!</div>`;
                 } else if (cell.isMagnet) {
