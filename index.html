@@ -1855,7 +1855,6 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 createdBy: currentUserId
             });
             await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
-            await postNews(`📣 Админ запланировал событие «Эпичный закрас». Старт: ${new Date(startAt).toLocaleString('ru-RU')}.`);
         }
 
         async function activateScheduledEventIfNeeded() {
