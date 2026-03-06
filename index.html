@@ -10,46 +10,48 @@
     <style>
         :root { --p-pink: #ff007f; --p-bg: #fff5f8; }
         * { box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, system-ui, sans-serif; 
-            background: var(--p-bg); 
-            text-align: center; 
-            color: #333; 
-            margin: 0; 
-            padding: 5px 5px 80px 5px; 
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: var(--p-bg);
+            text-align: center;
+            color: #333;
+            margin: 0;
+            padding: 5px 5px 80px 5px;
             overflow-x: hidden;
-            -webkit-tap-highlight-color: transparent; 
+            -webkit-tap-highlight-color: transparent;
         }
-        
-        .grid { 
-            display: grid; 
-            grid-template-columns: repeat(5, 1fr); 
-            gap: 4px; 
-            width: 100%; 
-            max-width: 500px; 
-            margin: 10px auto; 
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 4px;
+            width: 100%;
+            max-width: 500px;
+            margin: 10px auto;
             padding: 0 5px;
         }
-        .cell { 
-            width: 100%; 
-            aspect-ratio: 1/1; 
-            border: 1px solid #ddd; 
-            border-radius: 6px; 
-            background: white; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            font-weight: bold; 
-            font-size: 10px; 
+        .cell {
+            width: 100%;
+            aspect-ratio: 1/1;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 10px;
             position: relative;
-            overflow: hidden; 
+            overflow: hidden;
         }
         .cell span { font-size: 7px; line-height: 1; margin-top: 2px; }
         .cell.gold { border: 2px solid #ffaa00 !important; background: #fffdf0; }
         .cell.gold::after { content: "👑"; position: absolute; top: 0; right: 0; font-size: 7px; }
         .cell.magic { border: 2px solid #7e57c2 !important; background: #f5efff; }
         .cell.magic::after { content: "🔮"; position: absolute; top: 0; right: 0; font-size: 7px; }
+        .cell.minigame { border: 2px solid #00acc1 !important; background: #e0f7fa; }
+        .cell.minigame::after { content: "🎮"; position: absolute; top: 0; right: 0; font-size: 7px; }
         .cell.excluded { opacity: 0.5; filter: grayscale(1); }
 
         .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
@@ -65,7 +67,7 @@
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
         #dice-btn, .admin-btn { padding: 12px; font-size: 15px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 8px 0; }
         #dice-btn:disabled { background: #ccc; }
-        
+
         .admin-section { background: white; padding: 12px; border-radius: 12px; margin: 8px; border: 1px solid #eee; text-align: left; }
         .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
         .works-card { background: white; border: 1px solid #eee; border-radius: 12px; padding: 10px; margin: 8px; text-align: left; }
@@ -74,11 +76,11 @@
         .status-pending { background: #fff3cd; color: #856404; }
         .status-accepted { background: #d4edda; color: #155724; }
         .status-rejected { background: #f8d7da; color: #721c24; }
-        
+
         #modal, #overlay { display: none; }
         #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 15px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 0 40px rgba(0,0,0,0.2); }
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1050; }
-        
+
         .tab-content { display: none; width: 100%; }
         .tab-active { display: block; animation: fadeIn 0.1s; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -200,7 +202,9 @@
                 <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание.</p>
                 <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
                 <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
-                <p><b>6. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
+                <p><b>6. 🎮 Мини-игра:</b> В каждом раунде есть ровно 1 клетка с пятнашками 5×5. После открытия она помечается 🎮, а за сборку ты получаешь кодовое слово.</p>
+                <p><b>7. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
+
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
                 <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
             </div>
@@ -246,6 +250,123 @@
             "Оригинал против Киберпанка: один человек рисует персонажа в классическом стиле, а второй — в стиле далекого будущего."
         ];
 
+        const miniGameCodeWords = [
+            "Вау!",
+            "Это был бонус!",
+            "Я справилась!",
+            "Пятнашки? Легко!"
+        ];
+
+        function buildSolvedMiniGameTiles(size = 5) {
+            return [...Array(size * size - 1).keys()].map(i => i + 1).concat(0);
+        }
+
+        function isMiniGameSolved(tiles, size = 5) {
+            const solved = buildSolvedMiniGameTiles(size);
+            return tiles.length === solved.length && tiles.every((v, idx) => v === solved[idx]);
+        }
+
+        function miniGameIsSolvable(tiles, size = 5) {
+            const nums = tiles.filter(v => v !== 0);
+            let inversions = 0;
+            for (let i = 0; i < nums.length; i++) {
+                for (let j = i + 1; j < nums.length; j++) {
+                    if (nums[i] > nums[j]) inversions++;
+                }
+            }
+
+            if (size % 2 === 1) return inversions % 2 === 0;
+
+            const blankRowFromBottom = size - Math.floor(tiles.indexOf(0) / size);
+            return (blankRowFromBottom % 2 === 0) ? (inversions % 2 === 1) : (inversions % 2 === 0);
+        }
+
+        function createShuffledMiniGameTiles(size = 5) {
+            const tiles = buildSolvedMiniGameTiles(size);
+            do {
+                for (let i = tiles.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+                }
+            } while (!miniGameIsSolvable(tiles, size) || isMiniGameSolved(tiles, size));
+            return tiles;
+        }
+
+        function canMoveMiniGameTile(emptyIdx, tileIdx, size = 5) {
+            if (tileIdx < 0 || emptyIdx < 0) return false;
+            const er = Math.floor(emptyIdx / size), ec = emptyIdx % size;
+            const tr = Math.floor(tileIdx / size), tc = tileIdx % size;
+            return Math.abs(er - tr) + Math.abs(ec - tc) === 1;
+        }
+
+        function pickRandomMiniGameCodeWord() {
+            return miniGameCodeWords[Math.floor(Math.random() * miniGameCodeWords.length)];
+        }
+
+        async function moveMiniGameTile(cellIdx, tileIdx) {
+            const cellRef = db.ref('board/' + cellIdx);
+            const snap = await cellRef.once('value');
+            const cell = snap.val();
+            if (!cell || !cell.isMiniGame) return;
+
+            const isOwner = cell.userId === currentUserId;
+            if (!isOwner) return alert('Передвигать плитки может только владелец клетки.');
+            if (cell.miniGameWon) return alert('Мини-игра уже собрана!');
+
+            const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
+                ? [...cell.miniGameTiles]
+                : createShuffledMiniGameTiles(5);
+
+            const emptyIdx = tiles.indexOf(0);
+            if (!canMoveMiniGameTile(emptyIdx, tileIdx, 5)) return;
+
+            [tiles[emptyIdx], tiles[tileIdx]] = [tiles[tileIdx], tiles[emptyIdx]];
+
+            const updates = { miniGameTiles: tiles };
+            if (isMiniGameSolved(tiles, 5)) {
+                const codeWord = pickRandomMiniGameCodeWord();
+                updates.miniGameWon = true;
+                updates.miniGameCodeWord = codeWord;
+                await postNews(`🎮 ${players[cell.owner].n} собрал(а) пятнашки 5×5!`);
+            }
+
+            await cellRef.update(updates);
+            const updated = await cellRef.once('value');
+            showCell(cellIdx, updated.val());
+        }
+
+        function buildMiniGameMarkup(cellIdx, cell, isOwner) {
+            const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
+                ? cell.miniGameTiles
+                : createShuffledMiniGameTiles(5);
+
+            const tileButtons = tiles.map((value, idx) => {
+                if (value === 0) {
+                    return `<div style="aspect-ratio:1/1; border:1px dashed #80deea; border-radius:8px; background:#b2ebf2;"></div>`;
+                }
+
+                const emptyIdx = tiles.indexOf(0);
+                const movable = canMoveMiniGameTile(emptyIdx, idx, 5);
+                const commonStyle = `aspect-ratio:1/1; border-radius:8px; font-weight:bold; font-size:15px;`;
+                if (!isOwner || cell.miniGameWon || !movable) {
+                    return `<div style="${commonStyle} display:flex; align-items:center; justify-content:center; border:1px solid #4dd0e1; background:#e0f7fa; color:#006064;">${value}</div>`;
+                }
+
+                return `<button onclick="moveMiniGameTile(${cellIdx}, ${idx})" style="${commonStyle} border:1px solid #00acc1; background:white; color:#006064;">${value}</button>`;
+            }).join('');
+
+            const winText = cell.miniGameWon
+                ? `<div style="font-size:14px; font-weight:bold; color:#2e7d32; margin-top:10px;">Вау! А ты не промах! Вот кодовое слово: <span style="background:#fff; border:1px solid #80cbc4; border-radius:8px; padding:3px 8px;">${cell.miniGameCodeWord || pickRandomMiniGameCodeWord()}</span></div>`
+                : `<div style="font-size:12px; color:#006064; margin-top:10px;">Собери пятнашки 5×5: расставь числа от 1 до 24 по порядку.</div>`;
+
+            return `
+                <div style="margin-top:12px; padding:12px; border:2px solid #00acc1; border-radius:10px; background:#e0f7fa; text-align:left;">
+                    <div style="font-weight:bold; color:#006064; margin-bottom:8px;">🎮 Мини-игра: пятнашки 5×5</div>
+                    <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">${tileButtons}</div>
+                    ${winText}
+                </div>`;
+        }
+
         async function init() {
             try { const res = await fetch(JSON_URL); tasks = await res.json(); checkAccess(); syncData(); } catch(e) { console.error(e); }
         }
@@ -253,6 +374,12 @@
         function playExplosion() {
             const audio = new Audio('https://www.soundjay.com/mechanical/explosion-01.mp3');
             audio.volume = 0.3;
+            audio.play().catch(e => console.log("Sound blocked"));
+        }
+
+        function playFanfare() {
+            const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
+            audio.volume = 0.35;
             audio.play().catch(e => console.log("Sound blocked"));
         }
 
@@ -321,11 +448,11 @@
                 const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
                 allTicketsData = [];
                 for(let i=0; i<50; i++) {
-                    const cell = data[i]; let d = document.createElement('div'); 
-                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell && cell.excluded ? ' excluded' : '');
+                    const cell = data[i]; let d = document.createElement('div');
+                    d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell?.isMiniGame ? ' minigame' : '') + (cell && cell.excluded ? ' excluded' : '');
                     if (cell) {
                         const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
-                        d.innerHTML = (cell.isTrap ? "💣" : (cell.isMagic ? "🔮" : (i+1))) + `<span>🎟${cell.ticket}</span>`;
+                        d.innerHTML = (cell.isTrap ? "💣" : (cell.isMagic ? "🔮" : (cell.isMiniGame ? "🎮" : (i+1)))) + `<span>🎟${cell.ticket}</span>`;
                         allTicketsData.push({ ...cell, cell: i+1 });
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
@@ -367,6 +494,7 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
+            if (cell.isMiniGame) return '🎮 Мини-игра: пятнашки 5×5';
             if (cell.isGold) return '👑 Золотая клетка: свободная тема';
             const t = tasks[cell.taskIdx];
             return t?.text || 'Обычное задание';
@@ -512,7 +640,7 @@
         function updateTicketsTable() {
             const body = document.getElementById('tickets-body');
             const isAdmin = (currentUserId === ADMIN_ID);
-            
+
             if(document.getElementById('th-user-name')) {
                 document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
             }
@@ -522,7 +650,7 @@
             body.innerHTML = sortedData.map(t => {
                 if (!isAdmin && t.owner !== myIndex) return '';
                 const statusClass = t.excluded ? 'row-excluded' : '';
-                
+
                 return `
                     <tr class="${statusClass}">
                         <td>${t.round}</td>
@@ -583,16 +711,17 @@
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
             let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
             if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
-            
+
             const cellIdx = free[Math.floor(Math.random()*free.length)];
             const isMagic = rData?.magicCell === cellIdx;
             const isTrap = rData.traps && rData.traps.includes(cellIdx);
-            const isGold = !isTrap && !isMagic && Math.random() < 0.05;
+            const isMiniGame = rData?.miniGameCell === cellIdx;
+            const isGold = !isTrap && !isMagic && !isMiniGame && Math.random() < 0.05;
 
             const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
             let tStr = tCounter.snapshot.val().toString();
             if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
-            
+
             let taskIdx = -1;
             let trapText = "";
             let magicLinkId = null;
@@ -630,6 +759,10 @@
                 ];
                 trapText = traps[Math.floor(Math.random()*traps.length)];
                 await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
+            } else if (isMiniGame) {
+                taskIdx = avail[Math.floor(Math.random()*avail.length)];
+                await postNews(`🎮 ${players[myIndex].n} решил не рисовать, а играться! Ну надо же!`);
+                playFanfare();
             } else if (!isGold) {
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
             }
@@ -638,7 +771,7 @@
                 await postNews(`👑 ${players[myIndex].n} нашёл(ла) золотую клетку и получил(а) 2 билетика!`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: tStr, isGold, isTrap, isMagic, magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: tStr, isGold, isTrap, isMagic, isMiniGame, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap && !isMagic) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -658,7 +791,7 @@
                 if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
             }
 
-            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 КЛЕТКА С ЛОВУШКОЙ" : (cell.isGold ? "👑 ЗОЛОТАЯ КЛЕТКА" : (cell.isMagic ? "🔮 МАГИЧЕСКАЯ СВЯЗЬ" : "КЛЕТКА №" + (i + 1)));
+            document.getElementById('mTitle').innerText = cell.isTrap ? "💣 КЛЕТКА С ЛОВУШКОЙ" : (cell.isGold ? "👑 ЗОЛОТАЯ КЛЕТКА" : (cell.isMagic ? "🔮 МАГИЧЕСКАЯ СВЯЗЬ" : (cell.isMiniGame ? "🎮 КЛЕТКА-МИНИ-ИГРА" : "КЛЕТКА №" + (i + 1))));
             const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
 
             let h = `
@@ -692,6 +825,10 @@
                         if (t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">`;
                         h += `<p style="text-align:left; line-height:1.4; font-size:15px; color:#444;">${t.text}</p>`;
                     }
+                }
+
+                if (cell.isMiniGame) {
+                    h += buildMiniGameMarkup(i, cell, isOwner);
                 }
             } else {
                 h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Задание скрыто.<br>Его видит только автор и админ.</p></div>`;
@@ -740,35 +877,37 @@
 
     // Переводим всё в миллисекунды
     const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
-    
+
     if (durationMs <= 0) return alert("Укажите время раунда!");
 
     const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
     let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
 
     const magicCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
-    
+    const miniGameCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
+
     let traps = [];
     // Ставим 2 ловушки на свободные клетки
-    for(let j=0; j<2; j++) { 
+    for(let j=0; j<2; j++) {
         if(free.length) {
             const randomIndex = Math.floor(Math.random() * free.length);
             traps.push(free.splice(randomIndex, 1)[0]);
-        } 
+        }
     }
-    
+
     const s = await db.ref('current_round/number').once('value');
     const newRoundNum = (s.val() || 0) + 1;
 
     // Сохраняем в Firebase
-    await db.ref('current_round').set({ 
-        number: newRoundNum, 
-        endTime: Date.now() + durationMs, 
+    await db.ref('current_round').set({
+        number: newRoundNum,
+        endTime: Date.now() + durationMs,
         traps: traps,
-        magicCell: magicCell
+        magicCell: magicCell,
+        miniGameCell: miniGameCell
     });
 
-    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки и магическая клетка.`);
+    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка и 1 клетка-мини-игра с пятнашками 5×5.`);
 
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
