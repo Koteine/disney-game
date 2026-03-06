@@ -54,6 +54,11 @@
 
         .timer-box { background: white; border-radius: 12px; padding: 10px; margin: 5px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         #round-timer { font-size: 22px; font-weight: 900; color: #222; }
+        .news-box { background: white; border-radius: 12px; padding: 8px; margin: 8px auto; width: 95%; box-shadow: 0 2px 8px rgba(0,0,0,0.05); text-align: left; }
+        .news-title { font-size: 11px; color: var(--p-pink); font-weight: bold; margin-bottom: 5px; }
+        .news-ticker { overflow: hidden; white-space: nowrap; font-size: 12px; color: #444; }
+        .news-track { display: inline-block; padding-left: 100%; animation: tickerMove 18s linear infinite; }
+        @keyframes tickerMove { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
         .nav-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; display: flex; height: 65px; border-top: 1px solid #eee; z-index: 1000; }
         .nav-item { background: none; border: none; font-size: 10px; color: #888; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -101,6 +106,10 @@
             <div class="timer-box">
                 <div id="round-info" style="font-size:11px; color:var(--p-pink); font-weight:bold;">Раунд №--</div>
                 <div id="round-timer">0д 00:00:00</div>
+            </div>
+            <div class="news-box">
+                <div class="news-title">📰 Лента событий</div>
+                <div class="news-ticker"><div id="news-track" class="news-track">Пока новостей нет — откройте первую клетку! ✨</div></div>
             </div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
@@ -193,6 +202,7 @@
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
         let shownMagicLinks = {};
         let magicLinksRef = null;
+        let newsFeedRef = null;
 
         const magicBondTasks = [
             "Тема «Время и Эволюция»: один человек рисует персонажа в детстве, другой — в зрелости/старости.",
@@ -269,7 +279,31 @@
                 }
                 updateTicketsTable();
             });
+
+            if (newsFeedRef) newsFeedRef.off();
+            newsFeedRef = db.ref('news_feed').limitToLast(15);
+            newsFeedRef.on('value', snap => {
+                const items = [];
+                snap.forEach(item => {
+                    const v = item.val();
+                    if (v?.text) items.push(v.text);
+                });
+                const text = items.length
+                    ? items.reverse().join('   ✦   ')
+                    : 'Пока новостей нет — откройте первую клетку! ✨';
+                document.getElementById('news-track').innerText = text;
+            });
+
             db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
+        }
+
+        function postNews(text) {
+            if (!text) return;
+            return db.ref('news_feed').push({
+                text,
+                round: currentRoundNum,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
         }
 
         function updateTicketsTable() {
@@ -380,8 +414,10 @@
                         tasks: magicBondTasks
                     });
                     magicLinkId = linkRef.key;
+                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и связался(ась) с ${partner.name}.`);
                     alert(`Вау! Это Магические узы! Свяжись с игроком ${partner.name}.`);
                 } else {
+                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и ждёт связи с напарником.`);
                     alert("Вау! Это Магические узы! Пока нет второго доступного игрока для связи.");
                 }
             } else if (isTrap) {
@@ -390,8 +426,13 @@
                     "Ха-ха! Как же тебе не повезло! Задача трудная - за тобой разворот. Рисуй скорее, а то счастливый билетик растворится как утренняя заря!"
                 ];
                 trapText = traps[Math.floor(Math.random()*traps.length)];
+                await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
             } else if (!isGold) {
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
+            }
+
+            if (isGold) {
+                await postNews(`👑 ${players[myIndex].n} нашёл(ла) золотую клетку и получил(а) 2 билетика!`);
             }
 
             const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: tStr, isGold, isTrap, isMagic, magicLinkId, trapText, round: currentRoundNum, excluded: false };
@@ -524,6 +565,8 @@
         magicCell: magicCell
     });
 
+    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки и магическая клетка.`);
+
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
 
@@ -571,5 +614,4 @@
     </script>
 </body>
 </html>
-
 
