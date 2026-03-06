@@ -312,6 +312,7 @@
             const isOwner = cell.userId === currentUserId;
             if (!isOwner) return alert('Передвигать плитки может только владелец клетки.');
             if (cell.miniGameWon) return alert('Мини-игра уже собрана!');
+            if (cell.miniGameFailed || (cell.round === currentRoundNum && Date.now() >= roundEndTime)) return alert('Раунд завершён — билет за пятнашки уже недоступен.');
 
             const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
                 ? [...cell.miniGameTiles]
@@ -325,9 +326,12 @@
             const updates = { miniGameTiles: tiles };
             if (isMiniGameSolved(tiles, 5)) {
                 const codeWord = pickRandomMiniGameCodeWord();
+                const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+                const ticket = tCounter.snapshot.val().toString();
                 updates.miniGameWon = true;
                 updates.miniGameCodeWord = codeWord;
-                await postNews(`🎮 ${players[cell.owner].n} собрал(а) пятнашки 5×5!`);
+                updates.ticket = ticket;
+                await postNews(`🎮 ${players[cell.owner].n} собрал(а) пятнашки 5×5 и получил(а) билет №${ticket}!`);
             }
 
             await cellRef.update(updates);
@@ -348,7 +352,7 @@
                 const emptyIdx = tiles.indexOf(0);
                 const movable = canMoveMiniGameTile(emptyIdx, idx, 5);
                 const commonStyle = `aspect-ratio:1/1; border-radius:8px; font-weight:bold; font-size:15px;`;
-                if (!isOwner || cell.miniGameWon || !movable) {
+                if (!isOwner || cell.miniGameWon || cell.miniGameFailed || !movable) {
                     return `<div style="${commonStyle} display:flex; align-items:center; justify-content:center; border:1px solid #4dd0e1; background:#e0f7fa; color:#006064;">${value}</div>`;
                 }
 
@@ -356,8 +360,10 @@
             }).join('');
 
             const winText = cell.miniGameWon
-                ? `<div style="font-size:14px; font-weight:bold; color:#2e7d32; margin-top:10px;">Вау! А ты не промах! Вот кодовое слово: <span style="background:#fff; border:1px solid #80cbc4; border-radius:8px; padding:3px 8px;">${cell.miniGameCodeWord || pickRandomMiniGameCodeWord()}</span></div>`
-                : `<div style="font-size:12px; color:#006064; margin-top:10px;">Собери пятнашки 5×5: расставь числа от 1 до 24 по порядку.</div>`;
+                ? `<div style="font-size:14px; font-weight:bold; color:#2e7d32; margin-top:10px;">Вау! А ты не промах! Вот кодовое слово: <span style="background:#fff; border:1px solid #80cbc4; border-radius:8px; padding:3px 8px;">${cell.miniGameCodeWord || pickRandomMiniGameCodeWord()}</span></div><div style="font-size:12px; color:#006064; margin-top:6px;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`
+                : (cell.miniGameFailed
+                    ? `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:10px;">Ой, кажется, кому то надо чаще играть в пятнашки!</div><div style="font-size:12px; color:#607d8b; margin-top:6px;">Раунд завершён. Теперь можно закрыть окошко и ждать следующий раунд, чтобы снова бросить кубик.</div>`
+                    : `<div style="font-size:12px; color:#006064; margin-top:10px;">Собери пятнашки 5×5: расставь числа от 1 до 24 по порядку. Билет выдаётся только за успешную сборку до конца раунда.</div>`);
 
             return `
                 <div style="margin-top:12px; padding:12px; border:2px solid #00acc1; border-radius:10px; background:#e0f7fa; text-align:left;">
@@ -510,7 +516,7 @@
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
-            const myCells = allTicketsData.filter(t => t.userId === currentUserId);
+            const myCells = allTicketsData.filter(t => t.userId === currentUserId && !t.isMiniGame);
             if (!myCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
@@ -637,6 +643,43 @@
             });
         }
 
+        function extractTicketNumbers(ticketValue) {
+            return String(ticketValue || '')
+                .split(' и ')
+                .map(t => t.trim())
+                .filter(t => /^\d+$/.test(t));
+        }
+
+        async function handleMiniGameRoundFailure() {
+            if (myIndex === -1) return;
+            if (window.miniGameRoundFailChecked === currentRoundNum) return;
+
+            const snap = await db.ref('board').once('value');
+            const board = snap.val() || {};
+            let failedCellIdx = -1;
+
+            for (let i = 0; i < 50; i++) {
+                const cell = board[i];
+                if (!cell) continue;
+                if (cell.userId !== currentUserId) continue;
+                if (cell.round !== currentRoundNum) continue;
+                if (!cell.isMiniGame) continue;
+                if (cell.miniGameWon) continue;
+                failedCellIdx = i;
+                break;
+            }
+
+            if (failedCellIdx !== -1) {
+                await db.ref(`board/${failedCellIdx}`).update({
+                    miniGameFailed: true,
+                    ticket: ''
+                });
+                alert('Ой, кажется, кому то надо чаще играть в пятнашки!');
+            }
+
+            window.miniGameRoundFailChecked = currentRoundNum;
+        }
+
         function updateTicketsTable() {
             const body = document.getElementById('tickets-body');
             const isAdmin = (currentUserId === ADMIN_ID);
@@ -683,6 +726,7 @@
                     document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
                     btn.disabled = true;
                     btn.innerText = "⏳ Раунд завершен";
+                    await handleMiniGameRoundFailure();
                     return;
                 }
 
@@ -718,9 +762,12 @@
             const isMiniGame = rData?.miniGameCell === cellIdx;
             const isGold = !isTrap && !isMagic && !isMiniGame && Math.random() < 0.05;
 
-            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            let tStr = tCounter.snapshot.val().toString();
-            if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
+            let tStr = '';
+            if (!isMiniGame) {
+                const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+                tStr = tCounter.snapshot.val().toString();
+                if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
+            }
 
             let taskIdx = -1;
             let trapText = "";
@@ -760,7 +807,6 @@
                 trapText = traps[Math.floor(Math.random()*traps.length)];
                 await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
             } else if (isMiniGame) {
-                taskIdx = avail[Math.floor(Math.random()*avail.length)];
                 await postNews(`🎮 ${players[myIndex].n} решил не рисовать, а играться! Ну надо же!`);
                 playFanfare();
             } else if (!isGold) {
@@ -771,9 +817,9 @@
                 await postNews(`👑 ${players[myIndex].n} нашёл(ла) золотую клетку и получил(а) 2 билетика!`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: tStr, isGold, isTrap, isMagic, isMiniGame, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
-            if(!isGold && !isTrap && !isMagic) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
+            if(!isGold && !isTrap && !isMagic && !isMiniGame) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             showCell(cellIdx, cellData);
         }
@@ -841,7 +887,7 @@
 
         function drawWheel() {
             const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
-            const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) t.ticket.toString().split(' и ').forEach(n => tickets.push({ num: n.trim(), owner: t.owner })); });
+            const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) extractTicketNumbers(t.ticket).forEach(n => tickets.push({ num: n, owner: t.owner })); });
             if (!tickets.length) return; tickets.sort((a,b)=>a.num-b.num);
             const segs = tickets.length, angle = 2 * Math.PI / segs;
             ctx.clearRect(0,0,280,280);
@@ -856,7 +902,7 @@
         function runWheelAnimation(rotation) {
             const canvas = document.getElementById('wheel-canvas'); canvas.style.transform = `rotate(${rotation}deg)`;
             setTimeout(() => {
-                const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) t.ticket.toString().split(' и ').forEach(n => tickets.push({ num: n.trim(), name: players[t.owner].n })); });
+                const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) extractTicketNumbers(t.ticket).forEach(n => tickets.push({ num: n, name: players[t.owner].n })); });
                 if (!tickets.length) {
                     document.getElementById('winner-display').innerHTML = "Нет активных билетов";
                     return;
