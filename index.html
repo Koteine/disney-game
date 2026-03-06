@@ -115,20 +115,57 @@
         th, td { padding: 8px 4px; border-bottom: 1px solid #eee; text-align: center; }
         .row-excluded { background: #f0f0f0; color: #aaa; text-decoration: line-through; }
 
-        .wheel-wrap { position: relative; width: 300px; margin: 0 auto 10px; }
-        #wheel-canvas { transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block; }
+        .wheel-wrap { position: relative; width: 320px; margin: 0 auto 10px; padding-top: 16px; }
+        #wheel-canvas { transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.18)); }
         .wheel-pointer {
             position: absolute;
-            top: -8px;
+            top: -2px;
             left: 50%;
             transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 12px solid transparent;
-            border-right: 12px solid transparent;
-            border-top: 24px solid #ff1744;
-            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.25));
-            z-index: 2;
+            width: 22px;
+            height: 32px;
+            background: linear-gradient(180deg,#ff1744,#b71c1c);
+            clip-path: polygon(50% 100%, 0 0, 100% 0);
+            border-radius: 2px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            z-index: 3;
+        }
+        .wheel-pointer::before {
+            content:'';
+            position:absolute;
+            left:50%;
+            top:-10px;
+            transform:translateX(-50%);
+            width:16px;
+            height:16px;
+            border-radius:50%;
+            background:#fff;
+            border:2px solid #d81b60;
+        }
+        .winner-toast {
+            position: fixed;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(92vw, 520px);
+            background: linear-gradient(135deg,#fffde7,#fce4ec);
+            border: 2px solid #f48fb1;
+            border-radius: 14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.24);
+            padding: 12px 34px 12px 12px;
+            z-index: 2500;
+            text-align: left;
+            display: none;
+        }
+        .winner-toast-close {
+            position:absolute;
+            right:10px;
+            top:8px;
+            border:none;
+            background:transparent;
+            font-size:18px;
+            color:#ad1457;
+            font-weight:bold;
         }
 
         .admin-inner-tabs { display:flex; gap:6px; margin:10px 0; }
@@ -274,11 +311,23 @@
         <div id="tab-wheel" class="tab-content">
             <h1>🎡 Колесо</h1>
             <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к розыгрышу?</div>
+            <div id="winner-toast" class="winner-toast">
+                <button class="winner-toast-close" onclick="closeWinnerToast()">✕</button>
+                <div id="winner-toast-text" style="font-weight:700; color:#6a1b9a;"></div>
+            </div>
             <div class="wheel-wrap">
                 <div class="wheel-pointer" aria-hidden="true"></div>
                 <canvas id="wheel-canvas" width="280" height="280"></canvas>
             </div>
             <div id="wheel-admin-btn"></div>
+            <div class="news-box" style="margin-top:10px;">
+                <div class="news-header">
+                    <div class="news-title">🏆 История победителей</div>
+                    <button id="winner-history-toggle-btn" class="news-toggle-btn" onclick="toggleWinnerHistoryPanel()">Развернуть</button>
+                </div>
+                <div id="winner-history-preview" class="news-preview">Пока победителей нет.</div>
+                <div id="winner-history-list" class="news-list"></div>
+            </div>
         </div>
 
         <div id="tab-works" class="tab-content">
@@ -299,6 +348,7 @@
             <div class="admin-inner-tabs">
                 <button id="admin-inner-rounds-btn" class="admin-inner-tab-btn active" onclick="switchAdminInnerTab('rounds')">Раунды</button>
                 <button id="admin-inner-events-btn" class="admin-inner-tab-btn" onclick="switchAdminInnerTab('events')">События</button>
+                <button id="admin-inner-draw-btn" class="admin-inner-tab-btn" onclick="switchAdminInnerTab('draw')">Розыгрыш</button>
             </div>
             <div id="admin-rounds-panel" class="admin-inner-panel active">
             <div class="admin-section">
@@ -323,6 +373,17 @@
                     <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
                     <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
+                </div>
+            </div>
+            <div id="admin-draw-panel" class="admin-inner-panel">
+                <div class="admin-section">
+                    <b>Отложенный запуск розыгрыша:</b>
+                    <label style="font-size:12px; color:#777;">Когда начнется розыгрыш</label>
+                    <input type="datetime-local" id="draw-start-at" class="admin-input">
+                    <label style="font-size:12px; color:#777;">Сколько крутится колесо (минут)</label>
+                    <input type="number" id="draw-duration-mins" class="admin-input" min="1" value="10">
+                    <button onclick="adminScheduleDraw()" class="admin-btn" style="background:#ff7043; width:100%; margin:0;">🕒 Запланировать розыгрыш</button>
+                    <div id="admin-draw-status" style="font-size:12px; margin-top:8px; color:#555;">Розыгрыш не запланирован.</div>
                 </div>
             </div>
             <div class="admin-section">
@@ -411,6 +472,8 @@
         let wandBlessingRef = null;
         let gameEventsRef = null;
         let epicPaintStrokesRef = null;
+        let winnerHistoryRef = null;
+        let drawScheduleRef = null;
         let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
         let myInkChallenge = null;
         let myWandBlessing = null;
@@ -425,10 +488,16 @@
         let epicPaintViewMode = 'event';
         let myRoundHasMove = false;
         let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
+        let currentWheelRotation = 0;
+        let wheelSpinInterval = null;
+        let wheelSystemInterval = null;
+        let winnerHistoryItems = [];
+        let currentDrawSchedule = null;
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
         const EPIC_PAINT_COVERAGE_TARGET = 95;
         const MAX_SCHEDULED_EVENTS = 10;
+        const MAX_TICKETS = 2000;
 
         const itemTypes = {
             goldenPollen: { emoji: "🎇", name: "Золотая пыльца" },
@@ -551,8 +620,9 @@
             };
 
             if (isCorrect) {
-                const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-                const ticket = tCounter.snapshot.val().toString();
+                const awarded = await claimSequentialTickets(1);
+                const ticket = awarded?.[0] || '';
+                if (!ticket) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
                 updates.ticket = ticket;
                 await postNews(`🧩 ${players[cell.owner].n} угадал(а) слово в игре «Словесный скетч» и получил(а) билет №${ticket}!`);
                 alert('Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет!');
@@ -676,8 +746,9 @@
                     ticket = myInkChallenge.pendingTicket || '';
                     await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, selectedOptionLabel: inkChallengeOptions[0] });
                 } else {
-                    const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-                    ticket = tCounter.snapshot.val().toString();
+                    const awarded = await claimSequentialTickets(1);
+                    ticket = awarded?.[0] || '';
+                    if (!ticket) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
                 }
                 updates.miniGameWon = true;
                 updates.miniGameCodeWord = codeWord;
@@ -732,6 +803,7 @@
                 checkAccess();
                 syncData();
                 syncGameEvents();
+                syncWheelSystems();
             } catch(e) { console.error(e); }
         }
 
@@ -990,8 +1062,9 @@ ${candidates.map(v => v + 1).join(', ')}`);
             }
 
             const targetCellIdx = free[Math.floor(Math.random() * free.length)];
-            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            const pendingTicket = String(tCounter.snapshot.val());
+            const awarded = await claimSequentialTickets(1);
+            const pendingTicket = awarded?.[0] || '';
+            if (!pendingTicket) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
 
             const challengeData = {
                 type: 'inkSabotage',
@@ -1074,8 +1147,9 @@ ${candidates.map(v => v + 1).join(', ')}`);
             if (!free.length) return alert('Нет свободных клеток, чтобы передать волшебство.');
 
             const targetCellIdx = free[Math.floor(Math.random() * free.length)];
-            const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-            const pendingTicket = String(tCounter.snapshot.val());
+            const awarded = await claimSequentialTickets(1);
+            const pendingTicket = awarded?.[0] || '';
+            if (!pendingTicket) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
 
             const blessingData = {
                 type: 'magicWand',
@@ -1220,12 +1294,17 @@ ${candidates.map(v => v + 1).join(', ')}`);
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
                 syncAdminList();
                 const startInput = document.getElementById('event-start-at');
                 if (startInput && !startInput.value) {
                     const dt = new Date(Date.now() + 60000);
                     startInput.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                }
+                const drawStartInput = document.getElementById('draw-start-at');
+                if (drawStartInput && !drawStartInput.value) {
+                    const dt = new Date(Date.now() + 60000);
+                    drawStartInput.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
                 }
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 setAuthorizedView(true);
@@ -1346,8 +1425,6 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 preview.innerText = ordered[0] || 'Пока новостей нет — откройте первую клетку! ✨';
                 list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
             });
-
-            db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
 
             if (submissionsRef) submissionsRef.off();
             submissionsRef = db.ref('submissions');
@@ -1713,13 +1790,19 @@ ${candidates.map(v => v + 1).join(', ')}`);
         function switchAdminInnerTab(tabName) {
             const roundsBtn = document.getElementById('admin-inner-rounds-btn');
             const eventsBtn = document.getElementById('admin-inner-events-btn');
+            const drawBtn = document.getElementById('admin-inner-draw-btn');
             const roundsPanel = document.getElementById('admin-rounds-panel');
             const eventsPanel = document.getElementById('admin-events-panel');
+            const drawPanel = document.getElementById('admin-draw-panel');
             const isRounds = tabName === 'rounds';
+            const isEvents = tabName === 'events';
+            const isDraw = tabName === 'draw';
             roundsBtn?.classList.toggle('active', isRounds);
-            eventsBtn?.classList.toggle('active', !isRounds);
+            eventsBtn?.classList.toggle('active', isEvents);
+            drawBtn?.classList.toggle('active', isDraw);
             roundsPanel?.classList.toggle('active', isRounds);
-            eventsPanel?.classList.toggle('active', !isRounds);
+            eventsPanel?.classList.toggle('active', isEvents);
+            drawPanel?.classList.toggle('active', isDraw);
         }
 
         function getPlayerColorByUid(uid) {
@@ -1867,9 +1950,9 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
                 if (!Number.isInteger(owner) || !players[owner]) continue;
 
-                const t1 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-                const t2 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-                const ticketValue = `${t1.snapshot.val()} и ${t2.snapshot.val()}`;
+                const awarded = await claimSequentialTickets(2);
+                if (!awarded) continue;
+                const ticketValue = `${awarded[0]} и ${awarded[1]}`;
                 await db.ref('tickets_archive').push({
                     owner,
                     userId: uid,
@@ -2120,6 +2203,18 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 .filter(t => /^\d+$/.test(t));
         }
 
+        async function claimSequentialTickets(count = 1) {
+            let startFrom = null;
+            const tx = await db.ref('ticket_counter').transaction(c => {
+                const current = Number(c) || 0;
+                if (current + count > MAX_TICKETS) return;
+                startFrom = current + 1;
+                return current + count;
+            });
+            if (!tx.committed || !Number.isInteger(startFrom)) return null;
+            return Array.from({ length: count }, (_, idx) => String(startFrom + idx));
+        }
+
         async function handleMiniGameRoundFailure() {
             if (myIndex === -1) return;
             if (window.miniGameRoundFailChecked === currentRoundNum) return;
@@ -2205,6 +2300,8 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 await checkInkDeadline();
                 await activateScheduledEventIfNeeded();
                 await failExpiredEventIfNeeded();
+                await maybeActivateScheduledDraw();
+                await maybeFinalizeScheduledDraw();
                 const diff = roundEndTime - Date.now();
                 if (diff <= 0) {
                     document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
@@ -2267,9 +2364,10 @@ ${candidates.map(v => v + 1).join(', ')}`);
 
             let tStr = '';
             if (!isMiniGame && !isWordSketch) {
-                const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
-                tStr = tCounter.snapshot.val().toString();
-                if(isGold) { const tGold = await db.ref('ticket_counter').transaction(c => (c || 0) + 1); tStr += " и " + tGold.snapshot.val(); }
+                const awarded = await claimSequentialTickets(isGold ? 2 : 1);
+                if (!awarded) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+                tStr = awarded[0];
+                if (isGold) tStr += " и " + awarded[1];
             }
 
             const pendingItemTicket = (itemType === 'inkSaboteur') ? tStr : '';
@@ -2478,86 +2576,289 @@ ${candidates.map(v => v + 1).join(', ')}`);
             document.getElementById('overlay').style.display = 'block';
         }
 
-        function drawWheel() {
-            const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
-            const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) extractTicketNumbers(t.ticket).forEach(n => tickets.push({ num: n, owner: t.owner })); });
-            ctx.clearRect(0,0,280,280);
-            if (!tickets.length) return; tickets.sort((a,b)=>a.num-b.num);
-            const segs = tickets.length, angle = 2 * Math.PI / segs;
+        function getActiveTicketsForWheel() {
+            const tickets = [];
+            allTicketsData.forEach(t => {
+                if (t.excluded) return;
+                extractTicketNumbers(t.ticket).forEach(n => {
+                    tickets.push({ num: String(n), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' });
+                });
+            });
+            return tickets.sort((a, b) => Number(a.num) - Number(b.num));
+        }
 
+        function drawWheel() {
+            const canvas = document.getElementById('wheel-canvas');
+            const ctx = canvas.getContext('2d');
+            const tickets = getActiveTicketsForWheel();
+            ctx.clearRect(0, 0, 280, 280);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, 280, 280);
+
+            if (!tickets.length) {
+                ctx.fillStyle = '#999';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Нет активных билетов', 140, 145);
+                return;
+            }
+
+            const segs = tickets.length;
+            const angle = (2 * Math.PI) / segs;
             tickets.forEach((t, i) => {
                 const startA = i * angle;
                 const endA = (i + 1) * angle;
 
+                const grad = ctx.createLinearGradient(0, 0, 280, 280);
+                grad.addColorStop(0, charColors[t.owner] || '#ff4081');
+                grad.addColorStop(1, '#ffffff');
+
                 ctx.beginPath();
-                ctx.moveTo(140,140);
-                ctx.arc(140,140,132, startA, endA);
-                ctx.fillStyle = charColors[t.owner];
+                ctx.moveTo(140, 140);
+                ctx.arc(140, 140, 130, startA, endA);
+                ctx.closePath();
+                ctx.fillStyle = grad;
                 ctx.fill();
 
                 ctx.beginPath();
-                ctx.moveTo(140,140);
-                ctx.lineTo(140 + 132 * Math.cos(startA), 140 + 132 * Math.sin(startA));
-                ctx.strokeStyle = "rgba(255,255,255,0.95)";
-                ctx.lineWidth = 2;
+                ctx.moveTo(140, 140);
+                ctx.lineTo(140 + 130 * Math.cos(startA), 140 + 130 * Math.sin(startA));
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                ctx.lineWidth = 1.4;
                 ctx.stroke();
 
                 ctx.save();
-                ctx.translate(140,140);
-                ctx.rotate(i*angle + angle/2);
-                ctx.fillStyle="white";
-                ctx.font="bold 10px Arial";
+                ctx.translate(140, 140);
+                ctx.rotate(startA + angle / 2);
+                ctx.fillStyle = '#212121';
+                ctx.font = segs > 120 ? 'bold 8px Arial' : 'bold 10px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(t.num, 96, 4);
+                ctx.fillText(t.num, 98, 3);
                 ctx.restore();
             });
 
-            // Внешний обод
             ctx.beginPath();
-            ctx.arc(140, 140, 133, 0, Math.PI * 2);
+            ctx.arc(140, 140, 132, 0, Math.PI * 2);
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 4;
             ctx.stroke();
 
             ctx.beginPath();
             ctx.arc(140, 140, 136, 0, Math.PI * 2);
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ad1457';
+            ctx.lineWidth = 3;
             ctx.stroke();
 
-            // Центральный круг
             ctx.beginPath();
-            ctx.arc(140, 140, 18, 0, Math.PI * 2);
+            ctx.arc(140, 140, 20, 0, Math.PI * 2);
             ctx.fillStyle = '#fff';
             ctx.fill();
-            ctx.strokeStyle = '#333';
+            ctx.strokeStyle = '#ad1457';
             ctx.lineWidth = 2;
             ctx.stroke();
-
-            // Маркер направления сверху (под стрелкой)
-            ctx.beginPath();
-            ctx.moveTo(140, 4);
-            ctx.lineTo(132, 18);
-            ctx.lineTo(148, 18);
-            ctx.closePath();
-            ctx.fillStyle = '#ff1744';
-            ctx.fill();
         }
 
-        function runWheelAnimation(rotation) {
-            const canvas = document.getElementById('wheel-canvas'); canvas.style.transform = `rotate(${rotation}deg)`;
-            setTimeout(() => {
-                const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) extractTicketNumbers(t.ticket).forEach(n => tickets.push({ num: n, name: players[t.owner].n })); });
-                if (!tickets.length) {
-                    document.getElementById('winner-display').innerHTML = "Нет активных билетов";
+        function closeWinnerToast() {
+            const toast = document.getElementById('winner-toast');
+            if (toast) toast.style.display = 'none';
+        }
+
+        function showWinnerToast(text) {
+            const toast = document.getElementById('winner-toast');
+            const textEl = document.getElementById('winner-toast-text');
+            if (!toast || !textEl) return;
+            textEl.innerText = text;
+            toast.style.display = 'block';
+        }
+
+        function startContinuousWheelSpin() {
+            const canvas = document.getElementById('wheel-canvas');
+            if (!canvas) return;
+            if (wheelSpinInterval) clearInterval(wheelSpinInterval);
+            canvas.style.transition = 'none';
+            wheelSpinInterval = setInterval(() => {
+                currentWheelRotation += 18;
+                canvas.style.transform = `rotate(${currentWheelRotation}deg)`;
+            }, 100);
+        }
+
+        function stopContinuousWheelSpin() {
+            if (wheelSpinInterval) {
+                clearInterval(wheelSpinInterval);
+                wheelSpinInterval = null;
+            }
+        }
+
+        function getWinnerIndexByTicketNum(ticketNum) {
+            const tickets = getActiveTicketsForWheel();
+            return tickets.findIndex(t => String(t.num) === String(ticketNum));
+        }
+
+        function computeRotationForWinnerIndex(index, segs, baseRotation) {
+            const segmentDeg = 360 / Math.max(1, segs);
+            const val = index * segmentDeg + segmentDeg / 2;
+            const targetMod = (630 - val) % 360;
+            const baseMod = ((baseRotation % 360) + 360) % 360;
+            const delta = (targetMod - baseMod + 360) % 360;
+            return baseRotation + (6 * 360) + delta;
+        }
+
+        function runWheelStopAnimationAndShowWinner(winnerTicket, winnerName, drawId) {
+            const tickets = getActiveTicketsForWheel();
+            const winnerIdx = tickets.findIndex(t => String(t.num) === String(winnerTicket));
+            if (winnerIdx < 0) return;
+            const canvas = document.getElementById('wheel-canvas');
+            stopContinuousWheelSpin();
+            const targetRotation = computeRotationForWinnerIndex(winnerIdx, tickets.length, currentWheelRotation);
+            currentWheelRotation = targetRotation;
+            canvas.style.transition = 'transform 6s cubic-bezier(0.16, 0.84, 0.24, 1)';
+            canvas.style.transform = `rotate(${targetRotation}deg)`;
+
+            setTimeout(async () => {
+                const text = `Поздравляю, ${winnerName}, великая азиатская фортуна выбрала тебя победителем!`;
+                document.getElementById('winner-display').innerHTML = `🏆 Билет №${winnerTicket}: <b>${winnerName}</b>`;
+                showWinnerToast(text);
+                launchCelebrationFireworks();
+                playFireworksSound();
+            }, 6200);
+        }
+
+        function renderWinnerHistory() {
+            const preview = document.getElementById('winner-history-preview');
+            const list = document.getElementById('winner-history-list');
+            if (!preview || !list) return;
+            if (!winnerHistoryItems.length) {
+                preview.innerText = 'Пока победителей нет.';
+                list.innerHTML = '';
+                return;
+            }
+            const latest = winnerHistoryItems[0];
+            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · №${latest.ticket} · ${latest.winnerName}`;
+            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
+        }
+
+        function toggleWinnerHistoryPanel() {
+            const list = document.getElementById('winner-history-list');
+            const btn = document.getElementById('winner-history-toggle-btn');
+            if (!list || !btn) return;
+            const expanded = list.classList.toggle('expanded');
+            btn.innerText = expanded ? 'Свернуть' : 'Развернуть';
+        }
+
+        async function maybeActivateScheduledDraw() {
+            if (!currentDrawSchedule || currentDrawSchedule.status !== 'scheduled') return;
+            if (Date.now() < (currentDrawSchedule.startAt || 0)) return;
+            await db.ref('wheel_draw').transaction(v => {
+                if (!v || v.status !== 'scheduled') return v;
+                if (Date.now() < (v.startAt || 0)) return v;
+                return { ...v, status: 'spinning', startedAt: Date.now() };
+            });
+        }
+
+        async function maybeFinalizeScheduledDraw() {
+            if (!currentDrawSchedule || currentDrawSchedule.status !== 'spinning') return;
+            const finishAt = (currentDrawSchedule.startedAt || 0) + (currentDrawSchedule.durationMs || 0);
+            if (Date.now() < finishAt) return;
+
+            const tickets = getActiveTicketsForWheel();
+            if (!tickets.length) {
+                await db.ref('wheel_draw').transaction(v => {
+                    if (!v || v.status !== 'spinning') return v;
+                    return { ...v, status: 'completed', completedAt: Date.now(), noTickets: true };
+                });
+                return;
+            }
+
+            const randomIdx = Math.floor(Math.random() * tickets.length);
+            const winner = tickets[randomIdx];
+            const tx = await db.ref('wheel_draw').transaction(v => {
+                if (!v || v.status !== 'spinning') return v;
+                return {
+                    ...v,
+                    status: 'completed',
+                    completedAt: Date.now(),
+                    winnerTicket: winner.num,
+                    winnerName: winner.name,
+                    randomIdx
+                };
+            });
+            if (tx.committed) {
+                await db.ref('wheel_history').push({
+                    drawId: tx.snapshot.val()?.completedAt || Date.now(),
+                    ticket: String(winner.num),
+                    winnerName: winner.name,
+                    createdAt: Date.now()
+                });
+            }
+        }
+
+        function updateAdminDrawStatus() {
+            const el = document.getElementById('admin-draw-status');
+            if (!el) return;
+            if (!currentDrawSchedule) {
+                el.innerText = 'Розыгрыш не запланирован.';
+                return;
+            }
+            const start = currentDrawSchedule.startAt ? new Date(currentDrawSchedule.startAt).toLocaleString('ru-RU') : '—';
+            const state = currentDrawSchedule.status || '—';
+            const mins = Math.round((currentDrawSchedule.durationMs || 0) / 60000);
+            el.innerText = `Статус: ${state}. Старт: ${start}. Длительность крутки: ${mins} мин.`;
+        }
+
+        async function adminScheduleDraw() {
+            if (currentUserId !== ADMIN_ID) return;
+            const startRaw = document.getElementById('draw-start-at')?.value;
+            const mins = Number(document.getElementById('draw-duration-mins')?.value || 0);
+            if (!startRaw) return alert('Выбери дату и время старта розыгрыша.');
+            if (!mins || mins < 1) return alert('Укажи длительность крутки в минутах.');
+            const startAt = new Date(startRaw).getTime();
+            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
+
+            await db.ref('wheel_draw').set({
+                status: 'scheduled',
+                startAt,
+                durationMs: mins * 60000,
+                createdAt: Date.now(),
+                createdBy: currentUserId
+            });
+            alert('Розыгрыш запланирован.');
+        }
+
+        function syncWheelSystems() {
+            if (winnerHistoryRef) winnerHistoryRef.off();
+            winnerHistoryRef = db.ref('wheel_history').limitToLast(100);
+            winnerHistoryRef.on('value', snap => {
+                const items = [];
+                snap.forEach(item => items.push(item.val() || {}));
+                winnerHistoryItems = items.reverse();
+                renderWinnerHistory();
+            });
+
+            if (drawScheduleRef) drawScheduleRef.off();
+            drawScheduleRef = db.ref('wheel_draw');
+            drawScheduleRef.on('value', snap => {
+                currentDrawSchedule = snap.val() || null;
+                updateAdminDrawStatus();
+                if (!currentDrawSchedule) {
+                    stopContinuousWheelSpin();
                     return;
                 }
-                tickets.sort((a,b)=>a.num-b.num);
-                const winIdx = Math.floor(((360 - (rotation % 360) + 270) % 360) / (360/tickets.length));
-                const win = tickets[winIdx];
-                document.getElementById('winner-display').innerHTML = win ? `🏆 Билет №${win.num}: <b>${win.name}</b>` : "...";
-                new Audio('https://actions.google.com/sounds/v1/cartoon/tada.ogg').play();
-            }, 5000);
+                if (currentDrawSchedule.status === 'spinning') {
+                    startContinuousWheelSpin();
+                } else if (currentDrawSchedule.status === 'completed') {
+                    stopContinuousWheelSpin();
+                    if (currentDrawSchedule.winnerTicket && currentDrawSchedule.winnerName && currentDrawSchedule.completedAt && window.lastHandledDrawCompletedAt !== currentDrawSchedule.completedAt) {
+                        window.lastHandledDrawCompletedAt = currentDrawSchedule.completedAt;
+                        runWheelStopAnimationAndShowWinner(currentDrawSchedule.winnerTicket, currentDrawSchedule.winnerName, currentDrawSchedule.completedAt);
+                    }
+                }
+            });
+
+            if (wheelSystemInterval) clearInterval(wheelSystemInterval);
+            wheelSystemInterval = setInterval(async () => {
+                await maybeActivateScheduledDraw();
+                await maybeFinalizeScheduledDraw();
+            }, 1000);
         }
 
         async function adminStartNewRound() {
@@ -2802,6 +3103,8 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 epic_paint: null,
                 ticket_counter: 0,
                 wheel_event: null,
+                wheel_draw: null,
+                wheel_history: null,
                 current_round: {
                     number: 0,
                     endTime: 0,
@@ -2833,7 +3136,16 @@ ${candidates.map(v => v + 1).join(', ')}`);
             location.reload();
         }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
-        async function adminTriggerSpin() { if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет работ!"); await db.ref('wheel_event').set({ rotation: 3600 + Math.floor(Math.random()*3600), timestamp: Date.now() }); }
+        async function adminTriggerSpin() {
+            if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет активных билетиков для розыгрыша.");
+            await db.ref('wheel_draw').set({
+                status: 'scheduled',
+                startAt: Date.now() + 1000,
+                durationMs: 30000,
+                createdAt: Date.now(),
+                createdBy: currentUserId
+            });
+        }
 
         function switchTab(id, el) {
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
