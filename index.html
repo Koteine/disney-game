@@ -245,7 +245,7 @@
                 <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
                 <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
                 <p><b>6. 👯 Тянет к тебе как магнитом:</b> В каждом раунде есть 1 клетка. Попав на неё, ты получаешь задание случайного игрока, который уже получил любое задание, кроме механики магической связи.</p>
-                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 2 мини-игры на случайных клетках: пятнашки 5×5 и «Словесный скетч». Если тебе выпала мини-игра, других загадок/механик в этой клетке нет. В «Словесном скетче» нужно угадать существительное из 5 букв: при успехе кодовое слово «Скетч», рисунок и билет; при ошибке — без билета и с пропуском раунда.</p>
+                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 2 мини-игры на случайных клетках: пятнашки 5×5 и «Словесный скетч». Если тебе выпала мини-игра, других загадок/механик в этой клетке нет. В «Словесном скетче» нужно угадать слово из списка за 3 попытки: первая буква сразу открыта, в проверке букв подсветка — оранжевым (буква есть, но не на месте) и зелёным (буква на месте). При успехе кодовое слово «Скетч», рисунок и билет; при ошибке после 3 попыток — без билета и с пропуском раунда.</p>
                 <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 3 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b> и <b>Волшебной палочкой 🎆</b>.</p>
                 <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
                 <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
@@ -343,14 +343,13 @@
         ];
 
         const wordSketchWords = [
-            "арбуз", "банка", "билет", "блеск", "блюдо", "букет", "ветер", "вишня", "волна", "время",
-            "город", "гроза", "дверь", "диван", "дымка", "забор", "замок", "зверь", "зерно", "игрок",
-            "кабан", "какао", "камыш", "канат", "капля", "карта", "кисть", "книга", "ковер", "крыло",
-            "кукла", "лампа", "лилия", "лимон", "ложка", "маска", "мечта", "метро", "музей", "океан",
-            "орден", "палец", "пирог", "пламя", "птица", "ручей", "салат", "сапог", "свеча", "север",
-            "скала", "сквер", "слеза", "собор", "сосна", "спина", "сумка", "тайна", "танец", "ткань",
-            "трава", "фрукт", "холст", "чашка", "шапка", "штора", "ягода"
+            "кисть", "холст", "гуашь", "масло", "уголь", "линер", "пенал", "эскиз", "образ", "мазок",
+            "штрих", "линия", "пятно", "стиль", "бемби", "плуто", "алиса", "валик", "глина", "лампа",
+            "грунт", "лепка", "набор", "смесь", "блеск", "мулан", "ститч", "замок", "принц", "моана",
+            "акрил", "сепия", "губка", "лента", "скотч"
         ].map(w => w.toLowerCase());
+
+        const WORD_SKETCH_MAX_ATTEMPTS = 3;
 
         function normalizeWordSketchInput(value) {
             return (value || '').trim().toLowerCase().replace(/ё/g, 'е');
@@ -360,13 +359,46 @@
             return wordSketchWords[Math.floor(Math.random() * wordSketchWords.length)];
         }
 
+        function evaluateWordSketchGuess(guess, answer) {
+            return [...guess].map((char, idx) => {
+                if (char === answer[idx]) return 'correct';
+                if (answer.includes(char)) return 'present';
+                return 'absent';
+            });
+        }
+
+        function buildWordSketchHintMarkup(answer) {
+            if (!answer) return '';
+            const first = answer[0]?.toUpperCase() || '';
+            const hidden = Math.max(answer.length - 1, 0);
+            return `
+                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                    <div style="width:34px; height:34px; border-radius:8px; border:1px solid #6d4c41; background:#dcedc8; color:#33691e; display:flex; align-items:center; justify-content:center; font-weight:bold;">${first}</div>
+                    ${Array.from({length: hidden}).map(() => `<div style="width:34px; height:34px; border-radius:8px; border:1px dashed #a1887f; background:#fff;"></div>`).join('')}
+                </div>`;
+        }
+
+        function buildWordSketchAttemptRow(attempt) {
+            const guess = normalizeWordSketchInput(attempt?.guess || '');
+            const marks = Array.isArray(attempt?.marks) ? attempt.marks : [];
+            if (!guess) return '';
+
+            return `
+                <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+                    ${[...guess].map((ch, idx) => {
+                        const mark = marks[idx] || 'absent';
+                        const color = mark === 'correct' ? '#2e7d32' : (mark === 'present' ? '#ef6c00' : '#90a4ae');
+                        const bg = mark === 'correct' ? '#e8f5e9' : (mark === 'present' ? '#fff3e0' : '#eceff1');
+                        return `<div style="width:34px; height:34px; border-radius:8px; border:1px solid ${color}; background:${bg}; color:${color}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${ch.toUpperCase()}</div>`;
+                    }).join('')}
+                </div>`;
+        }
+
         async function submitWordSketchGuess(cellIdx) {
             const input = document.getElementById(`word-sketch-input-${cellIdx}`);
             if (!input) return;
 
             const guess = normalizeWordSketchInput(input.value);
-            if (guess.length !== 5) return alert('Нужно ввести существительное из 5 букв.');
-
             const cellRef = db.ref('board/' + cellIdx);
             const snap = await cellRef.once('value');
             const cell = snap.val();
@@ -374,25 +406,40 @@
 
             const isOwner = cell.userId === currentUserId;
             if (!isOwner) return alert('Угадывать слово может только владелец клетки.');
-            if (cell.wordSketchGuessed || cell.wordSketchFailed) return alert('Для этой клетки попытка уже завершена.');
+            if (cell.wordSketchGuessed || cell.wordSketchFailed) return alert('Для этой клетки попытки уже завершены.');
 
             const targetWord = normalizeWordSketchInput(cell.wordSketchAnswer || '');
+            if (!targetWord) return alert('Слово для этой клетки ещё не подготовлено.');
+            if (guess.length !== targetWord.length) return alert(`Нужно ввести слово из ${targetWord.length} букв.`);
+
+            const marks = evaluateWordSketchGuess(guess, targetWord);
+            const attempts = Array.isArray(cell.wordSketchAttempts) ? [...cell.wordSketchAttempts] : [];
+            attempts.push({ guess, marks, ts: Date.now() });
+            const attemptsUsed = attempts.length;
+            const attemptsLeft = Math.max(WORD_SKETCH_MAX_ATTEMPTS - attemptsUsed, 0);
+            const isCorrect = guess === targetWord;
+            const isFailed = !isCorrect && attemptsUsed >= WORD_SKETCH_MAX_ATTEMPTS;
+
             const updates = {
                 wordSketchGuess: guess,
-                wordSketchGuessed: guess === targetWord,
-                wordSketchFailed: guess !== targetWord
+                wordSketchAttempts: attempts,
+                wordSketchAttemptCount: attemptsUsed,
+                wordSketchGuessed: isCorrect,
+                wordSketchFailed: isFailed
             };
 
-            if (guess === targetWord) {
+            if (isCorrect) {
                 const tCounter = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
                 const ticket = tCounter.snapshot.val().toString();
                 updates.ticket = ticket;
                 await postNews(`🧩 ${players[cell.owner].n} угадал(а) слово в игре «Словесный скетч» и получил(а) билет №${ticket}!`);
                 alert('Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет!');
-            } else {
+            } else if (isFailed) {
                 updates.ticket = '';
                 await postNews(`🧩 ${players[cell.owner].n} не угадал(а) слово в игре «Словесный скетч» и пропускает раунд.`);
-                alert('Увы, слово не угадано. В этом раунде билет не начисляется, ход пропущен.');
+                alert('Увы, попытки закончились. В этом раунде билет не начисляется, ход пропущен.');
+            } else {
+                alert(`Неверно. Осталось попыток: ${attemptsLeft}. Подсказка по буквам обновлена в карточке.`);
             }
 
             await cellRef.update(updates);
@@ -401,21 +448,33 @@
         }
 
         function buildWordSketchMarkup(cellIdx, cell, isOwner) {
+            const attempts = Array.isArray(cell.wordSketchAttempts) ? cell.wordSketchAttempts : [];
+            const attemptsUsed = attempts.length;
             const isResolved = !!(cell.wordSketchGuessed || cell.wordSketchFailed);
             const canGuess = isOwner && !isResolved;
+            const answer = normalizeWordSketchInput(cell.wordSketchAnswer || '');
+            const attemptsLeft = Math.max(WORD_SKETCH_MAX_ATTEMPTS - attemptsUsed, 0);
 
-            let statusText = `<div style="font-size:12px; color:#5d4037; margin-top:8px;">Угадай существительное из 5 букв (именительный падеж, единственное число).</div>`;
+            let statusText = `<div style="font-size:12px; color:#5d4037; margin-top:8px;">Угадай слово. Есть ${WORD_SKETCH_MAX_ATTEMPTS} попытки. Подсказка: первая буква открыта.</div>`;
             if (cell.wordSketchGuessed) {
                 statusText = `<div style="font-size:13px; color:#2e7d32; font-weight:bold; margin-top:8px;">Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет.</div><div style="font-size:12px; margin-top:4px; color:#33691e;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`;
             } else if (cell.wordSketchFailed) {
-                statusText = `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:8px;">Слово не угадано. Билет не начисляется, этот раунд пропускается.</div>`;
+                statusText = `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:8px;">Слово не угадано за ${WORD_SKETCH_MAX_ATTEMPTS} попытки. Билет не начисляется, этот раунд пропускается.</div>`;
+            } else {
+                statusText += `<div style="font-size:12px; color:#6d4c41; margin-top:4px;">Попыток осталось: <b>${attemptsLeft}</b></div>`;
             }
+
+            const attemptsMarkup = attempts.length
+                ? `<div style="margin-top:8px;"><div style="font-size:12px; color:#5d4037;">История попыток:</div>${attempts.map(buildWordSketchAttemptRow).join('')}</div>`
+                : '';
 
             return `
                 <div style="margin-top:12px; padding:12px; border:2px solid #8d6e63; border-radius:10px; background:#efebe9; text-align:left;">
                     <div style="font-weight:bold; color:#4e342e; margin-bottom:8px;">🧩 Мини-игра: Словесный скетч</div>
-                    <div style="font-size:12px; color:#5d4037;">Есть одна попытка угадать загаданное слово из 5 букв.</div>
-                    ${canGuess ? `<div style="display:flex; gap:6px; margin-top:8px;"><input id="word-sketch-input-${cellIdx}" maxlength="5" placeholder="Например: холст" style="flex:1; border:1px solid #bcaaa4; border-radius:8px; padding:8px; text-transform:lowercase;"><button onclick="submitWordSketchGuess(${cellIdx})" style="border:1px solid #6d4c41; background:#fff; color:#4e342e; border-radius:8px; padding:8px 10px;">Проверить</button></div>` : ''}
+                    <div style="font-size:12px; color:#5d4037;">Первая буква известна сразу. Цвета в попытках: 🟩 буква и место верные, 🟧 буква есть в слове, но место другое.</div>
+                    ${buildWordSketchHintMarkup(answer)}
+                    ${canGuess ? `<div style="display:flex; gap:6px; margin-top:8px;"><input id="word-sketch-input-${cellIdx}" maxlength="${answer.length || 5}" placeholder="Введи слово" style="flex:1; border:1px solid #bcaaa4; border-radius:8px; padding:8px; text-transform:lowercase;"><button onclick="submitWordSketchGuess(${cellIdx})" style="border:1px solid #6d4c41; background:#fff; color:#4e342e; border-radius:8px; padding:8px 10px;">Проверить</button></div>` : ''}
+                    ${attemptsMarkup}
                     ${statusText}
                 </div>`;
         }
@@ -1524,7 +1583,7 @@
                 await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
