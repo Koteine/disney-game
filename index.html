@@ -1830,6 +1830,8 @@
             const updates = {
                 board: {},
                 tickets_archive: {},
+                news_feed: {},
+                submissions: {},
                 ticket_counter: 0,
                 wheel_event: null,
                 current_round: {
@@ -1857,7 +1859,7 @@
             });
 
             await db.ref().update(updates);
-            alert('Игра сброшена полностью: поле, раунды, билеты и предметы обнулены. Нажми «Запустить раунд», чтобы начать заново.');
+            alert('Игра сброшена полностью: поле, раунды, билеты, предметы, лента событий и работы очищены. Нажми «Запустить раунд», чтобы начать заново.');
             location.reload();
         }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
