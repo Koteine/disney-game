@@ -853,10 +853,32 @@
             if (![1,2,3,4].includes(optionNumber)) return;
             if (challenge.selectedOption) return alert('Усложнение уже выбрано.');
 
+            const optionLabel = inkChallengeOptions[optionNumber - 1] || '';
+            await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({
+                draftOption: optionNumber,
+                draftOptionLabel: optionLabel,
+                draftUpdatedAt: Date.now()
+            });
+            alert(`Вариант №${optionNumber} выбран. Теперь нажми «Утвердить выбор».`);
+            const updated = await db.ref(`board/${cellIdx}`).once('value');
+            showCell(cellIdx, updated.val());
+        }
+
+        async function confirmInkChallengeOption(cellIdx) {
+            const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
+            const challenge = challengeSnap.val();
+            if (!challenge || challenge.round !== currentRoundNum || challenge.isResolved) return alert('Клякса для текущего раунда не активна.');
+            if (challenge.selectedOption) return alert('Усложнение уже утверждено.');
+            const optionNumber = Number(challenge.draftOption);
+            if (![1,2,3,4].includes(optionNumber)) return alert('Сначала выбери вариант из списка.');
+
             const patch = {
                 selectedOption: optionNumber,
                 selectedOptionLabel: inkChallengeOptions[optionNumber - 1],
-                updatedAt: Date.now()
+                selectedAt: Date.now(),
+                updatedAt: Date.now(),
+                draftOption: null,
+                draftOptionLabel: null
             };
             if (optionNumber === 4) patch.optionDeadline = Date.now() + 24 * 60 * 60 * 1000;
             await db.ref(`whitelist/${currentUserId}/ink_challenge`).update(patch);
@@ -868,7 +890,9 @@
                 await db.ref(`whitelist/${currentUserId}/ink_challenge/isResolved`).set(true);
             }
 
-            alert(optionNumber === 4 ? 'Таймер на 24 часа запущен во вкладке сдачи работ.' : 'Усложнение выбрано.');
+            alert(optionNumber === 4 ? 'Выбор утверждён. Таймер на 24 часа запущен во вкладке сдачи работ.' : 'Выбор утверждён. Усложнение закреплено.');
+            const updated = await db.ref(`board/${cellIdx}`).once('value');
+            showCell(cellIdx, updated.val());
         }
 
         async function checkInkDeadline() {
@@ -1215,24 +1239,46 @@
             const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
             const blessing = blessingSnap.val();
             if (!blessing || blessing.round !== currentRoundNum || blessing.isResolved) return alert('Эта магия уже недоступна.');
+            if (blessing.selectedOption) return alert('Вариант уже утверждён.');
 
             const optionLabel = wandBlessingTasks[optionNum - 1] || '';
+            await db.ref(`whitelist/${currentUserId}/wand_blessing`).update({
+                draftOption: optionNum,
+                draftOptionLabel: optionLabel,
+                draftUpdatedAt: Date.now()
+            });
+            alert(`Вариант №${optionNum} выбран. Теперь нажми «Утвердить выбор».`);
+            const updated = await db.ref(`board/${cellIdx}`).once('value');
+            showCell(cellIdx, updated.val());
+        }
+
+        async function confirmWandBlessingOption(cellIdx) {
+            const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
+            const blessing = blessingSnap.val();
+            if (!blessing || blessing.round !== currentRoundNum || blessing.isResolved) return alert('Эта магия уже недоступна.');
+            if (blessing.selectedOption) return alert('Вариант уже утверждён.');
+            const optionNum = Number(blessing.draftOption);
+            if (![1,2,3].includes(optionNum)) return alert('Сначала выбери вариант из списка.');
+
             const updates = {
                 selectedOption: optionNum,
+                selectedOptionLabel: wandBlessingTasks[optionNum - 1],
                 selectedAt: Date.now(),
-                isResolved: true
+                isResolved: true,
+                draftOption: null,
+                draftOptionLabel: null
             };
             await db.ref(`whitelist/${currentUserId}/wand_blessing`).update(updates);
             await db.ref(`board/${cellIdx}`).update({
                 ticket: blessing.pendingTicket || '',
-                wandOptionLabel: optionLabel
+                wandOptionLabel: wandBlessingTasks[optionNum - 1]
             });
 
             if (optionNum === 3) {
                 await addInventoryItem('goldenPollen', 1);
                 alert('🎇 Ты получил(а) предмет "Золотая пыльца" в рюкзачок. Использовать можно один раз за игру.');
             }
-            alert('Добрая фея помогла тебе: вариант выбран! Теперь рисуй и загружай работу.');
+            alert('Выбор утверждён! Добрая фея помогла тебе: теперь рисуй и загружай работу.');
             const updated = await db.ref(`board/${cellIdx}`).once('value');
             showCell(cellIdx, updated.val());
         }
@@ -1650,19 +1696,25 @@
                 } else if (cell.isInkChallenge) {
                     const challenge = (myInkChallenge && myInkChallenge.round === cell.round) ? myInkChallenge : null;
                     const picked = challenge?.selectedOption;
+                    const draft = challenge?.draftOption;
                     h += `<div style="padding:12px; border:2px dashed #6a1b9a; border-radius:10px; background:#fdf3ff; text-align:left;">
                         <div style="font-weight:bold; margin-bottom:8px; color:#6a1b9a;">Хах! Кому-то ты не угодил! Твою работу покрыли кляксами! Вот твоё задание:</div>
                         <ol style="margin:0 0 8px 18px; padding:0; line-height:1.4;">${inkChallengeOptions.map(o => `<li>${o}</li>`).join('')}</ol>
-                        ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Выбрано:</b> вариант №${picked}</div>` : `<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">${[1,2,3,4].map(n => `<button onclick="chooseInkChallengeOption(${i}, ${n})" style="border:1px solid #ce93d8; background:#fff; color:#6a1b9a; border-radius:8px; padding:8px;">Выбрать №${n}</button>`).join('')}</div>`}
+                        ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">${[1,2,3,4].map(n => `<button onclick="chooseInkChallengeOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
+                        ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmInkChallengeOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
                         ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${new Date(challenge.optionDeadline).toLocaleString('ru-RU')}</div>` : ''}
                     </div>`;
                 } else if (cell.isWandBlessing) {
                     const wand = (myWandBlessing && myWandBlessing.round === cell.round) ? myWandBlessing : null;
                     const picked = wand?.selectedOption;
+                    const draft = wand?.draftOption;
                     h += `<div style="padding:12px; border:2px dashed #6a1b9a; border-radius:10px; background:#fff7ff; text-align:left;">
                         <div style="font-weight:bold; margin-bottom:8px; color:#6a1b9a;">Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай:</div>
                         <ol style="margin:0 0 8px 18px; padding:0; line-height:1.4;">${wandBlessingTasks.map(o => `<li>${o}</li>`).join('')}</ol>
-                        ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Выбрано:</b> вариант №${picked}</div>` : `<div style="display:grid; grid-template-columns:1fr; gap:6px; margin-top:8px;">${[1,2,3].map(n => `<button onclick="chooseWandBlessingOption(${i}, ${n})" style="border:1px solid #ce93d8; background:#fff; color:#6a1b9a; border-radius:8px; padding:8px;">Выбрать №${n}</button>`).join('')}</div>`}
+                        ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
+                        <div style="display:grid; grid-template-columns:1fr; gap:6px; margin-top:8px;">${[1,2,3].map(n => `<button onclick="chooseWandBlessingOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
+                        ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmWandBlessingOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
                     </div>`;
                 } else if (cell.isMiniGame || cell.isWordSketch) {
                     h += `<div style="padding:12px; border:1px dashed #80cbc4; border-radius:10px; background:#f1f8e9; text-align:center; color:#33691e;">В этой клетке только мини-игра. Дополнительных заданий и механик нет.</div>`;
