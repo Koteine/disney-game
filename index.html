@@ -130,6 +130,44 @@
             filter: drop-shadow(0 2px 2px rgba(0,0,0,0.25));
             z-index: 2;
         }
+
+        .admin-inner-tabs { display:flex; gap:6px; margin:10px 0; }
+        .admin-inner-tab-btn { flex:1; border:1px solid #f8bbd0; border-radius:10px; background:#fff; color:#c2185b; padding:8px; font-weight:bold; }
+        .admin-inner-tab-btn.active { background:#ffe4ef; }
+        .admin-inner-panel { display:none; }
+        .admin-inner-panel.active { display:block; }
+
+        .event-alert {
+            display:none;
+            margin: 8px auto;
+            width:95%;
+            background:#fff8e1;
+            border:1px solid #ffecb3;
+            border-radius:12px;
+            padding:10px;
+            text-align:left;
+            font-size:13px;
+        }
+        .event-alert button {
+            margin-top:8px;
+            border:none;
+            background:#ff9800;
+            color:white;
+            border-radius:8px;
+            padding:8px 10px;
+            font-weight:bold;
+        }
+        #epic-paint-wrap { display:none; width:95%; max-width:560px; margin:8px auto; }
+        #epic-paint-canvas {
+            width:100%;
+            height:auto;
+            touch-action:none;
+            border:2px dashed #ff80ab;
+            border-radius:12px;
+            background:white;
+            display:block;
+        }
+        #epic-paint-progress { font-size:12px; color:#ad1457; margin-top:6px; }
     </style>
 </head>
 <body>
@@ -167,8 +205,14 @@
                 <div class="inventory-title">🎒 Рюкзачок</div>
                 <div id="inventory-row" class="inventory-row"><span class="inv-chip">Пусто</span></div>
             </div>
+            <div id="event-start-alert" class="event-alert"></div>
+            <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
+            <div id="epic-paint-wrap">
+                <canvas id="epic-paint-canvas" width="900" height="520"></canvas>
+                <div id="epic-paint-progress">Закрашено: 0%</div>
+            </div>
         </div>
 
        <div id="tab-tickets" class="tab-content">
@@ -213,6 +257,11 @@
 
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Админ</h1>
+            <div class="admin-inner-tabs">
+                <button id="admin-inner-rounds-btn" class="admin-inner-tab-btn active" onclick="switchAdminInnerTab('rounds')">Раунды</button>
+                <button id="admin-inner-events-btn" class="admin-inner-tab-btn" onclick="switchAdminInnerTab('events')">События</button>
+            </div>
+            <div id="admin-rounds-panel" class="admin-inner-panel active">
             <div class="admin-section">
     <b>Установить длительность раунда:</b>
     <div style="display:flex; gap:5px; margin:10px 0;">
@@ -221,7 +270,22 @@
         <div style="flex:1;"><small>Мин</small><input type="number" id="r-mins" class="admin-input" value="0"></div>
     </div>
     <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0; height:45px;">🚀 ЗАПУСТИТЬ РАУНД</button>
-</div>
+    </div>
+            </div>
+            <div id="admin-events-panel" class="admin-inner-panel">
+                <div class="admin-section">
+                    <b>Запуск игровых событий:</b>
+                    <select id="event-type" class="admin-input" style="margin-top:8px;">
+                        <option value="epic_paint">Эпичный закрас</option>
+                    </select>
+                    <label style="font-size:12px; color:#777;">Когда начнется событие</label>
+                    <input type="datetime-local" id="event-start-at" class="admin-input">
+                    <label style="font-size:12px; color:#777;">Сколько длится (минут)</label>
+                    <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
+                    <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
+                    <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
+                </div>
+            </div>
             <div class="admin-section">
                 <b>Игроки:</b>
                 <button onclick="toggleAdminPlayersList()" class="admin-btn" style="background:#607D8B; width:100%; margin:8px 0 6px;">👥 Список игроков: развернуть</button>
@@ -253,6 +317,7 @@
                 <p><b>12. 🔎 Лупа:</b> Даёт возможность один раз за раунд посмотреть задание в выбранной свободной обычной ячейке и решить: «Беру» (пересесть на новую клетку, освободив прежнюю) или «Не беру» (остаться на текущей клетке). В обоих случаях Лупа сгорает.</p>
                 <p><b>13. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". Можно сдаться не чаще <b>1 раза за каждые 3 раунда</b> (минимум 1 раз за игру). Если лимит исчерпан и снова нажать "Сдаюсь", можно подтвердить выход из игры: в текущем раунде билетик не начислится, а в следующих раундах участие будет недоступно.</p>
                 <p><b>14. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
+                <p><b>15. 🎨 Событие «Эпичный закрас»:</b> Это общее событие по таймеру. Все игроки вместе закрашивают единое полотно; если закрашено 95%+ до конца времени, все участники получают по 2 билетика.</p>
 
                 <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
                 <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
@@ -305,10 +370,19 @@
         let inventoryRef = null;
         let challengeRef = null;
         let wandBlessingRef = null;
+        let gameEventRef = null;
+        let epicPaintStrokesRef = null;
         let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
         let myInkChallenge = null;
         let myWandBlessing = null;
         let allSubmissions = [];
+        let currentGameEvent = null;
+        let epicPaintStrokes = [];
+        let epicPaintHasDismissedStart = false;
+        let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
+
+        const EPIC_PAINT_EVENT_ID = 'epic_paint';
+        const EPIC_PAINT_COVERAGE_TARGET = 95;
 
         const itemTypes = {
             goldenPollen: { emoji: "🎇", name: "Золотая пыльца" },
@@ -605,7 +679,14 @@
         }
 
         async function init() {
-            try { const res = await fetch(JSON_URL); tasks = await res.json(); checkAccess(); syncData(); } catch(e) { console.error(e); }
+            try {
+                const res = await fetch(JSON_URL);
+                tasks = await res.json();
+                setupEpicPaintCanvas();
+                checkAccess();
+                syncData();
+                syncGameEvents();
+            } catch(e) { console.error(e); }
         }
 
         function playExplosion() {
@@ -1061,6 +1142,11 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
                 syncAdminList();
+                const startInput = document.getElementById('event-start-at');
+                if (startInput && !startInput.value) {
+                    const dt = new Date(Date.now() + 60000);
+                    startInput.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                }
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 setAuthorizedView(true);
             }
@@ -1199,6 +1285,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
 
         function getTaskLabelByCell(cell) {
             if (!cell) return 'Неизвестное задание';
+            if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
             if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
@@ -1543,6 +1630,304 @@ ${candidates.map(v => v + 1).join(', ')}`);
             btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
         }
 
+        function switchAdminInnerTab(tabName) {
+            const roundsBtn = document.getElementById('admin-inner-rounds-btn');
+            const eventsBtn = document.getElementById('admin-inner-events-btn');
+            const roundsPanel = document.getElementById('admin-rounds-panel');
+            const eventsPanel = document.getElementById('admin-events-panel');
+            const isRounds = tabName === 'rounds';
+            roundsBtn?.classList.toggle('active', isRounds);
+            eventsBtn?.classList.toggle('active', !isRounds);
+            roundsPanel?.classList.toggle('active', isRounds);
+            eventsPanel?.classList.toggle('active', !isRounds);
+        }
+
+        function getPlayerColorByUid(uid) {
+            const entry = Object.entries(window.cachedWhitelistData || {}).find(([id]) => Number(id) === Number(uid));
+            const charIndex = entry?.[1]?.charIndex;
+            if (Number.isInteger(charIndex)) return charColors[charIndex] || '#ff007f';
+            if (Number(uid) === currentUserId && Number.isInteger(myIndex)) return charColors[myIndex] || '#ff007f';
+            return '#ff007f';
+        }
+
+        function setupEpicPaintCanvas() {
+            const canvas = document.getElementById('epic-paint-canvas');
+            if (!canvas || canvas.dataset.ready === '1') return;
+            canvas.dataset.ready = '1';
+
+            const getPos = evt => {
+                const rect = canvas.getBoundingClientRect();
+                const touch = evt.touches?.[0] || evt.changedTouches?.[0];
+                const cx = touch ? touch.clientX : evt.clientX;
+                const cy = touch ? touch.clientY : evt.clientY;
+                return {
+                    x: ((cx - rect.left) / rect.width) * canvas.width,
+                    y: ((cy - rect.top) / rect.height) * canvas.height
+                };
+            };
+
+            const begin = evt => {
+                if (!currentGameEvent || currentGameEvent.status !== 'active' || currentGameEvent.id !== EPIC_PAINT_EVENT_ID) return;
+                evt.preventDefault();
+                const { x, y } = getPos(evt);
+                epicPaintDrawState.drawing = true;
+                epicPaintDrawState.lastX = x;
+                epicPaintDrawState.lastY = y;
+                pushEpicPaintStroke(x, y, x, y);
+            };
+
+            const move = evt => {
+                if (!epicPaintDrawState.drawing) return;
+                evt.preventDefault();
+                const { x, y } = getPos(evt);
+                pushEpicPaintStroke(epicPaintDrawState.lastX, epicPaintDrawState.lastY, x, y);
+                epicPaintDrawState.lastX = x;
+                epicPaintDrawState.lastY = y;
+            };
+
+            const end = () => { epicPaintDrawState.drawing = false; };
+
+            canvas.addEventListener('mousedown', begin);
+            canvas.addEventListener('mousemove', move);
+            canvas.addEventListener('mouseup', end);
+            canvas.addEventListener('mouseleave', end);
+            canvas.addEventListener('touchstart', begin, { passive: false });
+            canvas.addEventListener('touchmove', move, { passive: false });
+            canvas.addEventListener('touchend', end);
+            canvas.addEventListener('touchcancel', end);
+        }
+
+        async function pushEpicPaintStroke(x1, y1, x2, y2) {
+            if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
+            const uid = currentUserId;
+            const color = getPlayerColorByUid(uid);
+            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, at: Date.now() });
+            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, updatedAt: Date.now() });
+        }
+
+        function drawEpicPaint() {
+            const canvas = document.getElementById('epic-paint-canvas');
+            const progressEl = document.getElementById('epic-paint-progress');
+            if (!canvas || !progressEl) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            (epicPaintStrokes || []).forEach(stroke => {
+                ctx.beginPath();
+                ctx.lineWidth = 16;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = stroke.color || '#ff007f';
+                ctx.moveTo(stroke.x1 || 0, stroke.y1 || 0);
+                ctx.lineTo(stroke.x2 || 0, stroke.y2 || 0);
+                ctx.stroke();
+            });
+
+            const coverage = calculateEpicPaintCoverage(canvas);
+            progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
+            maybeFinalizeEpicPaintSuccess(coverage);
+        }
+
+        function calculateEpicPaintCoverage(canvas) {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const sample = 6;
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let painted = 0;
+            let total = 0;
+            for (let y = 0; y < canvas.height; y += sample) {
+                for (let x = 0; x < canvas.width; x += sample) {
+                    const idx = (y * canvas.width + x) * 4;
+                    const r = img[idx], g = img[idx + 1], b = img[idx + 2];
+                    total += 1;
+                    if (!(r > 246 && g > 246 && b > 246)) painted += 1;
+                }
+            }
+            return total ? (painted / total) * 100 : 0;
+        }
+
+        async function maybeFinalizeEpicPaintSuccess(coverage) {
+            if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') return;
+            if (coverage < EPIC_PAINT_COVERAGE_TARGET) return;
+
+            const eventRef = db.ref('game_event');
+            const tx = await eventRef.transaction(ev => {
+                if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
+                return {
+                    ...ev,
+                    status: 'completed',
+                    completedAt: Date.now(),
+                    resultText: 'Игроки успели закрасить поле на 95%+' 
+                };
+            });
+            if (!tx.committed) return;
+
+            await grantEpicPaintRewards();
+            await postNews('🎨 Событие «Эпичный закрас» завершено успешно! Все участники получили по 2 билетика.');
+        }
+
+        async function grantEpicPaintRewards() {
+            const participantsSnap = await db.ref('epic_paint/participants').once('value');
+            if (!participantsSnap.exists()) return;
+
+            const updates = {};
+            participantsSnap.forEach(p => {
+                const uid = Number(p.key);
+                const user = window.cachedWhitelistData?.[uid] || window.cachedWhitelistData?.[String(uid)] || {};
+                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                if (!Number.isInteger(owner) || !players[owner]) return;
+                updates[`epic_paint/rewarded/${uid}`] = true;
+            });
+            if (Object.keys(updates).length) await db.ref().update(updates);
+
+            for (const uidKey of Object.keys(updates).map(k => k.split('/')[2])) {
+                const uid = Number(uidKey);
+                const user = window.cachedWhitelistData?.[uid] || window.cachedWhitelistData?.[uidKey] || {};
+                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                if (!Number.isInteger(owner) || !players[owner]) continue;
+
+                const t1 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+                const t2 = await db.ref('ticket_counter').transaction(c => (c || 0) + 1);
+                const ticketValue = `${t1.snapshot.val()} и ${t2.snapshot.val()}`;
+                await db.ref('tickets_archive').push({
+                    owner,
+                    userId: uid,
+                    ticket: ticketValue,
+                    taskIdx: -1,
+                    round: currentRoundNum,
+                    cell: 0,
+                    cellIdx: -1,
+                    isEventReward: true,
+                    eventId: EPIC_PAINT_EVENT_ID,
+                    archivedAt: Date.now(),
+                    excluded: false
+                });
+            }
+        }
+
+        function updateEventUiState() {
+            const grid = document.getElementById('grid');
+            const wrap = document.getElementById('epic-paint-wrap');
+            const startAlert = document.getElementById('event-start-alert');
+            const failAlert = document.getElementById('event-fail-alert');
+            const isEpicActive = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'active';
+
+            grid.style.display = isEpicActive ? 'none' : 'grid';
+            wrap.style.display = isEpicActive && epicPaintHasDismissedStart ? 'block' : 'none';
+            if (isEpicActive && !epicPaintHasDismissedStart) {
+                startAlert.style.display = 'block';
+                startAlert.innerHTML = `Вау! Началось событие "Эпичный закрас", присоединяйся скорее!<br><button onclick="dismissEpicPaintStartAlert()">Закрыть и рисовать</button>`;
+            } else {
+                startAlert.style.display = 'none';
+            }
+
+            const isFail = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'failed';
+            failAlert.style.display = isFail ? 'block' : 'none';
+            if (isFail) failAlert.innerText = 'Как же так! Вы ведь в хобби так давно, как вы умудрились не успеть?!';
+        }
+
+        function dismissEpicPaintStartAlert() {
+            epicPaintHasDismissedStart = true;
+            updateEventUiState();
+        }
+
+        async function adminScheduleEvent() {
+            if (currentUserId !== ADMIN_ID) return;
+            const eventType = document.getElementById('event-type').value;
+            const startAtValue = document.getElementById('event-start-at').value;
+            const durationMins = Number(document.getElementById('event-duration-mins').value || 0);
+            if (eventType !== EPIC_PAINT_EVENT_ID) return alert('Пока доступно только событие «Эпичный закрас».');
+            if (!startAtValue) return alert('Выбери дату и время старта события.');
+            if (!durationMins || durationMins < 1) return alert('Укажи длительность события в минутах.');
+
+            const startAt = new Date(startAtValue).getTime();
+            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
+            const endAt = startAt + durationMins * 60000;
+
+            await db.ref('game_event').set({
+                id: EPIC_PAINT_EVENT_ID,
+                name: 'Эпичный закрас',
+                status: 'scheduled',
+                createdAt: Date.now(),
+                startAt,
+                endAt,
+                durationMins,
+                createdBy: currentUserId
+            });
+            await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
+            await postNews(`📣 Админ запланировал событие «Эпичный закрас». Старт: ${new Date(startAt).toLocaleString('ru-RU')}.`);
+        }
+
+        async function activateScheduledEventIfNeeded() {
+            if (!currentGameEvent || currentGameEvent.status !== 'scheduled') return;
+            if (Date.now() < (currentGameEvent.startAt || 0)) return;
+            const tx = await db.ref('game_event').transaction(ev => {
+                if (!ev || ev.status !== 'scheduled') return ev;
+                if (Date.now() < (ev.startAt || 0)) return ev;
+                return { ...ev, status: 'active', activatedAt: Date.now() };
+            });
+            if (tx.committed) {
+                epicPaintHasDismissedStart = false;
+                await postNews('🎨 Стартовало событие «Эпичный закрас»! Закрасьте поле на 95% до конца таймера.');
+            }
+        }
+
+        async function failExpiredEventIfNeeded() {
+            if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') return;
+            if (Date.now() < (currentGameEvent.endAt || 0)) return;
+            const tx = await db.ref('game_event').transaction(ev => {
+                if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
+                if (Date.now() < (ev.endAt || 0)) return ev;
+                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели закрасить поле вовремя' };
+            });
+            if (tx.committed) {
+                await postNews('🎨 Событие «Эпичный закрас» завершено: время вышло, поле не закрашено на 95%.');
+            }
+        }
+
+        function syncGameEvents() {
+            if (gameEventRef) gameEventRef.off();
+            gameEventRef = db.ref('game_event');
+            gameEventRef.on('value', snap => {
+                currentGameEvent = snap.val() || null;
+                if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') {
+                    epicPaintHasDismissedStart = false;
+                }
+                updateEventUiState();
+                updateAdminEventStatus();
+                activateScheduledEventIfNeeded();
+                failExpiredEventIfNeeded();
+            });
+
+            if (epicPaintStrokesRef) epicPaintStrokesRef.off();
+            epicPaintStrokesRef = db.ref('epic_paint/strokes');
+            epicPaintStrokesRef.on('value', snap => {
+                const strokes = [];
+                snap.forEach(s => {
+                    const v = s.val();
+                    if (v) strokes.push(v);
+                });
+                epicPaintStrokes = strokes;
+                drawEpicPaint();
+            });
+
+            db.ref('whitelist').on('value', snap => {
+                window.cachedWhitelistData = snap.val() || {};
+            });
+        }
+
+        function updateAdminEventStatus() {
+            const el = document.getElementById('admin-event-status');
+            if (!el) return;
+            if (!currentGameEvent?.id) {
+                el.innerText = 'Нет активного события.';
+                return;
+            }
+            const start = currentGameEvent.startAt ? new Date(currentGameEvent.startAt).toLocaleString('ru-RU') : '—';
+            const end = currentGameEvent.endAt ? new Date(currentGameEvent.endAt).toLocaleString('ru-RU') : '—';
+            el.innerText = `Событие: ${currentGameEvent.name || currentGameEvent.id} · статус: ${currentGameEvent.status} · старт: ${start} · конец: ${end}`;
+        }
+
         function extractTicketNumbers(ticketValue) {
             return String(ticketValue || '')
                 .split(' и ')
@@ -1633,6 +2018,8 @@ ${candidates.map(v => v + 1).join(', ')}`);
 
             window.timerInt = setInterval(async () => {
                 await checkInkDeadline();
+                await activateScheduledEventIfNeeded();
+                await failExpiredEventIfNeeded();
                 const diff = roundEndTime - Date.now();
                 if (diff <= 0) {
                     document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
@@ -2221,6 +2608,8 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 tickets_archive: null,
                 news_feed: null,
                 submissions: null,
+                game_event: null,
+                epic_paint: null,
                 ticket_counter: 0,
                 wheel_event: null,
                 current_round: {
