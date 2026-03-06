@@ -422,6 +422,8 @@
         let lastFailedEpicEventKeyShown = null;
         let epicPaintStrokes = [];
         let epicPaintHasDismissedStart = false;
+        let epicPaintViewMode = 'event';
+        let myRoundHasMove = false;
         let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
@@ -1891,9 +1893,22 @@ ${candidates.map(v => v + 1).join(', ')}`);
             const successAlert = document.getElementById('event-success-alert');
             const failAlert = document.getElementById('event-fail-alert');
             const isEpicActive = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'active';
+            const canPlayRoundInstead = !myRoundHasMove && myIndex !== -1;
 
-            grid.style.display = isEpicActive ? 'none' : 'grid';
-            wrap.style.display = isEpicActive && epicPaintHasDismissedStart ? 'block' : 'none';
+            if (!isEpicActive) {
+                grid.style.display = 'grid';
+                wrap.style.display = 'none';
+            } else if (!epicPaintHasDismissedStart) {
+                grid.style.display = 'none';
+                wrap.style.display = 'none';
+            } else if (epicPaintViewMode === 'game') {
+                grid.style.display = 'grid';
+                wrap.style.display = 'none';
+            } else {
+                grid.style.display = 'none';
+                wrap.style.display = 'block';
+            }
+
             if (isEpicActive && !epicPaintHasDismissedStart) {
                 startAlert.style.display = 'block';
                 startAlert.classList.add('epic');
@@ -1901,6 +1916,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
                     <div class="event-title">🎨 Эпичный закрас уже в разгаре!</div>
                     <div class="event-sub">Вау! Началось событие «Эпичный закрас». Все вместе закрасьте полотно на 95% и получите награды.</div>
                     <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✨ Присоединиться к событию</button>
+                    ${canPlayRoundInstead ? `<button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5);" onclick="chooseRoundInsteadOfEvent()">🎲 Играть в обычный раунд</button>` : ''}
                 `;
             } else {
                 startAlert.style.display = 'none';
@@ -1935,6 +1951,17 @@ ${candidates.map(v => v + 1).join(', ')}`);
 
         function dismissEpicPaintStartAlert() {
             epicPaintHasDismissedStart = true;
+            epicPaintViewMode = 'event';
+            updateEventUiState();
+        }
+
+        function chooseRoundInsteadOfEvent() {
+            if (myRoundHasMove || myIndex === -1) {
+                alert('Эта опция доступна только пока ты ещё не бросил(а) кубик в текущем раунде.');
+                return;
+            }
+            epicPaintHasDismissedStart = true;
+            epicPaintViewMode = 'game';
             updateEventUiState();
         }
 
@@ -2001,6 +2028,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
 
             if (tx.committed) {
                 epicPaintHasDismissedStart = false;
+                epicPaintViewMode = 'event';
                 await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
                 await postNews('🎨 Стартовало событие «Эпичный закрас»! Закрасьте поле на 95% до конца таймера.');
             }
@@ -2037,6 +2065,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 currentGameEventKey = active?.key || null;
                 if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') {
                     epicPaintHasDismissedStart = false;
+                    epicPaintViewMode = 'event';
                 }
 
                 updateEventUiState();
@@ -2200,13 +2229,17 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
                 const userState = userStateSnap.val() || {};
                 if (userState.isEliminated) {
+                    myRoundHasMove = true;
                     btn.disabled = true;
                     btn.innerText = "🚫 Ты выбыл(а) из игры";
+                    updateEventUiState();
                     return;
                 }
 
-                btn.disabled = (userState.last_round === currentRoundNum);
+                myRoundHasMove = (userState.last_round === currentRoundNum);
+                btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
+                updateEventUiState();
             }, 1000);
         }
 
