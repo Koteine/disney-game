@@ -1710,7 +1710,12 @@
 
             const snap = await db.ref('whitelist').once('value');
             const users = [];
-            snap.forEach(userSnap => users.push(userSnap.key));
+            snap.forEach(userSnap => {
+                users.push({
+                    userId: userSnap.key,
+                    currentCharIndex: userSnap.val()?.charIndex
+                });
+            });
 
             if (!users.length) {
                 alert('Список игроков пуст.');
@@ -1723,13 +1728,31 @@
             }
 
             const shuffledNickIndexes = shuffleArray(players.map((_, idx) => idx)).slice(0, users.length);
+
+            if (users.length > 1) {
+                for (let i = 0; i < users.length; i++) {
+                    if (shuffledNickIndexes[i] !== users[i].currentCharIndex) continue;
+
+                    const swapIdx = shuffledNickIndexes.findIndex((nickIdx, j) => {
+                        if (i === j) return false;
+                        const myCurrent = users[i].currentCharIndex;
+                        const otherCurrent = users[j].currentCharIndex;
+                        return nickIdx !== myCurrent && shuffledNickIndexes[i] !== otherCurrent;
+                    });
+
+                    if (swapIdx !== -1) {
+                        [shuffledNickIndexes[i], shuffledNickIndexes[swapIdx]] = [shuffledNickIndexes[swapIdx], shuffledNickIndexes[i]];
+                    }
+                }
+            }
+
             const updates = {};
-            users.forEach((userId, i) => {
-                updates[`whitelist/${userId}/charIndex`] = shuffledNickIndexes[i];
+            users.forEach((user, i) => {
+                updates[`whitelist/${user.userId}/charIndex`] = shuffledNickIndexes[i];
             });
 
             await db.ref().update(updates);
-            alert('Никнеймы всех игроков успешно заменены.');
+            alert('Никнеймы всех игроков успешно заменены (уникально и случайно).');
         }
 
       function syncAdminList() {
@@ -1801,18 +1824,40 @@
 
         function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
         async function adminResetGame() {
-            if (!confirm("Сбросить игру? Поле и раунды очистятся, игра начнется только после «Запустить раунд».")) return;
-            await archiveAndClearBoard();
-            await db.ref('current_round').set({
-                number: 0,
-                endTime: 0,
-                traps: [],
-                magicCell: null,
-                miniGameCell: null,
-                magnetCell: null,
-                itemCells: {}
+            if (!confirm("Сбросить игру полностью? У всех игроков обнулятся билетики и предметы.")) return;
+
+            const whitelistSnap = await db.ref('whitelist').once('value');
+            const updates = {
+                board: {},
+                tickets_archive: {},
+                ticket_counter: 0,
+                wheel_event: null,
+                current_round: {
+                    number: 0,
+                    endTime: 0,
+                    traps: [],
+                    magicCell: null,
+                    miniGameCell: null,
+                    magnetCell: null,
+                    itemCells: {}
+                }
+            };
+
+            whitelistSnap.forEach(userSnap => {
+                const uid = userSnap.key;
+                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0 };
+                updates[`whitelist/${uid}/last_round`] = 0;
+                updates[`whitelist/${uid}/used_tasks`] = [];
+                updates[`whitelist/${uid}/isEliminated`] = false;
+                updates[`whitelist/${uid}/eliminatedAt`] = null;
+                updates[`whitelist/${uid}/eliminatedAtRound`] = null;
+                updates[`whitelist/${uid}/eliminationReason`] = null;
+                updates[`whitelist/${uid}/ink_challenge`] = null;
+                updates[`whitelist/${uid}/wand_blessing`] = null;
             });
-            alert('Игра сброшена. Поле очищено, раунды обнулены. Нажми «Запустить раунд», чтобы начать заново.');
+
+            await db.ref().update(updates);
+            alert('Игра сброшена полностью: поле, раунды, билеты и предметы обнулены. Нажми «Запустить раунд», чтобы начать заново.');
             location.reload();
         }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
@@ -1834,3 +1879,4 @@
     </script>
 </body>
 </html>
+
