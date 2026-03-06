@@ -157,6 +157,42 @@
             padding:8px 10px;
             font-weight:bold;
         }
+        .event-alert.epic {
+            background: linear-gradient(135deg, #fff3e0, #fce4ec 55%, #ede7f6);
+            border: 2px solid #ff80ab;
+            box-shadow: 0 6px 18px rgba(194, 24, 91, 0.15);
+        }
+        .event-alert.epic .event-title { font-size:15px; font-weight:900; color:#ad1457; margin-bottom:5px; }
+        .event-alert.epic .event-sub { color:#6a1b9a; line-height:1.35; }
+        .event-alert.epic .event-join-btn {
+            width:100%;
+            background: linear-gradient(135deg, #ff4081, #ab47bc);
+            color:white;
+            border:none;
+            border-radius:10px;
+            padding:10px 12px;
+            font-weight:900;
+            letter-spacing: .2px;
+        }
+        #event-celebration-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 2400;
+            overflow: hidden;
+        }
+        .firework-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            opacity: 0.95;
+            animation: fw-fall 1300ms ease-out forwards;
+        }
+        @keyframes fw-fall {
+            0% { transform: translate(0,0) scale(1); opacity: 1; }
+            100% { transform: translate(var(--dx), var(--dy)) scale(0.5); opacity: 0; }
+        }
         #epic-paint-wrap { display:none; width:95%; max-width:500px; margin:8px auto; }
         #epic-paint-canvas {
             width:100%;
@@ -207,7 +243,9 @@
                 <div id="inventory-row" class="inventory-row"><span class="inv-chip">Пусто</span></div>
             </div>
             <div id="event-start-alert" class="event-alert"></div>
+            <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
+            <div id="event-celebration-overlay"></div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
             <div id="epic-paint-wrap">
@@ -380,6 +418,8 @@
         let currentGameEvent = null;
         let currentGameEventKey = null;
         let queuedGameEvents = [];
+        let lastCompletedEpicEventKeyShown = null;
+        let lastFailedEpicEventKeyShown = null;
         let epicPaintStrokes = [];
         let epicPaintHasDismissedStart = false;
         let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
@@ -703,6 +743,40 @@
             const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
             audio.volume = 0.35;
             audio.play().catch(e => console.log("Sound blocked"));
+        }
+
+        function playFireworksSound() {
+            const audio = new Audio('https://actions.google.com/sounds/v1/fireworks/fireworks.ogg');
+            audio.volume = 0.6;
+            audio.play().catch(() => console.log('Sound blocked'));
+        }
+
+        function launchCelebrationFireworks() {
+            const overlay = document.getElementById('event-celebration-overlay');
+            if (!overlay) return;
+            overlay.innerHTML = '';
+            const colors = ['#ff1744', '#ffea00', '#00e5ff', '#7c4dff', '#69f0ae', '#ff9100', '#f50057'];
+
+            for (let burst = 0; burst < 8; burst++) {
+                const originX = Math.random() * window.innerWidth;
+                const originY = 80 + Math.random() * (window.innerHeight * 0.45);
+                for (let i = 0; i < 24; i++) {
+                    const dot = document.createElement('div');
+                    dot.className = 'firework-dot';
+                    dot.style.left = `${originX}px`;
+                    dot.style.top = `${originY}px`;
+                    dot.style.background = colors[Math.floor(Math.random() * colors.length)];
+                    const angle = (Math.PI * 2 * i) / 24;
+                    const dist = 70 + Math.random() * 140;
+                    dot.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+                    dot.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+                    overlay.appendChild(dot);
+                }
+            }
+
+            setTimeout(() => {
+                if (overlay) overlay.innerHTML = '';
+            }, 1600);
         }
 
         function setAuthorizedView(isAuthorized) {
@@ -1814,6 +1888,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
             const grid = document.getElementById('grid');
             const wrap = document.getElementById('epic-paint-wrap');
             const startAlert = document.getElementById('event-start-alert');
+            const successAlert = document.getElementById('event-success-alert');
             const failAlert = document.getElementById('event-fail-alert');
             const isEpicActive = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'active';
 
@@ -1821,14 +1896,41 @@ ${candidates.map(v => v + 1).join(', ')}`);
             wrap.style.display = isEpicActive && epicPaintHasDismissedStart ? 'block' : 'none';
             if (isEpicActive && !epicPaintHasDismissedStart) {
                 startAlert.style.display = 'block';
-                startAlert.innerHTML = `Вау! Началось событие "Эпичный закрас", присоединяйся скорее!<br><button onclick="dismissEpicPaintStartAlert()">Закрыть и рисовать</button>`;
+                startAlert.classList.add('epic');
+                startAlert.innerHTML = `
+                    <div class="event-title">🎨 Эпичный закрас уже в разгаре!</div>
+                    <div class="event-sub">Вау! Началось событие «Эпичный закрас». Все вместе закрасьте полотно на 95% и получите награды.</div>
+                    <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✨ Присоединиться к событию</button>
+                `;
             } else {
                 startAlert.style.display = 'none';
+                startAlert.classList.remove('epic');
             }
 
-            const isFail = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'failed';
-            failAlert.style.display = isFail ? 'block' : 'none';
-            if (isFail) failAlert.innerText = 'Как же так! Вы ведь в хобби так давно, как вы умудрились не успеть?!';
+            const latestCompleted = queuedGameEvents
+                .filter(ev => ev.id === EPIC_PAINT_EVENT_ID && ev.status === 'completed')
+                .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
+            const latestFailed = queuedGameEvents
+                .filter(ev => ev.id === EPIC_PAINT_EVENT_ID && ev.status === 'failed')
+                .sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
+
+            const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
+            successAlert.style.display = showSuccess ? 'block' : 'none';
+            if (showSuccess) {
+                successAlert.innerHTML = '🎆 Событие прошло круто! Вы огромные молодцы!<br>Все участники получили заслуженные награды: по 2 билетика.';
+                launchCelebrationFireworks();
+                playFireworksSound();
+                lastCompletedEpicEventKeyShown = latestCompleted.key;
+                setTimeout(() => { if (successAlert) successAlert.style.display = 'none'; }, 12000);
+            }
+
+            const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
+            failAlert.style.display = showFail ? 'block' : 'none';
+            if (showFail) {
+                failAlert.innerText = 'Как же так! Вы ведь в хобби так давно, как вы умудрились не успеть?!';
+                lastFailedEpicEventKeyShown = latestFailed.key;
+                setTimeout(() => { if (failAlert) failAlert.style.display = 'none'; }, 10000);
+            }
         }
 
         function dismissEpicPaintStartAlert() {
@@ -1868,6 +1970,16 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 endAt,
                 durationMins,
                 createdBy: currentUserId
+            });
+        }
+
+        async function adminCancelScheduledEvent(eventKey) {
+            if (currentUserId !== ADMIN_ID) return;
+            if (!eventKey) return;
+            if (!confirm('Отменить это запланированное событие?')) return;
+            await db.ref(`game_events/${eventKey}`).transaction(ev => {
+                if (!ev || ev.status !== 'scheduled') return ev;
+                return { ...ev, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
             });
         }
 
@@ -1962,7 +2074,11 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 : 'Активного события сейчас нет.';
 
             const scheduledLines = scheduled.length
-                ? scheduled.map((ev, idx) => `${idx + 1}) ${ev.name || ev.id} · старт ${new Date(ev.startAt || 0).toLocaleString('ru-RU')} · ${ev.durationMins || 0} мин`).join('<br>')
+                ? scheduled.map((ev, idx) => {
+                    const start = new Date(ev.startAt || 0).toLocaleString('ru-RU');
+                    const duration = ev.durationMins || 0;
+                    return `${idx + 1}) ${ev.name || ev.id} · старт ${start} · ${duration} мин <button onclick="adminCancelScheduledEvent('${ev.key}')" style="margin-left:6px; border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`;
+                }).join('<br>')
                 : 'Запланированных событий нет.';
 
             el.innerHTML = `${activeLine}<br><br><b>Запланировано (${scheduled.length}/${MAX_SCHEDULED_EVENTS}):</b><br>${scheduledLines}`;
