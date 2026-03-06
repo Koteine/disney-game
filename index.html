@@ -500,7 +500,7 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
-            if (cell.isMiniGame) return '🎮 Мини-игра: пятнашки 5×5';
+            if (cell.isMiniGame) { const t = tasks[cell.taskIdx]; return `🎮 Пятнашки 5×5 + рисунок: ${t?.text || 'обычное задание'}`; }
             if (cell.isGold) return '👑 Золотая клетка: свободная тема';
             const t = tasks[cell.taskIdx];
             return t?.text || 'Обычное задание';
@@ -516,7 +516,7 @@
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
-            const myCells = allTicketsData.filter(t => t.userId === currentUserId && !t.isMiniGame);
+            const myCells = allTicketsData.filter(t => t.userId === currentUserId);
             if (!myCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
@@ -807,7 +807,8 @@
                 trapText = traps[Math.floor(Math.random()*traps.length)];
                 await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
             } else if (isMiniGame) {
-                await postNews(`🎮 ${players[myIndex].n} решил не рисовать, а играться! Ну надо же!`);
+                taskIdx = avail[Math.floor(Math.random()*avail.length)];
+                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку с пятнашками и дополнительным заданием.`);
                 playFanfare();
             } else if (!isGold) {
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
@@ -819,7 +820,7 @@
 
             const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
-            if(!isGold && !isTrap && !isMagic && !isMiniGame) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
+            if(!isGold && !isTrap && !isMagic && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             showCell(cellIdx, cellData);
         }
