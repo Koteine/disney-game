@@ -286,14 +286,14 @@ if (diff <= 0) {
     document.getElementById('round-timer').innerText = 
         `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
 }
-                if (diff <= 0) { document.getElementById('round-timer').innerText = "ОКОНЧЕН"; document.getElementById("dice-btn").disabled = true; } 
+                if (diff <= 0) { document.getElementById('round-timer').innerText = "ОКОНЧЕН"; btn.disabled = true; } 
                 else {
                     const d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
                     document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
                     if(myIndex !== -1) {
                         const last = await db.ref(`whitelist/${currentUserId}/last_round`).once('value');
-                        document.getElementById("dice-btn").disabled = (last.val() === currentRoundNum);
-                        if (document.getElementById("dice-btn").disabled) document.getElementById("dice-btn").innerText = "🎲 Ход сделан"; else document.getElementById("dice-btn").innerText = "🎲 Бросить кубик";
+                        btn.disabled = (last.val() === currentRoundNum);
+                        if (btn.disabled) btn.innerText = "🎲 Ход сделан"; else btn.innerText = "🎲 Бросить кубик";
                     }
                 }
             }, 1000);
@@ -335,6 +335,7 @@ if (diff <= 0) {
         }
 
         function showCell(i, cell) {
+            function showCell(i, cell) {
     if(!cell) return;
     
     const isAdmin = (currentUserId === ADMIN_ID);
