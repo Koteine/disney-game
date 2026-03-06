@@ -224,12 +224,15 @@
 </div>
             <div class="admin-section">
                 <b>Игроки:</b>
-                <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
+                <button onclick="toggleAdminPlayersList()" class="admin-btn" style="background:#607D8B; width:100%; margin:8px 0 6px;">👥 Список игроков: развернуть</button>
+                <div id="active-players-wrap" style="display:none;">
+                    <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
+                </div>
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
                 <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin-top:8px;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
             </div>
-            <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
+            <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ ИГРУ</button>
             <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
         </div>
 
@@ -292,6 +295,8 @@
         const charColors = generateBrightColors(players.length);
 
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
+        let archivedTicketsData = [];
+        let liveBoardTicketsData = [];
         let shownMagicLinks = {};
         let magicLinksRef = null;
         let newsFeedRef = null;
@@ -768,17 +773,29 @@
 
             db.ref('board').on('value', snap => {
                 const data = snap.val() || {}, grid = document.getElementById('grid'); grid.innerHTML = "";
-                allTicketsData = [];
+                liveBoardTicketsData = [];
                 for(let i=0; i<50; i++) {
                     const cell = data[i]; let d = document.createElement('div');
                     d.className = 'cell' + (cell?.isGold ? ' gold' : '') + (cell?.isMagic ? ' magic' : '') + (cell?.isMiniGame ? ' minigame' : '') + (cell?.isMagnet ? ' magnet' : '') + (cell?.itemType ? ' item' : '') + (cell?.isWandBlessing ? ' item' : '') + (cell && cell.excluded ? ' excluded' : '');
                     if (cell) {
                         const c = charColors[cell.owner]; d.style.background = c + "22"; d.style.borderColor = c;
                         d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (i + 1))) )))))) + `<span>🎟${cell.ticket}</span>`;
-                        allTicketsData.push({ ...cell, cell: i+1 });
+                        liveBoardTicketsData.push({ ...cell, cell: i+1, cellIdx: i, isArchived: false });
                     } else { d.innerHTML = (i+1); }
                     d.onclick = () => showCell(i, cell); grid.appendChild(d);
                 }
+                allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
+                updateTicketsTable();
+            });
+
+            db.ref('tickets_archive').on('value', snap => {
+                const archived = [];
+                snap.forEach(item => {
+                    const v = item.val() || {};
+                    archived.push({ ...v, isArchived: true });
+                });
+                archivedTicketsData = archived;
+                allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
                 updateTicketsTable();
             });
 
@@ -1224,8 +1241,8 @@
                         <td><b>${t.ticket}</b></td>
                         <td>
                             <div style="display:flex; gap:5px; justify-content:center;">
-                                <button onclick="viewTaskDetails(${t.cell-1})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>
-                                ${isAdmin ? `<button onclick="db.ref('board/${t.cell-1}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
+                                <button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell-1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>
+                                ${isAdmin && !t.isArchived ? `<button onclick="db.ref('board/${t.cellIdx}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
                             </div>
                         </td>
                     </tr>`;
@@ -1591,8 +1608,8 @@
 
     if (durationMs <= 0) return alert("Укажите время раунда!");
 
-    const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
-    let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
+    await archiveAndClearBoard();
+    let free = []; for(let i=0; i<50; i++) free.push(i);
 
     const magicCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
     const miniGameCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
@@ -1753,9 +1770,39 @@
             });
         }
 
+        async function archiveAndClearBoard() {
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const updates = {};
+
+            Object.entries(board).forEach(([cellIdx, cell]) => {
+                if (!cell) return;
+                const archiveKey = db.ref('tickets_archive').push().key;
+                updates[`tickets_archive/${archiveKey}`] = {
+                    ...cell,
+                    cell: Number(cellIdx) + 1,
+                    cellIdx: Number(cellIdx),
+                    archivedAt: Date.now()
+                };
+            });
+
+            updates['board'] = {};
+            await db.ref().update(updates);
+        }
+
+        function toggleAdminPlayersList() {
+            const wrap = document.getElementById('active-players-wrap');
+            const btn = document.querySelector('#tab-admin button[onclick="toggleAdminPlayersList()"]');
+            if (!wrap || !btn) return;
+            const expanded = wrap.style.display !== 'none';
+            wrap.style.display = expanded ? 'none' : 'block';
+            btn.innerText = expanded ? '👥 Список игроков: развернуть' : '👥 Список игроков: свернуть';
+        }
+
         function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
-        async function adminResetRounds() {
-            if (!confirm("Сбросить раунды к началу? Игра не начнется, пока не нажмешь \"Запустить раунд\".")) return;
+        async function adminResetGame() {
+            if (!confirm("Сбросить игру? Поле и раунды очистятся, игра начнется только после «Запустить раунд».")) return;
+            await archiveAndClearBoard();
             await db.ref('current_round').set({
                 number: 0,
                 endTime: 0,
@@ -1765,7 +1812,7 @@
                 magnetCell: null,
                 itemCells: {}
             });
-            alert('Раунды сброшены. Нажми «Запустить раунд», чтобы начать игру с первого раунда.');
+            alert('Игра сброшена. Поле очищено, раунды обнулены. Нажми «Запустить раунд», чтобы начать заново.');
             location.reload();
         }
         function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
