@@ -1710,7 +1710,12 @@
 
             const snap = await db.ref('whitelist').once('value');
             const users = [];
-            snap.forEach(userSnap => users.push(userSnap.key));
+            snap.forEach(userSnap => {
+                users.push({
+                    userId: userSnap.key,
+                    currentCharIndex: userSnap.val()?.charIndex
+                });
+            });
 
             if (!users.length) {
                 alert('Список игроков пуст.');
@@ -1723,13 +1728,31 @@
             }
 
             const shuffledNickIndexes = shuffleArray(players.map((_, idx) => idx)).slice(0, users.length);
+
+            if (users.length > 1) {
+                for (let i = 0; i < users.length; i++) {
+                    if (shuffledNickIndexes[i] !== users[i].currentCharIndex) continue;
+
+                    const swapIdx = shuffledNickIndexes.findIndex((nickIdx, j) => {
+                        if (i === j) return false;
+                        const myCurrent = users[i].currentCharIndex;
+                        const otherCurrent = users[j].currentCharIndex;
+                        return nickIdx !== myCurrent && shuffledNickIndexes[i] !== otherCurrent;
+                    });
+
+                    if (swapIdx !== -1) {
+                        [shuffledNickIndexes[i], shuffledNickIndexes[swapIdx]] = [shuffledNickIndexes[swapIdx], shuffledNickIndexes[i]];
+                    }
+                }
+            }
+
             const updates = {};
-            users.forEach((userId, i) => {
-                updates[`whitelist/${userId}/charIndex`] = shuffledNickIndexes[i];
+            users.forEach((user, i) => {
+                updates[`whitelist/${user.userId}/charIndex`] = shuffledNickIndexes[i];
             });
 
             await db.ref().update(updates);
-            alert('Никнеймы всех игроков успешно заменены.');
+            alert('Никнеймы всех игроков успешно заменены (уникально и случайно).');
         }
 
       function syncAdminList() {
