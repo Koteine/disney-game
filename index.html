@@ -105,6 +105,19 @@
 </head>
 <body>
 
+    <div id="unauthorized-screen" style="display:none; padding:20px 12px;">
+        <div class="admin-section" style="max-width:520px; margin:20px auto; text-align:center;">
+            <h1 style="margin:5px 0 10px;">👋 Добро пожаловать!</h1>
+            <p style="font-size:14px; line-height:1.5; color:#555; margin:0 0 12px;">
+                Похоже, тебя ещё не добавили в игру.
+            </p>
+            <div id="welcome-user-id" style="font-size:14px; margin-bottom:10px;"></div>
+            <div style="padding:10px; border-radius:10px; background:#fff0f0; color:#c62828; font-size:13px; line-height:1.4;">
+                Ой, кажется, у тебя пока нет доступа к игре. Пожалуйста, передай свой ID @Koteine
+            </div>
+        </div>
+    </div>
+
     <div id="game-ui">
         <div id="tab-game" class="tab-content tab-active">
             <h1>🏰 Disney Battle</h1>
@@ -242,26 +255,34 @@
             audio.play().catch(e => console.log("Sound blocked"));
         }
 
+        function setAuthorizedView(isAuthorized) {
+            const gameUi = document.getElementById('game-ui');
+            const unauthorizedScreen = document.getElementById('unauthorized-screen');
+            if (!gameUi || !unauthorizedScreen) return;
+            gameUi.style.display = isAuthorized ? 'block' : 'none';
+            unauthorizedScreen.style.display = isAuthorized ? 'none' : 'block';
+        }
+
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
                 syncAdminList();
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                setAuthorizedView(true);
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
                     document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    setAuthorizedView(true);
                     return;
                 }
 
                 myIndex = -1;
                 if (currentUserId !== ADMIN_ID) {
-                    document.getElementById('player-identity').innerHTML = `
-                        <div><b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code></div>
-                        <div style="margin-top:4px; color:#d32f2f;">Ой, кажется, у тебя пока нет доступа к игре. Пожалуйста, передай свой ID @Koteine</div>
-                    `;
+                    document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
+                    setAuthorizedView(false);
                 }
             });
         }
