@@ -103,6 +103,22 @@
         table { width: 100%; border-collapse: collapse; font-size: 11px; background: white; border-radius: 10px; }
         th, td { padding: 8px 4px; border-bottom: 1px solid #eee; text-align: center; }
         .row-excluded { background: #f0f0f0; color: #aaa; text-decoration: line-through; }
+
+        .wheel-wrap { position: relative; width: 300px; margin: 0 auto 10px; }
+        #wheel-canvas { transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block; }
+        .wheel-pointer {
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: 24px solid #ff1744;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.25));
+            z-index: 2;
+        }
     </style>
 </head>
 <body>
@@ -156,7 +172,10 @@
         <div id="tab-wheel" class="tab-content">
             <h1>🎡 Колесо</h1>
             <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к розыгрышу?</div>
-            <canvas id="wheel-canvas" width="280" height="280" style="transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); margin: 0 auto; display: block;"></canvas>
+            <div class="wheel-wrap">
+                <div class="wheel-pointer" aria-hidden="true"></div>
+                <canvas id="wheel-canvas" width="280" height="280"></canvas>
+            </div>
             <div id="wheel-admin-btn"></div>
         </div>
 
@@ -500,7 +519,7 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
-            if (cell.isMiniGame) return '🎮 Мини-игра: пятнашки 5×5';
+            if (cell.isMiniGame) { const t = tasks[cell.taskIdx]; return `🎮 Пятнашки 5×5 + рисунок: ${t?.text || 'обычное задание'}`; }
             if (cell.isGold) return '👑 Золотая клетка: свободная тема';
             const t = tasks[cell.taskIdx];
             return t?.text || 'Обычное задание';
@@ -516,7 +535,7 @@
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
-            const myCells = allTicketsData.filter(t => t.userId === currentUserId && !t.isMiniGame);
+            const myCells = allTicketsData.filter(t => t.userId === currentUserId);
             if (!myCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
@@ -807,7 +826,8 @@
                 trapText = traps[Math.floor(Math.random()*traps.length)];
                 await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
             } else if (isMiniGame) {
-                await postNews(`🎮 ${players[myIndex].n} решил не рисовать, а играться! Ну надо же!`);
+                taskIdx = avail[Math.floor(Math.random()*avail.length)];
+                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку с пятнашками и дополнительным заданием.`);
                 playFanfare();
             } else if (!isGold) {
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
@@ -819,7 +839,7 @@
 
             const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: isMiniGame ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", magicLinkId, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
-            if(!isGold && !isTrap && !isMagic && !isMiniGame) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
+            if(!isGold && !isTrap && !isMagic && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             showCell(cellIdx, cellData);
         }
@@ -888,15 +908,67 @@
         function drawWheel() {
             const canvas = document.getElementById('wheel-canvas'), ctx = canvas.getContext('2d');
             const tickets = []; allTicketsData.forEach(t => { if(!t.excluded) extractTicketNumbers(t.ticket).forEach(n => tickets.push({ num: n, owner: t.owner })); });
+            ctx.clearRect(0,0,280,280);
             if (!tickets.length) return; tickets.sort((a,b)=>a.num-b.num);
             const segs = tickets.length, angle = 2 * Math.PI / segs;
-            ctx.clearRect(0,0,280,280);
+
             tickets.forEach((t, i) => {
-                ctx.beginPath(); ctx.moveTo(140,140); ctx.arc(140,140,135, i*angle, (i+1)*angle);
-                ctx.fillStyle = charColors[t.owner]; ctx.fill(); ctx.strokeStyle = "white"; ctx.stroke();
-                ctx.save(); ctx.translate(140,140); ctx.rotate(i*angle + angle/2);
-                ctx.fillStyle="white"; ctx.font="bold 9px Arial"; ctx.fillText(t.num, 100, 4); ctx.restore();
+                const startA = i * angle;
+                const endA = (i + 1) * angle;
+
+                ctx.beginPath();
+                ctx.moveTo(140,140);
+                ctx.arc(140,140,132, startA, endA);
+                ctx.fillStyle = charColors[t.owner];
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(140,140);
+                ctx.lineTo(140 + 132 * Math.cos(startA), 140 + 132 * Math.sin(startA));
+                ctx.strokeStyle = "rgba(255,255,255,0.95)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.save();
+                ctx.translate(140,140);
+                ctx.rotate(i*angle + angle/2);
+                ctx.fillStyle="white";
+                ctx.font="bold 10px Arial";
+                ctx.textAlign = 'center';
+                ctx.fillText(t.num, 96, 4);
+                ctx.restore();
             });
+
+            // Внешний обод
+            ctx.beginPath();
+            ctx.arc(140, 140, 133, 0, Math.PI * 2);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(140, 140, 136, 0, Math.PI * 2);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Центральный круг
+            ctx.beginPath();
+            ctx.arc(140, 140, 18, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Маркер направления сверху (под стрелкой)
+            ctx.beginPath();
+            ctx.moveTo(140, 4);
+            ctx.lineTo(132, 18);
+            ctx.lineTo(148, 18);
+            ctx.closePath();
+            ctx.fillStyle = '#ff1744';
+            ctx.fill();
         }
 
         function runWheelAnimation(rotation) {
@@ -1098,4 +1170,3 @@
     </script>
 </body>
 </html>
-
