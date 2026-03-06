@@ -1296,16 +1296,8 @@ ${candidates.map(v => v + 1).join(', ')}`);
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
                 syncAdminList();
-                const startInput = document.getElementById('event-start-at');
-                if (startInput && !startInput.value) {
-                    const dt = new Date(Date.now() + 60000);
-                    startInput.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                }
-                const drawStartInput = document.getElementById('draw-start-at');
-                if (drawStartInput && !drawStartInput.value) {
-                    const dt = new Date(Date.now() + 60000);
-                    drawStartInput.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                }
+                ensureDateTimeInputDefault('event-start-at');
+                ensureDateTimeInputDefault('draw-start-at');
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 setAuthorizedView(true);
             }
@@ -1779,12 +1771,22 @@ ${candidates.map(v => v + 1).join(', ')}`);
         }
 
         function toggleNewsPanel() {
-            const list = document.getElementById('news-list');
-            const btn = document.getElementById('news-toggle-btn');
-            if (!list || !btn) return;
+            toggleExpandablePanel('news-list', 'news-toggle-btn');
+        }
 
+        function toggleExpandablePanel(listId, btnId) {
+            const list = document.getElementById(listId);
+            const btn = document.getElementById(btnId);
+            if (!list || !btn) return;
             const isExpanded = list.classList.toggle('expanded');
             btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
+        }
+
+        function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
+            const input = document.getElementById(inputId);
+            if (!input || input.value) return;
+            const dt = new Date(Date.now() + plusMs);
+            input.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
         }
 
         function switchAdminInnerTab(tabName) {
@@ -2746,11 +2748,7 @@ ${candidates.map(v => v + 1).join(', ')}`);
         }
 
         function toggleWinnerHistoryPanel() {
-            const list = document.getElementById('winner-history-list');
-            const btn = document.getElementById('winner-history-toggle-btn');
-            if (!list || !btn) return;
-            const expanded = list.classList.toggle('expanded');
-            btn.innerText = expanded ? 'Свернуть' : 'Развернуть';
+            toggleExpandablePanel('winner-history-list', 'winner-history-toggle-btn');
         }
 
         async function maybeActivateScheduledDraw() {
