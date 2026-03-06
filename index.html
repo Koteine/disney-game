@@ -186,6 +186,7 @@
                 <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
+                <button onclick="adminShuffleNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin-top:8px;">🔀 ПЕРЕМЕШАТЬ НИКНЕЙМЫ ВСЕХ</button>
             </div>
             <button onclick="adminResetRounds()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ РАУНДЫ В 1</button>
             <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
@@ -772,10 +773,85 @@
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
 
+        function pickRandom(arr) {
+            if (!arr.length) return null;
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        function shuffleArray(arr) {
+            const copy = [...arr];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        async function getUsedCharIndexes() {
+            const snap = await db.ref('whitelist').once('value');
+            const used = new Set();
+            snap.forEach(userSnap => {
+                const idx = userSnap.val()?.charIndex;
+                if (Number.isInteger(idx) && players[idx]) used.add(idx);
+            });
+            return used;
+        }
+
         async function saveNewUserRandomly() {
-            const id = document.getElementById('new-user-id').value; if(!id) return;
-            await db.ref('whitelist/'+id).set({ charIndex: Math.floor(Math.random()*50), used_tasks: [], last_round: 0 });
+            const id = document.getElementById('new-user-id').value;
+            if (!id) return;
+
+            const existing = await db.ref('whitelist/' + id).once('value');
+            if (existing.exists()) {
+                alert('Этот Telegram ID уже есть в списке игроков.');
+                return;
+            }
+
+            const used = await getUsedCharIndexes();
+            const freeIndexes = players
+                .map((_, idx) => idx)
+                .filter(idx => !used.has(idx));
+
+            if (!freeIndexes.length) {
+                alert('Свободные никнеймы закончились. Удалите игрока или расширьте пул ников.');
+                return;
+            }
+
+            const charIndex = pickRandom(freeIndexes);
+            await db.ref('whitelist/' + id).set({
+                charIndex,
+                used_tasks: [],
+                last_round: 0
+            });
             document.getElementById('new-user-id').value = "";
+        }
+
+        async function adminShuffleNicknames() {
+            if (currentUserId !== ADMIN_ID) return;
+            if (!confirm('Случайно перемешать никнеймы у всех игроков?')) return;
+
+            const snap = await db.ref('whitelist').once('value');
+            const users = [];
+            snap.forEach(userSnap => users.push(userSnap.key));
+
+            if (!users.length) {
+                alert('Список игроков пуст.');
+                return;
+            }
+
+            if (users.length > players.length) {
+                alert('Игроков больше, чем доступных никнеймов. Невозможно выдать уникальные имена всем.');
+                return;
+            }
+
+            const shuffledNickIndexes = shuffleArray(players.map((_, idx) => idx)).slice(0, users.length);
+            const updates = {};
+            users.forEach((userId, i) => {
+                updates[`whitelist/${userId}/charIndex`] = shuffledNickIndexes[i];
+            });
+
+            await db.ref().update(updates);
+            alert('Никнеймы всех игроков успешно перемешаны.');
         }
 
       function syncAdminList() {
