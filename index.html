@@ -68,6 +68,12 @@
         
         .admin-section { background: white; padding: 12px; border-radius: 12px; margin: 8px; border: 1px solid #eee; text-align: left; }
         .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
+        .works-card { background: white; border: 1px solid #eee; border-radius: 12px; padding: 10px; margin: 8px; text-align: left; }
+        .work-image { width: 100%; border-radius: 10px; margin-top: 8px; border: 1px solid #eee; }
+        .status-chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: bold; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-accepted { background: #d4edda; color: #155724; }
+        .status-rejected { background: #f8d7da; color: #721c24; }
         
         #modal, #overlay { display: none; }
         #modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 15px; border-radius: 20px; z-index: 1100; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 0 40px rgba(0,0,0,0.2); }
@@ -139,6 +145,18 @@
             <div id="wheel-admin-btn"></div>
         </div>
 
+        <div id="tab-works" class="tab-content">
+            <h1>📤 Сдача работ</h1>
+            <div class="works-card">
+                <b>Загрузить новую работу</b>
+                <select id="work-task-select" class="admin-input" style="margin-top:8px;"></select>
+                <input type="file" id="work-image-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
+                <button onclick="submitWork()" class="admin-btn" style="margin:0; width:100%;">📸 Загрузить работу</button>
+                <div style="font-size:11px; color:#888; margin-top:6px;">Игроки видят только свои работы. Админ видит все работы и может менять статус.</div>
+            </div>
+            <div id="works-list"></div>
+        </div>
+
         <div id="tab-admin" class="tab-content">
             <h1>⚙️ Админ</h1>
             <div class="admin-section">
@@ -178,6 +196,7 @@
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
             <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
             <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button class="nav-item" onclick="switchTab('tab-works', this)"><span>📤 Работы</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
@@ -203,6 +222,8 @@
         let shownMagicLinks = {};
         let magicLinksRef = null;
         let newsFeedRef = null;
+        let submissionsRef = null;
+        let allSubmissions = [];
 
         const magicBondTasks = [
             "Тема «Время и Эволюция»: один человек рисует персонажа в детстве, другой — в зрелости/старости.",
@@ -226,12 +247,22 @@
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminTriggerSpin()" class="admin-btn">КРУТИТЬ КОЛЕСО</button>`;
                 syncAdminList();
+                document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
             }
-            db.ref('whitelist/' + currentUserId).on('value', s => { 
-                if (s.exists()) { 
-                    myIndex = s.val().charIndex; 
-                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span>`; 
-                } 
+            db.ref('whitelist/' + currentUserId).on('value', s => {
+                if (s.exists()) {
+                    myIndex = s.val().charIndex;
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    return;
+                }
+
+                myIndex = -1;
+                if (currentUserId !== ADMIN_ID) {
+                    document.getElementById('player-identity').innerHTML = `
+                        <div><b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code></div>
+                        <div style="margin-top:4px; color:#d32f2f;">Ой, кажется, у тебя пока нет доступа к игре. Пожалуйста, передай свой ID @Koteine</div>
+                    `;
+                }
             });
         }
 
@@ -295,6 +326,156 @@
             });
 
             db.ref('wheel_event').on('value', snap => { if (snap.exists() && (Date.now() - snap.val().timestamp < 10000)) runWheelAnimation(snap.val().rotation); });
+
+            if (submissionsRef) submissionsRef.off();
+            submissionsRef = db.ref('submissions');
+            submissionsRef.on('value', snap => {
+                const items = [];
+                snap.forEach(s => {
+                    const value = s.val() || {};
+                    items.push({ id: s.key, ...value });
+                });
+                allSubmissions = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                renderSubmissions();
+                fillSubmissionTaskOptions();
+            });
+        }
+
+        function getTaskLabelByCell(cell) {
+            if (!cell) return 'Неизвестное задание';
+            if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
+            if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
+            if (cell.isGold) return '👑 Золотая клетка: свободная тема';
+            const t = tasks[cell.taskIdx];
+            return t?.text || 'Обычное задание';
+        }
+
+        function getSubmissionStatusInfo(status) {
+            if (status === 'accepted') return { text: 'Принято', className: 'status-accepted' };
+            if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
+            return { text: 'На проверке', className: 'status-pending' };
+        }
+
+        function fillSubmissionTaskOptions() {
+            const select = document.getElementById('work-task-select');
+            if (!select) return;
+
+            const myCells = allTicketsData.filter(t => t.userId === currentUserId);
+            if (!myCells.length) {
+                select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
+                select.disabled = true;
+                return;
+            }
+
+            select.disabled = false;
+            select.innerHTML = myCells.map(cell => {
+                const shortTask = getTaskLabelByCell(cell).slice(0, 90);
+                return `<option value="${cell.cell - 1}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+            }).join('');
+        }
+
+        function renderSubmissions() {
+            const list = document.getElementById('works-list');
+            if (!list) return;
+            const isAdmin = (currentUserId === ADMIN_ID);
+            const visible = allSubmissions.filter(item => isAdmin || item.userId === currentUserId);
+
+            if (!visible.length) {
+                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
+                return;
+            }
+
+            list.innerHTML = visible.map(item => {
+                const status = getSubmissionStatusInfo(item.status);
+                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${players[item.owner]?.n || 'Неизвестный'}</b> · TG ID: ${item.userId || '—'}</div>` : '';
+                const reviewControls = isAdmin ? `
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <button onclick="setSubmissionStatus('${item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
+                        <button onclick="setSubmissionStatus('${item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
+                    </div>` : '';
+
+                return `
+                    <div class="works-card">
+                        ${playerLine}
+                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                            <div><b>Раунд ${item.round || '—'}, клетка №${(item.cellIdx ?? -1) + 1}</b></div>
+                            <span class="status-chip ${status.className}">${status.text}</span>
+                        </div>
+                        <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
+                        ${item.imageData ? `<img src="${item.imageData}" alt="Работа игрока" class="work-image">` : ''}
+                        ${reviewControls}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function readImageAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function compressImage(dataUrl, maxSide = 1200, quality = 0.82) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * ratio);
+                    canvas.height = Math.round(img.height * ratio);
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = dataUrl;
+            });
+        }
+
+        async function submitWork() {
+            const select = document.getElementById('work-task-select');
+            const fileInput = document.getElementById('work-image-input');
+            if (!select || select.disabled) return alert('Нет доступных заданий для сдачи.');
+            const chosenCellIdx = Number(select.value);
+            if (!Number.isInteger(chosenCellIdx) || chosenCellIdx < 0) return alert('Выбери задание.');
+            const file = fileInput?.files?.[0];
+            if (!file) return alert('Добавь фото работы перед отправкой.');
+
+            const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
+            const cell = boardCellSnap.val();
+            if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+
+            const rawData = await readImageAsDataURL(file);
+            const imageData = await compressImage(rawData);
+
+            const payload = {
+                userId: currentUserId,
+                owner: myIndex,
+                cellIdx: chosenCellIdx,
+                round: cell.round,
+                ticket: cell.ticket,
+                taskLabel: getTaskLabelByCell(cell),
+                imageData,
+                status: 'pending',
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            await db.ref('submissions').push(payload);
+            fileInput.value = '';
+            alert('Работа загружена! Статус: На проверке.');
+        }
+
+        async function setSubmissionStatus(submissionId, status) {
+            if (currentUserId !== ADMIN_ID) return;
+            if (!['accepted', 'rejected'].includes(status)) return;
+            await db.ref(`submissions/${submissionId}`).update({
+                status,
+                reviewedBy: currentUserId,
+                updatedAt: Date.now()
+            });
         }
 
         function postNews(text) {
@@ -607,11 +788,17 @@
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            el.classList.add('active'); if (id === 'tab-wheel') drawWheel();
+            el.classList.add('active');
+            if (id === 'tab-wheel') drawWheel();
+            if (id === 'tab-works') {
+                fillSubmissionTaskOptions();
+                renderSubmissions();
+            }
         }
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         init();
     </script>
 </body>
 </html>
+
 
