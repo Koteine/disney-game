@@ -111,8 +111,6 @@
 
   function renderRoundSchedules() {
     const statusEl = document.getElementById('admin-round-status');
-    const mini = document.getElementById('admin-rounds-mini');
-    const miniBody = document.getElementById('admin-rounds-mini-body');
     const scheduled = roundSchedules.filter(r => r.status === 'scheduled');
 
     const content = scheduled.length
@@ -129,17 +127,8 @@
     if (statusEl) {
       statusEl.innerHTML = `Запланировано (${scheduled.length}):<br>${content}`;
     }
-    if (miniBody) miniBody.innerHTML = content;
-    if (mini && currentUserId === ADMIN_ID) mini.style.display = 'block';
   }
 
-  function toggleAdminRoundsMiniBox() {
-    const box = document.getElementById('admin-rounds-mini');
-    if (!box) return;
-    box.classList.toggle('hidden');
-    const btn = box.querySelector('.admin-mini-head .collapse-toggle');
-    if (btn) btn.innerText = box.classList.contains('hidden') ? 'Развернуть' : 'Свернуть';
-  }
 
   async function maybeActivateScheduledRound() {
     const due = roundSchedules
@@ -179,7 +168,6 @@
     window.adminStartNewRound = adminStartNewRound;
     window.adminScheduleRound = adminScheduleRound;
     window.adminCancelScheduledRound = adminCancelScheduledRound;
-    window.toggleAdminRoundsMiniBox = toggleAdminRoundsMiniBox;
 
     ensureDateTimeInputDefault('round-start-at');
     syncRoundSchedules();
