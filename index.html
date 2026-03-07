@@ -83,6 +83,17 @@
         .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
         .works-card { background: white; border: 1px solid #eee; border-radius: 12px; padding: 10px; margin: 8px; text-align: left; }
         .work-image { width: 100%; border-radius: 10px; margin-top: 8px; border: 1px solid #eee; }
+        .work-stage-block { margin-top:8px; border:1px solid #f0f0f0; border-radius:10px; padding:8px; background:#fff; }
+        .collapse-head { display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; font-size:12px; font-weight:bold; color:#444; }
+        .collapse-toggle { border:1px solid #f8bbd0; border-radius:999px; padding:2px 8px; background:#fff; color:#c2185b; font-size:11px; }
+        .collapse-body { display:none; margin-top:6px; }
+        .collapse-body.expanded { display:block; }
+        .player-notification { position:fixed; top:14px; left:50%; transform:translateX(-50%); width:min(92vw,560px); background:#fff; border:2px solid #f48fb1; border-radius:14px; box-shadow:0 12px 30px rgba(0,0,0,0.24); padding:12px 34px 12px 12px; z-index:2600; text-align:left; }
+        .player-notification-close { position:absolute; right:10px; top:8px; border:none; background:transparent; font-size:18px; color:#ad1457; font-weight:bold; }
+        .admin-mini-box { position:fixed; right:8px; bottom:78px; width:min(92vw,340px); background:#fff; border:1px solid #f8bbd0; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.15); z-index:1200; text-align:left; }
+        .admin-mini-box.hidden .admin-mini-body { display:none; }
+        .admin-mini-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; font-size:12px; font-weight:bold; color:#ad1457; }
+        .admin-mini-body { padding:0 10px 10px; font-size:12px; color:#555; max-height:220px; overflow:auto; }
         .status-chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: bold; }
         .status-pending { background: #fff3cd; color: #856404; }
         .status-accepted { background: #d4edda; color: #155724; }
@@ -335,7 +346,10 @@
             <div class="works-card">
                 <b>Загрузить новую работу</b>
                 <select id="work-task-select" class="admin-input" style="margin-top:8px;"></select>
-                <input type="file" id="work-image-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
+                <label style="font-size:12px; color:#777;">Фото «До» (не раскрашенная)</label>
+                <input type="file" id="work-image-before-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
+                <label style="font-size:12px; color:#777;">Фото «После» (раскрашенная)</label>
+                <input type="file" id="work-image-after-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
                 <button onclick="submitWork()" class="admin-btn" style="margin:0; width:100%;">📸 Загрузить работу</button>
                 <div style="font-size:11px; color:#888; margin-top:6px;">Игроки видят только свои работы. Админ видит все работы и может менять статус.</div>
                 <div id="ink-deadline-hint" style="font-size:11px; color:#d84315; margin-top:6px;"></div>
@@ -359,6 +373,12 @@
         <div style="flex:1;"><small>Мин</small><input type="number" id="r-mins" class="admin-input" value="0"></div>
     </div>
     <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0; height:45px;">🚀 ЗАПУСТИТЬ РАУНД</button>
+    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+    <b>Отложенный запуск раундов:</b>
+    <label style="font-size:12px; color:#777;">Когда начнется раунд</label>
+    <input type="datetime-local" id="round-start-at" class="admin-input">
+    <button onclick="adminScheduleRound()" class="admin-btn" style="background:#26a69a; width:100%; margin:0;">🕒 Запланировать раунд</button>
+    <div id="admin-round-status" style="font-size:12px; margin-top:8px; color:#555;">Запланированных раундов нет.</div>
     </div>
             </div>
             <div id="admin-events-panel" class="admin-inner-panel">
@@ -436,6 +456,14 @@
 
     <div id="overlay" onclick="closeModal()"></div>
     <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
+    <div id="player-notification-wrap"></div>
+    <div id="admin-rounds-mini" class="admin-mini-box hidden" style="display:none;">
+        <div class="admin-mini-head">
+            <span>🗓 Запланированные раунды</span>
+            <button class="collapse-toggle" onclick="toggleAdminRoundsMiniBox()">Развернуть</button>
+        </div>
+        <div id="admin-rounds-mini-body" class="admin-mini-body">Раунды не запланированы.</div>
+    </div>
 
     <script src="items.js"></script>
     <script src="Tickets.js"></script>
@@ -927,6 +955,8 @@
                 syncAdminList();
                 ensureDateTimeInputDefault('event-start-at');
                 ensureDateTimeInputDefault('draw-start-at');
+                ensureDateTimeInputDefault('round-start-at');
+                document.getElementById('admin-rounds-mini').style.display = 'block';
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 setAuthorizedView(true);
             }
@@ -1112,6 +1142,8 @@
                         <button onclick="setSubmissionStatus('${item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
                         <button onclick="setSubmissionStatus('${item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
                     </div>` : '';
+                const beforeBodyId = `sub-before-${item.id}`;
+                const afterBodyId = `sub-after-${item.id}`;
 
                 return `
                     <div class="works-card">
@@ -1122,11 +1154,127 @@
                         </div>
                         <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
                         <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
-                        ${item.imageData ? `<img src="${item.imageData}" alt="Работа игрока" class="work-image">` : ''}
+
+                        <div class="work-stage-block">
+                            <div class="collapse-head" onclick="toggleCollapse('${beforeBodyId}', this)">
+                                <span>🖼️ Фото «До»</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${beforeBodyId}" class="collapse-body">
+                                ${item.beforeImageData ? `<img src="${item.beforeImageData}" alt="Работа до" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «До» не загружено.</div>'}
+                            </div>
+                        </div>
+
+                        <div class="work-stage-block">
+                            <div class="collapse-head" onclick="toggleCollapse('${afterBodyId}', this)">
+                                <span>🎨 Фото «После»</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${afterBodyId}" class="collapse-body">
+                                ${(item.afterImageData || item.imageData) ? `<img src="${item.afterImageData || item.imageData}" alt="Работа после" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «После» не загружено.</div>'}
+                            </div>
+                        </div>
                         ${reviewControls}
                     </div>
                 `;
             }).join('');
+        }
+
+        function toggleCollapse(bodyId, headerEl) {
+            const body = document.getElementById(bodyId);
+            if (!body) return;
+            const willExpand = !body.classList.contains('expanded');
+            body.classList.toggle('expanded', willExpand);
+            const btn = headerEl?.querySelector('.collapse-toggle');
+            if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
+        }
+
+        function closePlayerNotification(notifId) {
+            const node = document.getElementById(notifId);
+            if (node) node.remove();
+        }
+
+        function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
+            if (!id || !text) return;
+            const wrap = document.getElementById('player-notification-wrap');
+            if (!wrap) return;
+            if (document.getElementById(id)) return;
+            const card = document.createElement('div');
+            card.id = id;
+            card.className = 'player-notification';
+            card.style.borderColor = borderColor;
+            card.innerHTML = `<button class="player-notification-close" onclick="closePlayerNotification('${id}')">✕</button><div style="font-size:13px; line-height:1.4; color:#4a148c;">${text}</div>`;
+            wrap.appendChild(card);
+        }
+
+        function hasFullSubmissionForRound(roundNum, userId = currentUserId) {
+            return allSubmissions.some(s => s.userId === userId && s.round === roundNum && s.beforeImageData && s.afterImageData);
+        }
+
+        async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const updates = {};
+
+            Object.entries(board).forEach(([idx, cell]) => {
+                if (!cell || Number(cell.userId) !== Number(userId)) return;
+                updates[`board/${idx}/excluded`] = true;
+                updates[`board/${idx}/ticketBurned`] = true;
+            });
+
+            const archiveSnap = await db.ref('tickets_archive').once('value');
+            archiveSnap.forEach(item => {
+                const v = item.val() || {};
+                if (Number(v.userId) !== Number(userId)) return;
+                updates[`tickets_archive/${item.key}/excluded`] = true;
+                updates[`tickets_archive/${item.key}/ticketBurned`] = true;
+            });
+
+            updates[`whitelist/${userId}/isEliminated`] = true;
+            updates[`whitelist/${userId}/isParticipationBlocked`] = true;
+            updates[`whitelist/${userId}/eliminatedAt`] = Date.now();
+            updates[`whitelist/${userId}/eliminatedAtRound`] = currentRoundNum;
+            updates[`whitelist/${userId}/eliminationReason`] = reason;
+
+            await db.ref().update(updates);
+        }
+
+        async function checkSubmissionRoundDeadlines() {
+            if (!currentUserId || currentUserId === ADMIN_ID || myIndex === -1) return;
+            if (!currentRoundNum || !roundEndTime) return;
+
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const roundCell = Object.values(board).find(c => c && Number(c.userId) === Number(currentUserId) && c.round === currentRoundNum);
+
+            const msLeft = roundEndTime - Date.now();
+            if (roundCell && msLeft <= 10 * 3600000 && msLeft > 0 && !hasFullSubmissionForRound(currentRoundNum)) {
+                const remindKey = `workReminderShownRound${currentRoundNum}`;
+                if (!window[remindKey]) {
+                    window[remindKey] = true;
+                    showPlayerNotification({
+                        id: `work-reminder-${currentRoundNum}`,
+                        text: 'Твоя муза застряла в проке? 🎨 Твой холст скучает без мазков. Поторопись, иначе магические чернила испарятся, а твоё место на поле займет другой художник!'
+                    });
+                }
+            }
+
+            const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
+            const userState = userStateSnap.val() || {};
+            if (userState.isParticipationBlocked || userState.eliminationReason === 'no_submission') return;
+
+            const previousRound = currentRoundNum - 1;
+            if (previousRound < 1) return;
+            const hadPrevCell = Object.values(board).some(c => c && Number(c.userId) === Number(currentUserId) && c.round === previousRound);
+            if (!hadPrevCell || hasFullSubmissionForRound(previousRound)) return;
+
+            await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
+            showPlayerNotification({
+                id: `work-eliminated-${previousRound}`,
+                text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
+                borderColor: '#ef5350'
+            });
+            await postNews(`🚫 ${players[myIndex].n} пропустил(а) сдачу работы за раунд №${previousRound}. Билеты аннулированы, участие в игре остановлено.`);
         }
 
         function readImageAsDataURL(file) {
@@ -1156,12 +1304,14 @@
 
         async function submitWork() {
             const select = document.getElementById('work-task-select');
-            const fileInput = document.getElementById('work-image-input');
+            const beforeInput = document.getElementById('work-image-before-input');
+            const afterInput = document.getElementById('work-image-after-input');
             if (!select || select.disabled) return alert('Нет доступных заданий для сдачи.');
             const chosenCellIdx = Number(select.value);
             if (!Number.isInteger(chosenCellIdx) || chosenCellIdx < 0) return alert('Выбери задание.');
-            const file = fileInput?.files?.[0];
-            if (!file) return alert('Добавь фото работы перед отправкой.');
+            const beforeFile = beforeInput?.files?.[0];
+            const afterFile = afterInput?.files?.[0];
+            if (!beforeFile || !afterFile) return alert('Нужно добавить оба фото: «До» и «После».');
 
             const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
             const cell = boardCellSnap.val();
@@ -1182,8 +1332,10 @@
                 }
             }
 
-            const rawData = await readImageAsDataURL(file);
-            const imageData = await compressImage(rawData);
+            const beforeRaw = await readImageAsDataURL(beforeFile);
+            const afterRaw = await readImageAsDataURL(afterFile);
+            const beforeImageData = await compressImage(beforeRaw);
+            const afterImageData = await compressImage(afterRaw);
 
             const payload = {
                 userId: currentUserId,
@@ -1192,7 +1344,8 @@
                 round: cell.round,
                 ticket: cell.ticket,
                 taskLabel: getTaskLabelByCell(cell),
-                imageData,
+                beforeImageData,
+                afterImageData,
                 status: 'pending',
                 createdAt: Date.now(),
                 updatedAt: Date.now()
@@ -1204,7 +1357,8 @@
                 await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, submittedInTime: true });
             }
 
-            fileInput.value = '';
+            beforeInput.value = '';
+            afterInput.value = '';
             alert('Работа загружена! Статус: На проверке.');
         }
 
@@ -1838,6 +1992,10 @@
             const cells = Object.values(boardData || {}).filter(Boolean);
             return cells.filter(c => !c.isMagic)
                 .filter(c => c.userId !== currentUserId)
+                .filter(c => {
+                    const user = (window.cachedWhitelistData || {})[c.userId] || (window.cachedWhitelistData || {})[String(c.userId)] || {};
+                    return !user.isEliminated && !user.isParticipationBlocked;
+                })
                                 .filter(c => {
                     if (c.isTrap || c.isGold || c.isMiniGame || c.isInkChallenge || c.isWandBlessing || c.isMagnet) return true;
                     if (c.itemType) return true;
@@ -1855,6 +2013,10 @@
                 await failExpiredEventIfNeeded();
                 await maybeActivateScheduledDraw();
                 await maybeFinalizeScheduledDraw();
+                if (!window.lastSubmissionDeadlineCheckAt || Date.now() - window.lastSubmissionDeadlineCheckAt > 60000) {
+                    window.lastSubmissionDeadlineCheckAt = Date.now();
+                    await checkSubmissionRoundDeadlines();
+                }
                 const diff = roundEndTime - Date.now();
                 if (diff <= 0) {
                     document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
@@ -1934,8 +2096,9 @@
                 const candidates = [];
                 whiteSnap.forEach(s => {
                     const uid = Number(s.key);
-                    const cIdx = s.val()?.charIndex;
-                    if (uid !== currentUserId && Number.isInteger(cIdx) && players[cIdx]) {
+                    const playerState = s.val() || {};
+                    const cIdx = playerState.charIndex;
+                    if (uid !== currentUserId && Number.isInteger(cIdx) && players[cIdx] && !playerState.isEliminated && !playerState.isParticipationBlocked) {
                         candidates.push({ userId: uid, charIndex: cIdx, name: players[cIdx].n });
                     }
                 });
@@ -2709,6 +2872,6 @@
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         init();
     </script>
+    <script src="adminpage.js"></script>
 </body>
 </html>
-
