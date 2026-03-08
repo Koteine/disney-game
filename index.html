@@ -69,14 +69,18 @@
             <div class="grid" id="grid"></div>
         </div>
 
-        <div id="tab-event" class="tab-content">
-            <h1>🎨 Событие</h1>
-            <div class="works-card">
-                <div id="event-space-title" style="font-weight:700; color:#6a1b9a; margin-bottom:8px;">Событие не активно</div>
-                <div id="event-space-timer" style="display:none; font-size:12px; color:#455a64; margin-bottom:8px; font-weight:600;"></div>
-                <button onclick="backToGameFromEvent()" class="admin-btn" style="margin:0 0 8px 0; background:#607D8B;">⬅️ Назад к полю</button>
-                <canvas id="epic-paint-canvas" width="1000" height="2000"></canvas>
+        <div id="tab-event" class="tab-content event-screen">
+            <div class="event-screen-topbar">
+                <div id="event-space-title" class="event-screen-title">Эпичный раскрас</div>
+                <div id="event-space-timer" class="event-screen-timer">До конца: 00:00:00</div>
+                <button onclick="backToGameFromEvent()" class="event-back-btn">Назад в игру</button>
+            </div>
+            <div class="event-screen-canvas-wrap">
+                <canvas id="epic-paint-canvas" width="1200" height="1800"></canvas>
+            </div>
+            <div class="event-screen-footer">
                 <div id="epic-paint-progress">Закрашено: 0%</div>
+                <div id="event-done-message" style="display:none;"></div>
             </div>
         </div>
 
