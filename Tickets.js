@@ -154,6 +154,7 @@
                     ...t,
                     ticketNum: String(ticketNum),
                     isRevoked: isTicketRevoked(ticketNum),
+                    canUndoRevoke: !!(t.isManualRevoke && !t.revokeCancelledAt && t.archiveKey),
                     sourceLabel: getTicketSourceLabel(t),
                     taskLabel: getTicketTaskLabel(t)
                 });
@@ -310,7 +311,7 @@
 
         const visibleData = isAdmin
             ? allTicketsData
-            : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
+            : allTicketsData.filter(t => t.owner === myIndex || String(t.userId) === String(currentUserId) || Number(t.userId) === Number(currentUserId));
 
         const expandedRows = expandTicketsRows(visibleData)
             .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
@@ -326,7 +327,9 @@
                     <td>
                         <div style="font-size:11px;">${t.sourceLabel}</div>
                         ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
+                        ${t.isManualRevoke && t.revokeCancelledAt ? `<div style="font-size:10px; color:#2e7d32; margin-top:3px;">Изъятие отменено</div>` : ''}
                         <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="margin-top:4px; background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:10px; padding:3px 6px;">👀</button>
+                        ${t.canUndoRevoke ? `<button onclick="adminUndoTicketRevoke('${t.archiveKey}')" title="Отменить изъятие" style="margin-top:4px; margin-left:4px; background:#fff8e1; border:1px solid #ffcc80; color:#ef6c00; border-radius:8px; font-size:10px; padding:3px 6px;">↩️ Отменить</button>` : ''}
                     </td>
                 </tr>`;
         }).join('');
