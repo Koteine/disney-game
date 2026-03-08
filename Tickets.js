@@ -4,6 +4,62 @@
         updateTicketsTable();
     }
 
+    let archiveRefs = [];
+    let archiveByKey = {};
+
+    function clearArchiveSubscriptions() {
+        archiveRefs.forEach(ref => ref.off());
+        archiveRefs = [];
+    }
+
+    function syncArchiveMapToList() {
+        archivedTicketsData = Object.values(archiveByKey);
+        updateAllTicketsDataAndRender();
+    }
+
+    function attachArchiveRef(ref) {
+        archiveRefs.push(ref);
+        ref.on('child_added', snap => {
+            archiveByKey[snap.key] = { ...(snap.val() || {}), isArchived: true, archiveKey: snap.key };
+            syncArchiveMapToList();
+        });
+        ref.on('child_changed', snap => {
+            archiveByKey[snap.key] = { ...(snap.val() || {}), isArchived: true, archiveKey: snap.key };
+            syncArchiveMapToList();
+        });
+        ref.on('child_removed', snap => {
+            delete archiveByKey[snap.key];
+            syncArchiveMapToList();
+        });
+    }
+
+    function subscribeArchiveTickets() {
+        clearArchiveSubscriptions();
+        archiveByKey = {};
+        archivedTicketsData = [];
+        updateAllTicketsDataAndRender();
+
+        if (currentUserId === ADMIN_ID) {
+            const adminRef = db.ref('tickets_archive');
+            archiveRefs.push(adminRef);
+            adminRef.on('value', snap => {
+                const archived = [];
+                snap.forEach(item => {
+                    const v = item.val() || {};
+                    archived.push({ ...v, isArchived: true, archiveKey: item.key });
+                });
+                archivedTicketsData = archived;
+                updateAllTicketsDataAndRender();
+            });
+            return;
+        }
+
+        attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(Number(currentUserId)));
+        if (Number.isInteger(myIndex)) {
+            attachArchiveRef(db.ref('tickets_archive').orderByChild('owner').equalTo(myIndex));
+        }
+    }
+
     function syncTicketData() {
         db.ref('board').on('value', snap => {
             const data = snap.val() || {};
@@ -41,14 +97,10 @@
             updateAllTicketsDataAndRender();
         });
 
-        db.ref('tickets_archive').on('value', snap => {
-            const archived = [];
-            snap.forEach(item => {
-                const v = item.val() || {};
-                archived.push({ ...v, isArchived: true });
-            });
-            archivedTicketsData = archived;
-            updateAllTicketsDataAndRender();
+        subscribeArchiveTickets();
+        db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
+            if (currentUserId === ADMIN_ID) return;
+            subscribeArchiveTickets();
         });
     }
 
@@ -82,7 +134,7 @@
         const sortedData = allTicketsData.sort((a, b) => b.round - a.round || b.ticket - a.ticket);
 
         body.innerHTML = sortedData.map(t => {
-            if (!isAdmin && t.owner !== myIndex) return '';
+            if (!isAdmin && t.owner !== myIndex && Number(t.userId) !== Number(currentUserId)) return '';
             const statusClass = t.excluded ? 'row-excluded' : '';
 
             return `
@@ -93,7 +145,7 @@
                     <td><b>${t.ticket}</b></td>
                     <td>
                         <div style="display:flex; gap:5px; justify-content:center;">
-                            <button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell - 1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>
+                            ${(Number.isInteger(t.cellIdx) && t.cellIdx >= 0) ? `<button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell - 1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>` : `<span style="font-size:14px; opacity:0.5;">—</span>`}
                             ${isAdmin && !t.isArchived ? `<button onclick="db.ref('board/${t.cellIdx}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
                         </div>
                     </td>
