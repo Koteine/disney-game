@@ -171,6 +171,18 @@
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
                 <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin-top:8px;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
             </div>
+            <div class="admin-section">
+                <b>Экстренные действия:</b>
+                <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
+                <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                <select id="admin-rename-char-index" class="admin-input"></select>
+                <button onclick="adminForceRenamePlayer()" class="admin-btn" style="background:#5e35b1; width:100%; margin:0;">✏️ Сменить никнейм</button>
+                <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная выдача билетика</div>
+                <input type="number" id="admin-grant-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                <input type="number" id="admin-grant-ticket-count" placeholder="Сколько билетиков" class="admin-input" min="1" value="1">
+                <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
+            </div>
             <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ ИГРУ</button>
             <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
         </div>
@@ -701,6 +713,7 @@
                 document.getElementById('nav-admin-btn').style.display='flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
                 syncAdminList();
+                fillAdminNickOptions();
                 ensureDateTimeInputDefault('event-start-at');
                 ensureDateTimeInputDefault('draw-start-at');
                 ensureDateTimeInputDefault('round-start-at');
@@ -1415,6 +1428,25 @@
             return total ? (painted / total) * 100 : 0;
         }
 
+
+        function formatDurationMinutesRu(totalMinutes) {
+            const mins = Math.max(1, Math.round(Number(totalMinutes) || 0));
+            const hours = Math.floor(mins / 60);
+            const remMins = mins % 60;
+            if (!hours) return `${mins} мин`;
+            return remMins ? `${hours} ч ${remMins} мин` : `${hours} ч`;
+        }
+
+        async function postEpicEventSummary(eventData, isSuccess, rewardedPlayersCount) {
+            if (!eventData) return;
+            const startAt = eventData.activatedAt || eventData.startAt || Date.now();
+            const endAt = eventData.completedAt || eventData.failedAt || Date.now();
+            const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
+            const startText = new Date(startAt).toLocaleString('ru-RU');
+            const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
+            await postNews(`🎨 Прошло событие «Эпичный закрас» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
+        }
+
         async function maybeFinalizeEpicPaintSuccess(coverage) {
             if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') return;
             if (!currentGameEventKey) return;
@@ -1432,32 +1464,34 @@
             });
             if (!tx.committed) return;
 
-            await grantEpicPaintRewards();
-            await postNews('🎨 Событие «Эпичный закрас» завершено успешно! Все участники получили по 2 билетика.');
+            const rewardedPlayersCount = await grantEpicPaintRewards();
+            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
         }
 
         async function grantEpicPaintRewards() {
+            if (!currentGameEventKey) return 0;
             const participantsSnap = await db.ref('epic_paint/participants').once('value');
-            if (!participantsSnap.exists()) return;
+            if (!participantsSnap.exists()) return 0;
 
-            const updates = {};
-            participantsSnap.forEach(p => {
-                const uid = Number(p.key);
-                const user = window.cachedWhitelistData?.[uid] || window.cachedWhitelistData?.[String(uid)] || {};
-                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
-                if (!Number.isInteger(owner) || !players[owner]) return;
-                updates[`epic_paint/rewarded/${currentGameEventKey}/${uid}`] = true;
-            });
-            if (Object.keys(updates).length) await db.ref().update(updates);
+            const whitelistSnap = await db.ref('whitelist').once('value');
+            const whitelist = whitelistSnap.val() || {};
+            const rewardedSnap = await db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value');
+            const alreadyRewarded = rewardedSnap.val() || {};
 
-            for (const uidKey of Object.keys(updates).map(k => k.split('/')[2])) {
+            const participantUids = [];
+            participantsSnap.forEach(p => participantUids.push(String(p.key)));
+
+            let rewardedCount = 0;
+            for (const uidKey of participantUids) {
+                if (alreadyRewarded[uidKey]) continue;
                 const uid = Number(uidKey);
-                const user = window.cachedWhitelistData?.[uid] || window.cachedWhitelistData?.[uidKey] || {};
+                const user = whitelist[uidKey] || whitelist[uid] || {};
                 const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
                 if (!Number.isInteger(owner) || !players[owner]) continue;
 
                 const awarded = await claimSequentialTickets(2);
                 if (!awarded) continue;
+                rewardedCount += 1;
                 const ticketValue = `${awarded[0]} и ${awarded[1]}`;
                 await db.ref('tickets_archive').push({
                     owner,
@@ -1472,7 +1506,10 @@
                     archivedAt: Date.now(),
                     excluded: false
                 });
+                await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
             }
+
+            return rewardedCount;
         }
 
         function updateEventUiState() {
@@ -1619,7 +1656,6 @@
                 epicPaintHasDismissedStart = false;
                 epicPaintViewMode = 'event';
                 await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
-                await postNews('🎨 Стартовало событие «Эпичный закрас»! Закрасьте поле на 95% до конца таймера.');
             }
         }
 
@@ -1634,7 +1670,7 @@
                 return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели закрасить поле вовремя' };
             });
             if (tx.committed) {
-                await postNews('🎨 Событие «Эпичный закрас» завершено: время вышло, поле не закрашено на 95%.');
+                await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
             }
         }
 
@@ -1973,7 +2009,13 @@
                 } else if (cell.itemType === 'magicWand') {
                     h += `<div style="padding:12px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:center; color:#5e35b1; font-weight:bold;">Ты просто прелесть! Твоё кодовое слово "Фея", рисуй что дорого твоему добродушному сердцу!</div>`;
                 } else if (cell.itemType === 'magnifier') {
-                    h += `<div style="padding:12px; border:2px solid #3949ab; border-radius:10px; background:#eef2ff; text-align:left; color:#1a237e; font-weight:600;">🔎 Ты нашёл(ла) Лупу! Это обычное задание + предмет в рюкзак. Лупа позволяет посмотреть задание в выбранной свободной обычной клетке и решить: <b>«Беру»</b> или <b>«Не беру»</b>. При «Беру» ты пересаживаешься на новую клетку, а эта клетка освобождается.</div>`;
+                    h += `<div style="padding:12px; border:2px solid #3949ab; border-radius:10px; background:#eef2ff; text-align:left; color:#1a237e; font-weight:600;">🔎 Ты нашёл(ла) Лупу! Текущее задание на этой клетке уже открыто, а Лупа добавлена в рюкзак для другой клетки.</div>`;
+                    const t = tasks[cell.taskIdx];
+                    if (t) {
+                        if (t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin:10px 0; box-shadow:0 4px 10px rgba(0,0,0,0.1);">`;
+                        h += `<p style="text-align:left; line-height:1.4; font-size:15px; color:#444;">${t.text}</p>`;
+                    }
+                    h += `<div style="margin-top:8px; font-size:12px; color:#283593;">На этой клетке Лупу использовать нельзя — выбери другую свою обычную клетку.</div>`;
                 } else if (cell.isMagnet) {
                     h += `<div style="padding:12px; border:2px dashed #ec407a; border-radius:10px; background:#fff1f7; text-align:left;">
                         <div style="font-weight:bold; margin-bottom:8px; color:#ad1457;">Я - это ты, ты - это я. Повтори задание выбранного игрока:</div>
@@ -2015,7 +2057,7 @@
                 if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.goldenPollen || 0) > 0) {
                     h += `<button onclick="activateGoldenPollen(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🎇 Использовать Золотую пыльцу (x${myInventory.goldenPollen})</button>`;
                 }
-                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.magnifier || 0) > 0) {
+                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && !cell.itemType && isOwner && (myInventory.magnifier || 0) > 0) {
                     h += `<button onclick="activateMagnifier(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#3949ab;">🔎 Использовать Лупу (x${myInventory.magnifier})</button>`;
                 }
 
@@ -2481,6 +2523,54 @@
             alert('Никнеймы всех игроков успешно заменены (уникально и случайно).');
         }
 
+
+        function fillAdminNickOptions() {
+            const sel = document.getElementById('admin-rename-char-index');
+            if (!sel) return;
+            sel.innerHTML = players.map((p, idx) => `<option value="${idx}">${idx + 1}. ${p.n}</option>`).join('');
+        }
+
+        async function adminForceRenamePlayer() {
+            if (currentUserId !== ADMIN_ID) return;
+            const userId = (document.getElementById('admin-rename-user-id')?.value || '').trim();
+            const charIndex = Number(document.getElementById('admin-rename-char-index')?.value);
+            if (!userId) return alert('Укажи Telegram ID игрока.');
+            if (!Number.isInteger(charIndex) || !players[charIndex]) return alert('Выбери корректный никнейм.');
+
+            const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+            if (!userSnap.exists()) return alert('Игрок с таким ID не найден в whitelist.');
+            await db.ref(`whitelist/${userId}/charIndex`).set(charIndex);
+            alert('Никнейм обновлён. Изменение сразу видно всем игрокам.');
+        }
+
+        async function adminGrantTicketsToPlayer() {
+            if (currentUserId !== ADMIN_ID) return;
+            const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
+            const count = Math.max(1, Number(document.getElementById('admin-grant-ticket-count')?.value || 1));
+            if (!userId) return alert('Укажи Telegram ID игрока.');
+            const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+            const user = userSnap.val();
+            if (!user || !Number.isInteger(user.charIndex) || !players[user.charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+
+            const awarded = await claimSequentialTickets(count);
+            if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+            const ticketValue = awarded.join(' и ');
+            await db.ref('tickets_archive').push({
+                owner: user.charIndex,
+                userId: Number(userId),
+                ticket: ticketValue,
+                taskIdx: -1,
+                round: currentRoundNum,
+                cell: 0,
+                cellIdx: -1,
+                isManualReward: true,
+                archivedAt: Date.now(),
+                excluded: false
+            });
+            await postNews(`🎫 Администратор выдал(а) ${count} билет(ов) игроку ${players[user.charIndex].n}.`);
+            alert(`Готово! Выдано билетиков: ${count}. Номера: ${ticketValue}.`);
+        }
+
       function syncAdminList() {
             db.ref('whitelist').on('value', snap => {
                 const users = [];
@@ -2550,7 +2640,7 @@
 
         function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
         async function adminResetGame() {
-            if (!confirm("Сбросить игру полностью? У всех игроков обнулятся билетики и предметы.")) return;
+            if (!confirm("Точно сбросить?")) return;
 
             const whitelistSnap = await db.ref('whitelist').once('value');
             const updates = {
@@ -2595,7 +2685,7 @@
             alert('Игра сброшена полностью: поле, раунды, билеты, предметы, лента событий и работы очищены. Нажми «Запустить раунд», чтобы начать заново.');
             location.reload();
         }
-        function adminFullReset() { if(confirm("УДАЛИТЬ ВСЁ?")) db.ref().remove(); }
+        function adminFullReset() { if(confirm("Точно сбросить?")) db.ref().remove(); }
         async function adminTriggerSpin() {
             if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет активных билетиков для розыгрыша.");
             await db.ref('wheel_draw').set({
