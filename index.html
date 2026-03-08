@@ -182,9 +182,20 @@
             </div>
             <div id="admin-events-panel" class="admin-inner-panel">
                 <div class="admin-section">
-                    <b>🎨 Эпичный закрас</b>
-                    <div style="font-size:12px; color:#666; margin:8px 0;">Единственная кнопка управления ивентом. Запуск на 10 минут.</div>
-                    <button id="btn-launch-epic-paint" onclick="adminLaunchEpicPaintEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить Эпичный закрас</button>
+                    <b>🎨 Управление ивентами</b>
+                    <div style="font-size:12px; color:#666; margin:8px 0;">Запуск сразу или планирование очереди будущих ивентов.</div>
+                    <button id="btn-launch-epic-paint" onclick="adminLaunchEpicPaintEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0 0 10px 0;">🚀 Запустить Эпичный раскрас сейчас</button>
+
+                    <label style="font-size:12px; color:#777;">Дата и время старта</label>
+                    <input type="datetime-local" id="event-start-at" class="admin-input">
+                    <label style="font-size:12px; color:#777;">Длительность (мин)</label>
+                    <input type="number" id="event-duration-mins" class="admin-input" min="1" value="10">
+                    <button onclick="adminScheduleEpicPaintEvent()" class="admin-btn" style="background:#ab47bc; width:100%; margin:0;">🕒 Добавить в очередь</button>
+
+                    <div id="admin-events-queue" style="margin-top:10px; font-size:12px; color:#555;">
+                        <b>Очередь запланированных ивентов:</b>
+                        <div id="admin-event-queue-list" style="margin-top:6px;">Нет запланированных ивентов.</div>
+                    </div>
                 </div>
             </div>
 
