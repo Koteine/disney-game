@@ -1023,6 +1023,7 @@
                 await checkInkDeadline();
                 await activateScheduledEventIfNeeded();
                 await maybeFinalizeCompletedEventByEndTime();
+                await failExpiredEventIfNeeded();
                 await maybeActivateScheduledDraw();
                 await maybeFinalizeScheduledDraw();
                 if (!window.lastSubmissionDeadlineCheckAt || Date.now() - window.lastSubmissionDeadlineCheckAt > 60000) {
@@ -2035,4 +2036,3 @@
     <script src="adminpage.js"></script>
 </body>
 </html>
-

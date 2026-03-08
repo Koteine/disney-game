@@ -112,11 +112,9 @@ function drawEpicPaint() {
         ctx.stroke();
     });
 
-    const coverage = calculateEpicPaintCoverage(canvas);
-    const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
-    const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
+    const { coverage, redCoverage, blueCoverage } = calculateEpicPaintCoverageStats(canvas);
     if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
-        progressEl.innerText = `Общий закрас: ${coverage.toFixed(1)}% · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
+        progressEl.innerText = `Цель команды: 70% холста · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
         maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
     } else {
         progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
@@ -124,28 +122,45 @@ function drawEpicPaint() {
     }
 }
 
-function calculateEpicPaintCoverage(canvas) {
+function calculateEpicPaintCoverageStats(canvas) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const sample = 6;
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     let painted = 0;
+    let redPainted = 0;
+    let bluePainted = 0;
     let total = 0;
+    const red = { r: 229, g: 57, b: 53 };
+    const blue = { r: 30, g: 136, b: 229 };
+
+    const colorDistance = (r, g, b, target) => {
+        const dr = r - target.r;
+        const dg = g - target.g;
+        const db = b - target.b;
+        return (dr * dr) + (dg * dg) + (db * db);
+    };
+
     for (let y = 0; y < canvas.height; y += sample) {
         for (let x = 0; x < canvas.width; x += sample) {
             const idx = (y * canvas.width + x) * 4;
             const r = img[idx], g = img[idx + 1], b = img[idx + 2];
             total += 1;
-            if (!(r > 246 && g > 246 && b > 246)) painted += 1;
+            const isWhite = r > 246 && g > 246 && b > 246;
+            if (!isWhite) {
+                painted += 1;
+                const redDist = colorDistance(r, g, b, red);
+                const blueDist = colorDistance(r, g, b, blue);
+                if (redDist <= blueDist) redPainted += 1;
+                else bluePainted += 1;
+            }
         }
     }
-    return total ? (painted / total) * 100 : 0;
-}
 
-
-function calculateTeamCoverage(strokes, team) {
-    const total = (strokes || []).length || 1;
-    const own = (strokes || []).filter(s => (s.team || 'red') === team).length;
-    return (own / total) * 100;
+    return {
+        coverage: total ? (painted / total) * 100 : 0,
+        redCoverage: total ? (redPainted / total) * 100 : 0,
+        blueCoverage: total ? (bluePainted / total) * 100 : 0
+    };
 }
 
 function formatDurationMinutesRu(totalMinutes) {
@@ -243,7 +258,7 @@ async function grantEpicPaintRewards() {
 async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage) {
     if (!currentGameEvent || currentGameEvent.id !== WALL_BATTLE_EVENT_ID || currentGameEvent.status !== 'active') return;
     if (!currentGameEventKey) return;
-    if (coverage < EPIC_PAINT_COVERAGE_TARGET && redCoverage < 75 && blueCoverage < 75) return;
+    if (redCoverage < 70 && blueCoverage < 70) return;
 
     const winnerTeam = redCoverage >= blueCoverage ? 'red' : 'blue';
     const eventRef = db.ref(`game_events/${currentGameEventKey}`);
@@ -259,13 +274,13 @@ async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverag
 }
 
 async function maybeFinalizeCompletedEventByEndTime() {
-    const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id));
+    const active = queuedGameEvents.find(ev => ev.status === 'active' && ev.id === EPIC_PAINT_EVENT_ID);
     if (!active?.key) return;
     if (getNowByServerClock() < (active.endAt || 0)) return;
 
     const eventRef = db.ref(`game_events/${active.key}`);
     const tx = await eventRef.transaction(ev => {
-        if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+        if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
         if (getNowByServerClock() < (ev.endAt || 0)) return ev;
         return {
             ...ev,
@@ -278,22 +293,7 @@ async function maybeFinalizeCompletedEventByEndTime() {
     if (!tx.committed) return;
 
     const snapshotEvent = tx.snapshot.val() || {};
-    let rewardedPlayersCount = 0;
-    if (snapshotEvent.id === EPIC_PAINT_EVENT_ID) {
-        rewardedPlayersCount = await grantEpicPaintRewards();
-    } else if (snapshotEvent.id === WALL_BATTLE_EVENT_ID) {
-        const teamsSnap = await db.ref(`game_events/${active.key}/teams`).once('value');
-        const teams = teamsSnap.val() || {};
-        let redCount = 0;
-        let blueCount = 0;
-        Object.values(teams).forEach(teamInfo => {
-            if (teamInfo?.team === 'red') redCount += 1;
-            if (teamInfo?.team === 'blue') blueCount += 1;
-        });
-        const winnerTeam = redCount >= blueCount ? 'red' : 'blue';
-        await db.ref(`game_events/${active.key}/winnerTeam`).set(winnerTeam);
-        rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
-    }
+    const rewardedPlayersCount = await grantEpicPaintRewards();
 
     await postEpicEventSummary({ ...snapshotEvent, completedAt: Date.now(), activatedAt: snapshotEvent.activatedAt || snapshotEvent.startAt }, true, rewardedPlayersCount);
 }
@@ -526,6 +526,7 @@ function syncGameEvents() {
         updateAdminEventStatus();
         activateScheduledEventIfNeeded();
         maybeFinalizeCompletedEventByEndTime();
+        failExpiredEventIfNeeded();
     });
 
     if (epicPaintStrokesRef) epicPaintStrokesRef.off();
