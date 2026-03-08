@@ -234,6 +234,7 @@ async function maybeFinalizeEpicPaintSuccess(coverage) {
     if (!tx.committed) return;
 
     const rewardedPlayersCount = await grantEpicPaintRewards();
+    await eventRef.child('rewardState').set({ status: 'done', finishedAt: Date.now(), rewardedPlayersCount, workerUid: currentUserId || null });
     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
 }
 
@@ -304,6 +305,7 @@ async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverag
     if (!tx.committed) return;
 
     const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam, currentGameEventKey);
+    await eventRef.child('rewardState').set({ status: 'done', finishedAt: Date.now(), rewardedPlayersCount, workerUid: currentUserId || null });
     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
 }
 
@@ -328,6 +330,7 @@ async function maybeFinalizeCompletedEventByEndTime() {
 
     const snapshotEvent = tx.snapshot.val() || {};
     const rewardedPlayersCount = await grantEpicPaintRewards(active.key);
+    await eventRef.child('rewardState').set({ status: 'done', finishedAt: Date.now(), rewardedPlayersCount, workerUid: currentUserId || null });
 
     await postEpicEventSummary({ ...snapshotEvent, completedAt: Date.now(), activatedAt: snapshotEvent.activatedAt || snapshotEvent.startAt }, true, rewardedPlayersCount);
 }
@@ -574,6 +577,59 @@ async function activateScheduledEventIfNeeded() {
     }
 }
 
+
+async function maybeGrantCompletedEventRewardsIfMissing() {
+    const completedEvents = queuedGameEvents
+        .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && ev.key)
+        .sort((a, b) => (a.completedAt || 0) - (b.completedAt || 0));
+
+    for (const eventData of completedEvents) {
+        const eventRef = db.ref(`game_events/${eventData.key}`);
+        const now = Date.now();
+        const tx = await eventRef.transaction(ev => {
+            if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'completed') return ev;
+            const rewardState = ev.rewardState || {};
+            if (rewardState.status === 'done') return ev;
+            if (rewardState.status === 'processing' && (now - (Number(rewardState.startedAt) || 0)) < 20000) return ev;
+            return {
+                ...ev,
+                rewardState: {
+                    status: 'processing',
+                    startedAt: now,
+                    workerUid: currentUserId || null
+                }
+            };
+        });
+
+        if (!tx.committed) continue;
+
+        try {
+            let rewardedPlayersCount = 0;
+            if (eventData.id === WALL_BATTLE_EVENT_ID) {
+                const latest = (await eventRef.once('value')).val() || {};
+                const winnerTeam = latest.winnerTeam || eventData.winnerTeam;
+                if (winnerTeam) rewardedPlayersCount = await grantWallBattleRewards(winnerTeam, eventData.key);
+            } else {
+                rewardedPlayersCount = await grantEpicPaintRewards(eventData.key);
+            }
+
+            await eventRef.child('rewardState').set({
+                status: 'done',
+                finishedAt: Date.now(),
+                rewardedPlayersCount,
+                workerUid: currentUserId || null
+            });
+        } catch (err) {
+            await eventRef.child('rewardState').set({
+                status: 'failed',
+                failedAt: Date.now(),
+                error: String(err?.message || err || 'unknown'),
+                workerUid: currentUserId || null
+            });
+        }
+    }
+}
+
 async function failExpiredEventIfNeeded() {
     const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id));
     if (!active?.key) return;
@@ -620,6 +676,7 @@ function syncGameEvents() {
         activateScheduledEventIfNeeded();
         maybeFinalizeCompletedEventByEndTime();
         failExpiredEventIfNeeded();
+        maybeGrantCompletedEventRewardsIfMissing();
     });
 
     if (epicPaintStrokesRef) epicPaintStrokesRef.off();
