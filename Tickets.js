@@ -123,6 +123,12 @@
         return !!revokedTicketsMap[String(ticketNum)];
     }
 
+    async function isTicketRevokedAnywhere(ticketNum) {
+        if (isTicketRevoked(ticketNum)) return true;
+        const snap = await db.ref(`revoked_tickets/${ticketNum}`).once('value');
+        return !!snap.val();
+    }
+
     function hasRevokedTicket(ticketValue) {
         return extractTicketNumbers(ticketValue).some(n => isTicketRevoked(n));
     }
@@ -174,15 +180,31 @@
     }
 
     async function claimSequentialTickets(count = 1) {
-        let startFrom = null;
-        const tx = await db.ref('ticket_counter').transaction(c => {
-            const current = Number(c) || 0;
-            if (current + count > MAX_TICKETS) return;
-            startFrom = current + 1;
-            return current + count;
-        });
-        if (!tx.committed || !Number.isInteger(startFrom)) return null;
-        return Array.from({ length: count }, (_, idx) => String(startFrom + idx));
+        const needed = Math.max(1, Number(count) || 1);
+        const awarded = [];
+
+        for (let i = 0; i < needed; i += 1) {
+            let nextTicketNum = null;
+            const tx = await db.ref('ticket_counter').transaction(c => {
+                const current = Number(c) || 0;
+                if (current + 1 > MAX_TICKETS) return;
+                nextTicketNum = current + 1;
+                return current + 1;
+            });
+
+            if (!tx.committed || !Number.isInteger(nextTicketNum)) {
+                return awarded.length ? awarded : null;
+            }
+
+            if (await isTicketRevokedAnywhere(nextTicketNum)) {
+                i -= 1;
+                continue;
+            }
+
+            awarded.push(String(nextTicketNum));
+        }
+
+        return awarded.length ? awarded : null;
     }
 
     function switchAdminTicketsSubtab(tabName) {
