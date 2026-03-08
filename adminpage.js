@@ -182,24 +182,37 @@
     const charIndex = Number(user?.charIndex);
     if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
 
-    const targetTickets = getActiveTicketsForWheel()
-      .filter(t => Number(t.owner) === Number(charIndex))
-      .map(t => String(t.num));
+    const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+      db.ref('board').once('value'),
+      db.ref('tickets_archive').once('value'),
+      db.ref('revoked_tickets').once('value')
+    ]);
 
-    if (!targetTickets.length) return alert('У этого игрока нет активных билетиков для изъятия.');
-    if (!targetTickets.includes(ticketNum)) return alert(`У игрока нет активного билетика №${ticketNum}.`);
+    const revokedMap = revokedSnap.val() || {};
+    const rows = [];
+    const boardData = boardSnap.val() || {};
+    Object.entries(boardData).forEach(([cellIdx, cell]) => {
+      if (!cell) return;
+      rows.push({ ...cell, isArchived: false, cellIdx: Number(cellIdx) });
+    });
 
-    const revokeSet = new Set([ticketNum]);
+    archiveSnap.forEach(item => {
+      rows.push({ ...(item.val() || {}), isArchived: true, archiveKey: item.key });
+    });
+
     const updates = {};
+    let foundInPlayerActive = false;
 
-    allTicketsData.forEach(t => {
+    rows.forEach(t => {
       if (t.excluded) return;
-      if (Number(t.owner) !== Number(charIndex) && String(t.userId) !== String(userId)) return;
+      if (Number(t.owner) !== Number(charIndex) && String(t.userId || '') !== String(userId)) return;
       const nums = extractTicketNumbers(t.ticket);
       if (!nums.length) return;
-      const left = nums.filter(n => !revokeSet.has(String(n)));
-      if (left.length === nums.length) return;
+      const hasTarget = nums.some(n => String(n) === ticketNum && !revokedMap[String(n)]);
+      if (!hasTarget) return;
 
+      foundInPlayerActive = true;
+      const left = nums.filter(n => String(n) !== ticketNum);
       if (t.isArchived && t.archiveKey) {
         updates[`tickets_archive/${t.archiveKey}/ticket`] = left.join(' и ');
         updates[`tickets_archive/${t.archiveKey}/excluded`] = left.length === 0;
@@ -209,6 +222,7 @@
       }
     });
 
+    if (!foundInPlayerActive) return alert(`У игрока нет активного билетика №${ticketNum}.`);
     if (!Object.keys(updates).length) return alert('Не удалось найти подходящие билетики для изъятия. Попробуй обновить страницу.');
 
     const archiveKey = db.ref('tickets_archive').push().key;
@@ -248,7 +262,31 @@
     const owner = Number(revokeRow.owner);
     const ownerName = players[owner]?.n || 'игрока';
 
-    const alreadyActive = getActiveTicketsForWheel().some(t => String(t.num) === String(ticketNum));
+    const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+      db.ref('board').once('value'),
+      db.ref('tickets_archive').once('value'),
+      db.ref('revoked_tickets').once('value')
+    ]);
+
+    const revokedMap = revokedSnap.val() || {};
+    let alreadyActive = false;
+
+    Object.values(boardSnap.val() || {}).forEach(cell => {
+      if (alreadyActive || !cell || cell.excluded) return;
+      const nums = extractTicketNumbers(cell.ticket);
+      if (nums.some(n => String(n) === String(ticketNum) && !revokedMap[String(n)])) alreadyActive = true;
+    });
+
+    if (!alreadyActive) {
+      archiveSnap.forEach(item => {
+        if (alreadyActive) return;
+        const row = item.val() || {};
+        if (row.excluded) return;
+        const nums = extractTicketNumbers(row.ticket);
+        if (nums.some(n => String(n) === String(ticketNum) && !revokedMap[String(n)])) alreadyActive = true;
+      });
+    }
+
     if (alreadyActive) return alert(`Билетик №${ticketNum} уже участвует в игре. Отмена изъятия не требуется.`);
     if (!confirm(`Отменить изъятие билетика №${ticketNum} и вернуть его ${ownerName}?`)) return;
 
