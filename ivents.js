@@ -9,12 +9,22 @@ function getPlayerColorByUid(uid) {
 
 function getWallBattleTeamColor(team) { return team === 'blue' ? '#1e88e5' : '#e53935'; }
 
+function getActivePaintEvent() {
+    return queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id)) || null;
+}
+
 async function joinCurrentEventTeam() {
-    if (!currentGameEventKey || !currentGameEvent || currentGameEvent.status !== 'active') return null;
-    const existing = (await db.ref(`game_events/${currentGameEventKey}/teams/${currentUserId}`).once('value')).val();
+    const activeEvent = getActivePaintEvent();
+    const eventKey = activeEvent?.key || currentGameEventKey;
+    if (!eventKey || !activeEvent || activeEvent.status !== 'active') return null;
+
+    currentGameEvent = activeEvent;
+    currentGameEventKey = eventKey;
+
+    const existing = (await db.ref(`game_events/${eventKey}/teams/${currentUserId}`).once('value')).val();
     if (existing?.team) return existing.team;
     let assigned = null;
-    await db.ref(`game_events/${currentGameEventKey}`).transaction(ev => {
+    await db.ref(`game_events/${eventKey}`).transaction(ev => {
         if (!ev || ev.status !== 'active') return ev;
         const teams = ev.teams || {};
         if (teams[currentUserId]?.team) { assigned = teams[currentUserId].team; return ev; }
@@ -51,7 +61,10 @@ function setupEpicPaintCanvas() {
     };
 
     const begin = async evt => {
-        if (!currentGameEvent || currentGameEvent.status !== 'active' || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id)) return;
+        const activeEvent = getActivePaintEvent();
+        if (!activeEvent) return;
+        currentGameEvent = activeEvent;
+        currentGameEventKey = activeEvent.key;
         evt.preventDefault();
         const team = await joinCurrentEventTeam();
         if (!team) return;
@@ -85,10 +98,15 @@ function setupEpicPaintCanvas() {
 
 async function pushEpicPaintStroke(x1, y1, x2, y2) {
     if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
+    const activeEvent = getActivePaintEvent();
+    if (!activeEvent?.key) return;
+
     const uid = currentUserId;
-    const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
+    currentGameEvent = activeEvent;
+    currentGameEventKey = activeEvent.key;
+    const teamInfo = ((await db.ref(`game_events/${activeEvent.key}/teams/${uid}`).once('value')).val() || {});
     const team = teamInfo.team || 'red';
-    const color = currentGameEvent?.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
+    const color = activeEvent.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
     await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: Date.now() });
     await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, team, at: Date.now() });
 }
@@ -343,21 +361,53 @@ function updateEventUiState() {
     const failAlert = document.getElementById('event-fail-alert');
     const eventTitle = document.getElementById('event-space-title');
     const navEventBtn = document.getElementById('nav-event-btn');
-    const isEventType = currentGameEvent && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
-    const isActive = isEventType && currentGameEvent.status === 'active';
-    const isCelebration = isEventType && currentGameEvent.status === 'completed' && (currentGameEvent.celebrationUntil || 0) > getNowByServerClock();
+    const eventTimerEl = document.getElementById('event-space-timer');
+    const activeEvent = getActivePaintEvent();
+    const celebrationEvent = queuedGameEvents
+        .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && (ev.celebrationUntil || 0) > getNowByServerClock())
+        .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0] || null;
+    const visibleEvent = activeEvent || celebrationEvent;
+
+    const isEventType = visibleEvent && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(visibleEvent.id);
+    const isActive = Boolean(activeEvent);
+    const isCelebration = isEventType && visibleEvent.status === 'completed' && (visibleEvent.celebrationUntil || 0) > getNowByServerClock();
+
+    if (visibleEvent) {
+        currentGameEvent = visibleEvent;
+        currentGameEventKey = visibleEvent.key;
+    }
 
     if (navEventBtn) navEventBtn.style.display = (isActive || isCelebration) ? 'flex' : 'none';
-    if (eventTitle) eventTitle.innerText = (isActive || isCelebration) ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
+    if (eventTitle) {
+        if (isActive) {
+            eventTitle.innerText = `Активно событие: ${activeEvent.name || activeEvent.id}`;
+        } else if (isCelebration) {
+            eventTitle.innerText = `Событие завершено: ${visibleEvent.name || visibleEvent.id}`;
+        } else {
+            eventTitle.innerText = 'Событие не активно';
+        }
+    }
+
+    if (eventTimerEl) {
+        if (isActive) {
+            const leftMs = Math.max(0, (activeEvent.endAt || 0) - getNowByServerClock());
+            const mins = Math.floor(leftMs / 60000);
+            const secs = Math.floor((leftMs % 60000) / 1000);
+            eventTimerEl.innerText = `До конца: ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            eventTimerEl.style.display = 'block';
+        } else {
+            eventTimerEl.style.display = 'none';
+        }
+    }
 
     if (isActive) {
         startAlert.style.display = 'block';
         startAlert.classList.add('epic');
-        const extra = currentGameEvent.id === WALL_BATTLE_EVENT_ID
+        const extra = activeEvent.id === WALL_BATTLE_EVENT_ID
             ? '<div class="event-sub">Команды распределяются по очереди: красные, затем синие.</div>'
             : '';
         startAlert.innerHTML = `
-            <div class="event-title">🎨 ${currentGameEvent.name || 'Событие'} уже в разгаре!</div>
+            <div class="event-title">🎨 ${activeEvent.name || 'Событие'} уже в разгаре!</div>
             <div class="event-sub">Перейди в отдельное пространство события.</div>
             ${extra}
             <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✅ Принять участие в событии</button>
@@ -399,9 +449,9 @@ function updateEventUiState() {
     const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
     failAlert.style.display = showFail ? 'block' : 'none';
     if (showFail) {
-        failAlert.innerText = 'Событие завершилось без выполнения цели.';
-        lastFailedEpicEventKeyShown = latestFailed.key;
-        setTimeout(() => { if (failAlert) failAlert.style.display = 'none'; }, 10000);
+            failAlert.innerText = 'Событие завершилось без выполнения цели.';
+            lastFailedEpicEventKeyShown = latestFailed.key;
+            setTimeout(() => { if (failAlert) failAlert.style.display = 'none'; }, 10000);
     }
 }
 
