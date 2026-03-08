@@ -360,7 +360,7 @@ function updateEventUiState() {
             <div class="event-title">🎨 ${currentGameEvent.name || 'Событие'} уже в разгаре!</div>
             <div class="event-sub">Перейди в отдельное пространство события.</div>
             ${extra}
-            <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✨ В событие</button>
+            <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✅ Принять участие в событии</button>
             <button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5);" onclick="chooseRoundInsteadOfEvent()">🎲 Остаться на поле</button>
         `;
     } else {
