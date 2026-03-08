@@ -1383,8 +1383,8 @@
             if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
             const uid = currentUserId;
             const color = getPlayerColorByUid(uid);
-            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, at: Date.now() });
             await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, updatedAt: Date.now() });
+            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, at: Date.now() });
         }
 
         function drawEpicPaint() {
@@ -1470,16 +1470,25 @@
 
         async function grantEpicPaintRewards() {
             if (!currentGameEventKey) return 0;
-            const participantsSnap = await db.ref('epic_paint/participants').once('value');
-            if (!participantsSnap.exists()) return 0;
+            const [participantsSnap, strokesSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+                db.ref('epic_paint/participants').once('value'),
+                db.ref('epic_paint/strokes').once('value'),
+                db.ref('whitelist').once('value'),
+                db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+            ]);
 
-            const whitelistSnap = await db.ref('whitelist').once('value');
             const whitelist = whitelistSnap.val() || {};
-            const rewardedSnap = await db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value');
             const alreadyRewarded = rewardedSnap.val() || {};
+            const participantUidSet = new Set();
 
-            const participantUids = [];
-            participantsSnap.forEach(p => participantUids.push(String(p.key)));
+            participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
+            strokesSnap.forEach(strokeSnap => {
+                const stroke = strokeSnap.val() || {};
+                if (stroke.uid !== undefined && stroke.uid !== null) participantUidSet.add(String(stroke.uid));
+            });
+
+            const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
+            if (!participantUids.length) return 0;
 
             let rewardedCount = 0;
             for (const uidKey of participantUids) {
@@ -1503,6 +1512,7 @@
                     cellIdx: -1,
                     isEventReward: true,
                     eventId: EPIC_PAINT_EVENT_ID,
+                    ticketSourceLabel: 'Билет события',
                     archivedAt: Date.now(),
                     excluded: false
                 });
@@ -1519,13 +1529,9 @@
             const successAlert = document.getElementById('event-success-alert');
             const failAlert = document.getElementById('event-fail-alert');
             const isEpicActive = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'active';
-            const canPlayRoundInstead = !myRoundHasMove && myIndex !== -1;
 
             if (!isEpicActive) {
                 grid.style.display = 'grid';
-                wrap.style.display = 'none';
-            } else if (!epicPaintHasDismissedStart) {
-                grid.style.display = 'none';
                 wrap.style.display = 'none';
             } else if (epicPaintViewMode === 'game') {
                 grid.style.display = 'grid';
@@ -1535,14 +1541,15 @@
                 wrap.style.display = 'block';
             }
 
-            if (isEpicActive && !epicPaintHasDismissedStart) {
+            if (isEpicActive) {
                 startAlert.style.display = 'block';
                 startAlert.classList.add('epic');
+                const inEvent = epicPaintViewMode !== 'game';
                 startAlert.innerHTML = `
                     <div class="event-title">🎨 Эпичный закрас уже в разгаре!</div>
-                    <div class="event-sub">Вау! Началось событие «Эпичный закрас». Все вместе закрасьте полотно на 95% и получите награды.</div>
-                    <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✨ Присоединиться к событию</button>
-                    ${canPlayRoundInstead ? `<button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5);" onclick="chooseRoundInsteadOfEvent()">🎲 Играть в обычный раунд</button>` : ''}
+                    <div class="event-sub">Выбери режим — можно переключаться в любой момент.</div>
+                    <button class="event-join-btn" style="opacity:${inEvent ? '1' : '0.75'};" onclick="dismissEpicPaintStartAlert()">✨ В событие</button>
+                    <button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5); opacity:${inEvent ? '0.75' : '1'};" onclick="chooseRoundInsteadOfEvent()">🎲 В игру</button>
                 `;
             } else {
                 startAlert.style.display = 'none';
@@ -1582,10 +1589,6 @@
         }
 
         function chooseRoundInsteadOfEvent() {
-            if (myRoundHasMove || myIndex === -1) {
-                alert('Эта опция доступна только пока ты ещё не бросил(а) кубик в текущем раунде.');
-                return;
-            }
             epicPaintHasDismissedStart = true;
             epicPaintViewMode = 'game';
             updateEventUiState();

@@ -144,10 +144,11 @@
                     ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
                     <td><b>${t.ticket}</b></td>
                     <td>
+                        ${t.isEventReward ? `<span style="font-size:11px; color:#6a1b9a; font-weight:700;">🎨 Билет события</span>` : `
                         <div style="display:flex; gap:5px; justify-content:center;">
                             ${(Number.isInteger(t.cellIdx) && t.cellIdx >= 0) ? `<button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell - 1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>` : `<span style="font-size:14px; opacity:0.5;">—</span>`}
                             ${isAdmin && !t.isArchived ? `<button onclick="db.ref('board/${t.cellIdx}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
-                        </div>
+                        </div>`}
                     </td>
                 </tr>`;
         }).join('');
