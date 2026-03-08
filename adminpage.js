@@ -12,6 +12,7 @@
   });
 
   const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+  let isAdminGrantTicketsInFlight = false;
 
   function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
     const input = document.getElementById(inputId);
@@ -137,38 +138,44 @@
 
   async function adminGrantTicketsToPlayer() {
     if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+    if (isAdminGrantTicketsInFlight) return alert('Выдача уже выполняется. Подожди завершения предыдущего запроса.');
     const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
     const count = Math.max(1, Math.floor(Number(document.getElementById('admin-grant-ticket-count')?.value || 1) || 1));
     const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
     if (!userId) return alert('Укажи Telegram ID игрока.');
 
-    const userSnap = await db.ref(`whitelist/${userId}`).once('value');
-    const user = userSnap.val();
-    const charIndex = Number(user?.charIndex);
-    if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+    isAdminGrantTicketsInFlight = true;
+    try {
+      const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+      const user = userSnap.val();
+      const charIndex = Number(user?.charIndex);
+      if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
 
-    const awarded = await claimSequentialTickets(count);
-    if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+      const awarded = await claimSequentialTickets(count);
+      if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
 
-    const ticketValue = awarded.join(' и ');
-    await db.ref('tickets_archive').push({
-      owner: charIndex,
-      userId,
-      ticket: ticketValue,
-      taskIdx: -1,
-      round: currentRoundNum,
-      cell: 0,
-      cellIdx: -1,
-      isManualReward: true,
-      archivedAt: Date.now(),
-      excluded: false,
-      adminNote: note || null,
-      taskLabel: note ? `Ручная выдача: ${note}` : 'Ручная выдача администратором'
-    });
+      const ticketValue = awarded.join(' и ');
+      await db.ref('tickets_archive').push({
+        owner: charIndex,
+        userId,
+        ticket: ticketValue,
+        taskIdx: -1,
+        round: currentRoundNum,
+        cell: 0,
+        cellIdx: -1,
+        isManualReward: true,
+        archivedAt: Date.now(),
+        excluded: false,
+        adminNote: note || null,
+        taskLabel: note ? `Ручная выдача: ${note}` : 'Ручная выдача администратором'
+      });
 
-    const notePart = note ? ` Причина: ${note}` : '';
-    await postNews(`🎫 Администратор выдал(а) ${awarded.length} билет(ов) игроку ${players[charIndex].n}.${notePart}`);
-    alert(`Готово! Выдано билетиков: ${awarded.length}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
+      const notePart = note ? ` Причина: ${note}` : '';
+      await postNews(`🎫 Администратор выдал(а) ${awarded.length} билет(ов) игроку ${players[charIndex].n}.${notePart}`);
+      alert(`Готово! Выдано билетиков: ${awarded.length}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
+    } finally {
+      isAdminGrantTicketsInFlight = false;
+    }
   }
 
   async function adminRevokeTicketsFromPlayer() {
