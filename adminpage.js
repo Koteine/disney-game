@@ -372,11 +372,19 @@
   }
 
 
-  async function adminLaunchEpicPaintEvent(durationMins = 10) {
+  function resolveEpicPaintDurationMins(durationMins) {
+    const fromArg = Number(durationMins);
+    if (Number.isFinite(fromArg) && fromArg >= 1) return Math.max(1, Math.round(fromArg));
+    const fromInput = Number(document.getElementById('event-duration-mins')?.value || 0);
+    if (Number.isFinite(fromInput) && fromInput >= 1) return Math.max(1, Math.round(fromInput));
+    return 10;
+  }
+
+  async function adminLaunchEpicPaintEvent(durationMins) {
     if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
     const database = await waitForDbReady().catch(() => null);
     if (!database) return;
-    const mins = Math.max(1, Number(durationMins) || 10);
+    const mins = resolveEpicPaintDurationMins(durationMins);
     await database.ref('current_event').set({
       type: 'paint',
       status: 'active',
