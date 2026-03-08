@@ -7,7 +7,23 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    <script src="design.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script>
+        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        window.db = firebase.database();
+        window.waitForDbReady = window.waitForDbReady || (async function waitForDbReady(timeoutMs = 10000) {
+            if (window.db && typeof window.db.ref === "function") return window.db;
+            const startedAt = Date.now();
+            while (!(window.db && typeof window.db.ref === "function")) {
+                if (Date.now() - startedAt >= timeoutMs) throw new Error("Firebase db не инициализирован.");
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            return window.db;
+        });
+    </script>
     
 </head>
 <body>
@@ -201,18 +217,15 @@
                     <button id="admin-emergency-toggle-btn" class="news-toggle-btn" onclick="toggleAdminEmergencyActions()">Развернуть</button>
                 </div>
                 <div id="admin-emergency-body" class="news-list" style="margin-top:8px;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная выдача билетиков</div>
-                    <input type="number" id="admin-grant-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <input type="number" id="admin-grant-ticket-count" placeholder="Сколько билетиков" class="admin-input" min="1" value="1">
-                    <input type="text" id="admin-grant-ticket-note" placeholder="Пометка (например: компенсация за ...)" class="admin-input">
-                    <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
-
-                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Отобрать конкретный билетик у игрока</div>
-                    <input type="number" id="admin-revoke-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <input type="number" id="admin-revoke-ticket-number" placeholder="Номер билетика (например: 78)" class="admin-input" min="1">
-                    <input type="text" id="admin-revoke-ticket-note" placeholder="Пометка (почему отобрали)" class="admin-input">
-                    <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетик</button>
+                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Операции с билетами (Firebase)</div>
+                    <select id="emergency-action-type" class="admin-input">
+                        <option value="issue">Выдать</option>
+                        <option value="revoke">Вычеркнуть</option>
+                    </select>
+                    <input type="number" id="emergency-user-id" placeholder="ID игрока" class="admin-input">
+                    <input type="number" id="emergency-amount-or-ticket" placeholder="Количество / Номер" class="admin-input" min="1">
+                    <textarea id="emergency-reason" placeholder="Причина" class="admin-input" rows="3" style="resize:vertical;"></textarea>
+                    <button id="btn-execute-emergency" class="admin-btn" style="background:#455A64; width:100%; margin:0;">⚡ Выполнить</button>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <div style="font-size:12px; color:#666; margin:6px 0 4px;">Вычеркнуть диапазон билетиков из игры</div>
@@ -275,15 +288,16 @@
     <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
     <div id="player-notification-wrap"></div>
 
+    <script src="tasks.json" type="application/json" id="tasks-json"></script>
     <script src="items.js"></script>
-    <script src="Tickets.js"></script>
-    <script src="works.js"></script>
     <script src="ivents.js"></script>
+    <script src="Tickets.js"></script>
+    <script src="adminpage.js"></script>
+    <script src="works.js"></script>
+    <script src="design.js"></script>
     <script>
        const JSON_URL = 'tasks.json';
-        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        const db = window.db;
         const tg = window.Telegram.WebApp;
         tg.ready(); tg.expand();
 
@@ -1849,21 +1863,6 @@
                     right.style.alignItems = 'center';
                     right.style.gap = '6px';
 
-                    const giveBtn = document.createElement('button');
-                    giveBtn.className = 'admin-give-ticket-btn';
-                    giveBtn.dataset.id = String(userTgId);
-                    giveBtn.style.color = '#00695c';
-                    giveBtn.style.border = '1px solid #26a69a';
-                    giveBtn.style.borderRadius = '5px';
-                    giveBtn.style.background = 'none';
-                    giveBtn.style.padding = '2px 6px';
-                    giveBtn.style.fontSize = '10px';
-                    giveBtn.innerText = '+🎫';
-                    giveBtn.addEventListener('click', (evt) => {
-                        const targetUserId = evt.currentTarget?.dataset?.id;
-                        if (typeof giveTicket === 'function') giveTicket(targetUserId);
-                    });
-
                     const kickBtn = document.createElement('button');
                     kickBtn.style.color = 'red';
                     kickBtn.style.border = '1px solid red';
@@ -1874,7 +1873,6 @@
                     kickBtn.innerText = 'Удалить';
                     kickBtn.addEventListener('click', () => kick(String(userTgId)));
 
-                    right.appendChild(giveBtn);
                     right.appendChild(kickBtn);
                     row.appendChild(left);
                     row.appendChild(right);
@@ -1993,7 +1991,6 @@
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         init();
     </script>
-    <script src="adminpage.js"></script>
 </body>
 </html>
 
