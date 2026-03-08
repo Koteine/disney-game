@@ -3,6 +3,8 @@ let epicPaintStrokeMap = {};
 let epicPaintRenderRaf = null;
 let lastParticipantUpdateByUid = {};
 let isCompletedEventRewardSyncInProgress = false;
+let currentEventObserverRef = null;
+let isCurrentEventFinishInProgress = false;
 const WALL_BATTLE_COVERAGE_TARGET = 75;
 const MOSCOW_TIME_ZONE = 'Europe/Moscow';
 const EVENT_CELEBRATION_MS = 20000;
@@ -69,6 +71,95 @@ async function addInventoryItemForUser(uid, itemType, count = 1) {
 
 function getNowByServerClock() {
     return Date.now() + (Number(window.serverTimeOffsetMs) || 0);
+}
+
+function extractTeamFromCurrentEventPlayer(playerData) {
+    if (!playerData) return '';
+    return String(playerData.team || playerData.teamId || '').trim().toLowerCase();
+}
+
+async function grantCurrentEventRewardsByType(eventData) {
+    const type = String(eventData?.type || '').trim();
+    if (!type) return;
+
+    if (type === 'Эпичный закрас') {
+        const players = eventData?.players || {};
+        for (const [userId, playerData] of Object.entries(players)) {
+            if (!playerData?.hasPainted) continue;
+            if (typeof window.createTicket === 'function') {
+                await window.createTicket(userId, 2, 'Награда за Эпичный закрас');
+            }
+        }
+        return;
+    }
+
+    if (type === 'Стенка на стенку') {
+        const players = eventData?.players || {};
+        let redPixels = 0;
+        let bluePixels = 0;
+
+        Object.values(players).forEach(playerData => {
+            const team = extractTeamFromCurrentEventPlayer(playerData);
+            const paintedPixels = Number(playerData?.paintedPixels) || 0;
+            if (team === 'red') redPixels += paintedPixels;
+            if (team === 'blue') bluePixels += paintedPixels;
+        });
+
+        const winnerTeam = redPixels >= bluePixels ? 'red' : 'blue';
+
+        for (const [userId, playerData] of Object.entries(players)) {
+            const team = extractTeamFromCurrentEventPlayer(playerData);
+            if (team !== winnerTeam) continue;
+
+            if (typeof window.createTicket === 'function') {
+                await window.createTicket(userId, 1, 'Награда за Стенка на стенку');
+            }
+            await addInventoryItemForUser(userId, 'magnifier', 1);
+        }
+    }
+}
+
+async function finalizeCurrentEventByTimer(eventData) {
+    const tx = await db.ref('current_event').transaction(eventValue => {
+        if (!eventValue || eventValue.status !== 'active') return eventValue;
+        const eventEndTs = Number(eventValue.end_timestamp) || 0;
+        if (!eventEndTs || Date.now() <= eventEndTs) return eventValue;
+        return {
+            ...eventValue,
+            status: 'finished',
+            finished_at: Date.now()
+        };
+    });
+
+    if (!tx.committed) return;
+
+    const finalEventData = tx.snapshot.val() || eventData || {};
+    await grantCurrentEventRewardsByType(finalEventData);
+    await db.ref('event_feed').push({
+        message: `Ивент ${finalEventData?.name || finalEventData?.type || 'без названия'} завершен! Призы разосланы.`,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    });
+}
+
+function observeEvents() {
+    if (currentEventObserverRef) return;
+    currentEventObserverRef = db.ref('current_event');
+    currentEventObserverRef.on('value', async snap => {
+        if (isCurrentEventFinishInProgress) return;
+        const eventData = snap.val() || {};
+        const isActive = eventData.status === 'active';
+        const endTimestamp = Number(eventData.end_timestamp) || 0;
+        if (!isActive || !endTimestamp || Date.now() <= endTimestamp) return;
+
+        isCurrentEventFinishInProgress = true;
+        try {
+            await finalizeCurrentEventByTimer(eventData);
+        } catch (err) {
+            console.error('Не удалось завершить current_event по таймеру:', err);
+        } finally {
+            isCurrentEventFinishInProgress = false;
+        }
+    });
 }
 
 function setupEpicPaintCanvas() {
