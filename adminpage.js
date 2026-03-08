@@ -144,6 +144,17 @@
     const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
     if (!userId) return alert('Укажи Telegram ID игрока.');
 
+    const lockRef = db.ref('admin_manual_grant_lock');
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const lockTime = Date.now();
+    const lockTx = await lockRef.transaction(v => {
+      if (v && Number(v.expiresAt || 0) > Date.now() && String(v.by || '') !== String(currentUserId)) return v;
+      return { by: String(currentUserId), lockId, startedAt: lockTime, expiresAt: lockTime + 15000 };
+    });
+    if (!lockTx.committed || String(lockTx.snapshot.val()?.lockId || '') !== lockId) {
+      return alert('Ручная выдача уже выполняется в другом окне. Подожди несколько секунд и попробуй снова.');
+    }
+
     isAdminGrantTicketsInFlight = true;
     try {
       const userSnap = await db.ref(`whitelist/${userId}`).once('value');
@@ -153,6 +164,7 @@
 
       const awarded = await claimSequentialTickets(count);
       if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+      if (awarded.length !== count) return alert(`Не удалось выдать ровно ${count} билет(ов). Попробуй ещё раз.`);
 
       const ticketValue = awarded.join(' и ');
       await db.ref('tickets_archive').push({
@@ -175,6 +187,10 @@
       alert(`Готово! Выдано билетиков: ${awarded.length}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
     } finally {
       isAdminGrantTicketsInFlight = false;
+      await lockRef.transaction(v => {
+        if (!v || String(v.lockId || '') !== lockId) return v;
+        return null;
+      });
     }
   }
 
