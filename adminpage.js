@@ -162,7 +162,7 @@
       const charIndex = Number(user?.charIndex);
       if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
 
-      const awarded = await claimSequentialTickets(count);
+      const awarded = await claimSequentialTickets(count, userId);
       if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
       if (awarded.length !== count) return alert(`Не удалось выдать ровно ${count} билет(ов). Попробуй ещё раз.`);
 
