@@ -127,33 +127,6 @@
         return extractTicketNumbers(ticketValue).some(n => isTicketRevoked(n));
     }
 
-    async function getHighestIssuedTicketNumber() {
-        const [boardSnap, archiveSnap] = await Promise.all([
-            db.ref('board').once('value'),
-            db.ref('tickets_archive').once('value')
-        ]);
-
-        let maxTicket = 0;
-        const include = num => {
-            const n = Number(num);
-            if (Number.isInteger(n) && n > maxTicket) maxTicket = n;
-        };
-
-        const boardData = boardSnap.val() || {};
-        Object.values(boardData).forEach(cell => {
-            if (!cell) return;
-            extractTicketNumbers(cell.ticket).forEach(include);
-        });
-
-        const archiveData = archiveSnap.val() || {};
-        Object.values(archiveData).forEach(row => {
-            if (!row) return;
-            extractTicketNumbers(row.ticket).forEach(include);
-        });
-
-        return maxTicket;
-    }
-
     function getTicketSourceLabel(t) {
         if (t.isEventReward) return '🎨 Событие';
         if (t.isManualReward) return '🎫 Ручная выдача';
@@ -201,11 +174,9 @@
     }
 
     async function claimSequentialTickets(count = 1) {
-        const highestIssued = await getHighestIssuedTicketNumber();
         let startFrom = null;
         const tx = await db.ref('ticket_counter').transaction(c => {
-            let current = Number(c) || 0;
-            if (current > highestIssued) current = highestIssued;
+            const current = Number(c) || 0;
             if (current + count > MAX_TICKETS) return;
             startFrom = current + 1;
             return current + count;
