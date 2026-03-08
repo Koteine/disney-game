@@ -148,7 +148,7 @@
     const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const lockTime = Date.now();
     const lockTx = await lockRef.transaction(v => {
-      if (v && Number(v.expiresAt || 0) > Date.now() && String(v.by || '') !== String(currentUserId)) return v;
+      if (v && Number(v.expiresAt || 0) > Date.now()) return v;
       return { by: String(currentUserId), lockId, startedAt: lockTime, expiresAt: lockTime + 15000 };
     });
     if (!lockTx.committed || String(lockTx.snapshot.val()?.lockId || '') !== lockId) {
