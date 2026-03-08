@@ -5,6 +5,7 @@ let lastParticipantUpdateByUid = {};
 let isCompletedEventRewardSyncInProgress = false;
 const WALL_BATTLE_COVERAGE_TARGET = 75;
 const MOSCOW_TIME_ZONE = 'Europe/Moscow';
+const EVENT_CELEBRATION_MS = 20000;
 
 function formatMoscowDateTime(ts) {
     return new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: MOSCOW_TIME_ZONE });
@@ -327,7 +328,7 @@ async function maybeFinalizeCompletedEventByEndTime() {
             ...ev,
             status: 'completed',
             completedAt: Date.now(),
-            celebrationUntil: Date.now() + 30000,
+            celebrationUntil: Date.now() + EVENT_CELEBRATION_MS,
             resultText: 'Событие завершено. Награды выданы участникам.'
         };
     });
@@ -560,7 +561,7 @@ function updateEventUiState() {
         successAlert.style.display = 'block';
         successAlert.innerHTML = `
             <div class="event-title">🏆 Событие «${currentGameEvent.name || 'Эпичный закрас'}» успешно завершено!</div>
-            <div class="event-sub">Награды выданы. Фанфары и салютики идут ещё ${secondsLeft} сек.</div>
+            <div class="event-sub">Награды выданы. Фанфары и салютики идут ещё ${secondsLeft} сек. После этого эффект завершится автоматически.</div>
             <div class="event-sub" style="margin-top:6px;">Когда будешь готов(а), нажми кнопку ниже.</div>
             <button class="event-join-btn" style="margin-top:8px; background:linear-gradient(135deg,#5e35b1,#3949ab);" onclick="backToGameFromEvent()">⬅️ Вернуться на главное поле</button>
         `;
@@ -578,12 +579,12 @@ function updateEventUiState() {
         successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
             ? `🏁 Командная битва завершена! Победители получают 1 билет.${rewardBtn}`
             : `🎆 Событие прошло круто! Участники получают по 2 билетика.${rewardBtn}`;
-        launchCelebrationFireworks(30000);
+        launchCelebrationFireworks(EVENT_CELEBRATION_MS);
         playFireworksSound();
-        setTimeout(() => playFireworksSound(), 9000);
-        setTimeout(() => playFireworksSound(), 18000);
+        setTimeout(() => playFireworksSound(), 7000);
+        setTimeout(() => playFireworksSound(), 14000);
         lastCompletedEpicEventKeyShown = latestCompleted.key;
-        setTimeout(() => { if (successAlert && !isCelebration) successAlert.style.display = 'none'; }, 30000);
+        setTimeout(() => { if (successAlert && !isCelebration) successAlert.style.display = 'none'; }, EVENT_CELEBRATION_MS);
         maybeNotifyWallBattleOutcome(latestCompleted);
     }
 
