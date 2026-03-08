@@ -1,4 +1,31 @@
 (function () {
+  function getDbInstance() {
+    if (typeof db !== 'undefined' && db && typeof db.ref === 'function') return db;
+    if (window.db && typeof window.db.ref === 'function') return window.db;
+    return null;
+  }
+
+  async function waitForDbReady(timeoutMs = 10000) {
+    const readyDb = getDbInstance();
+    if (readyDb) return readyDb;
+
+    return new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        const instance = getDbInstance();
+        if (instance) {
+          clearInterval(timer);
+          resolve(instance);
+          return;
+        }
+        if (Date.now() - startedAt >= timeoutMs) {
+          clearInterval(timer);
+          reject(new Error('Firebase db не инициализирован.'));
+        }
+      }, 100);
+    });
+  }
+
   const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
   const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
     const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
@@ -12,67 +39,6 @@
   });
 
   const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
-  let isAdminGrantTicketsInFlight = false;
-  const giveTicketLocks = new Set();
-
-  async function giveTicket(targetUserId) {
-    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-
-    const uid = String(targetUserId || '').trim();
-    console.log('Выдаю билет для:', uid);
-    if (!/^\d+$/.test(uid)) return alert('Некорректный targetUserId для выдачи билета.');
-
-    const lockKey = `giveTicket:${uid}`;
-    if (giveTicketLocks.has(lockKey)) return;
-    giveTicketLocks.add(lockKey);
-
-    try {
-      const userSnap = await db.ref(`whitelist/${uid}`).once('value');
-      const user = userSnap.val() || {};
-      const charIndex = Number(user.charIndex);
-      if (!Number.isInteger(charIndex) || !players[charIndex]) {
-        return alert('Игрок не найден или у него не назначен никнейм.');
-      }
-
-      const tx = await db.ref('ticket_counter').transaction(currentValue => {
-        const current = Number(currentValue) || 0;
-        if (current >= MAX_TICKETS) return;
-        return current + 1;
-      });
-
-      if (!tx.committed) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
-
-      const ticketNumber = Number(tx.snapshot.val());
-      if (!Number.isInteger(ticketNumber) || ticketNumber < 1) return alert('Не удалось определить номер нового билетика. Попробуй ещё раз.');
-
-      const archiveKey = db.ref('tickets_archive').push().key;
-      const updates = {
-        [`users/${uid}/tickets`]: firebase.database.ServerValue.increment(1),
-        [`whitelist/${uid}/tickets`]: firebase.database.ServerValue.increment(1),
-        [`revoked_tickets/${ticketNumber}`]: null,
-        [`tickets_archive/${archiveKey}`]: {
-          owner: charIndex,
-          userId: Number(uid),
-          ticket: String(ticketNumber),
-          taskIdx: -1,
-          round: currentRoundNum,
-          cell: 0,
-          cellIdx: -1,
-          isManualReward: true,
-          archivedAt: Date.now(),
-          excluded: false,
-          adminNote: 'Быстрая выдача из списка игроков',
-          taskLabel: 'Ручная выдача администратором'
-        }
-      };
-
-      await db.ref().update(updates);
-      await postNews(`🎫 Администратор выдал(а) билет №${ticketNumber} игроку ${players[charIndex].n}.`);
-    } finally {
-      giveTicketLocks.delete(lockKey);
-    }
-  }
-
   function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
     const input = document.getElementById(inputId);
     if (!input || input.value) return;
@@ -195,141 +161,39 @@
     alert('Никнейм обновлён. Изменение сразу видно всем игрокам.');
   }
 
-  async function adminGrantTicketsToPlayer() {
+  async function executeEmergencyAction() {
     if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-    if (isAdminGrantTicketsInFlight) return alert('Выдача уже выполняется. Подожди завершения предыдущего запроса.');
-    const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
-    const count = Math.max(1, Math.floor(Number(document.getElementById('admin-grant-ticket-count')?.value || 1) || 1));
-    const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
-    if (!userId) return alert('Укажи Telegram ID игрока.');
+    await waitForDbReady();
 
-    const lockRef = db.ref('admin_manual_grant_lock');
-    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const lockTime = Date.now();
-    const lockTx = await lockRef.transaction(v => {
-      if (v && Number(v.expiresAt || 0) > Date.now()) return v;
-      return { by: String(currentUserId), lockId, startedAt: lockTime, expiresAt: lockTime + 15000 };
-    });
-    if (!lockTx.committed || String(lockTx.snapshot.val()?.lockId || '') !== lockId) {
-      return alert('Ручная выдача уже выполняется в другом окне. Подожди несколько секунд и попробуй снова.');
-    }
+    const action = String(document.getElementById('emergency-action-type')?.value || '').trim();
+    const userId = String(document.getElementById('emergency-user-id')?.value || '').trim();
+    const amountOrTicket = String(document.getElementById('emergency-amount-or-ticket')?.value || '').trim();
+    const reason = String(document.getElementById('emergency-reason')?.value || '').trim();
 
-    isAdminGrantTicketsInFlight = true;
+    if (!/^\d+$/.test(userId)) return alert('Укажи корректный ID игрока.');
+    if (!/^\d+$/.test(amountOrTicket)) return alert('Укажи корректное числовое значение.');
+
+    const executeBtn = document.getElementById('btn-execute-emergency');
+    if (executeBtn) executeBtn.disabled = true;
+
     try {
-      const userSnap = await db.ref(`whitelist/${userId}`).once('value');
-      const user = userSnap.val();
-      const charIndex = Number(user?.charIndex);
-      if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
-
-      const awarded = await claimSequentialTickets(count, userId);
-      if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
-      if (awarded.length !== count) return alert(`Не удалось выдать ровно ${count} билет(ов). Попробуй ещё раз.`);
-
-      const ticketValue = awarded.join(' и ');
-      await db.ref('tickets_archive').push({
-        owner: charIndex,
-        userId,
-        ticket: ticketValue,
-        taskIdx: -1,
-        round: currentRoundNum,
-        cell: 0,
-        cellIdx: -1,
-        isManualReward: true,
-        archivedAt: Date.now(),
-        excluded: false,
-        adminNote: note || null,
-        taskLabel: note ? `Ручная выдача: ${note}` : 'Ручная выдача администратором'
-      });
-
-      const notePart = note ? ` Причина: ${note}` : '';
-      await postNews(`🎫 Администратор выдал(а) ${awarded.length} билет(ов) игроку ${players[charIndex].n}.${notePart}`);
-      alert(`Готово! Выдано билетиков: ${awarded.length}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
-    } finally {
-      isAdminGrantTicketsInFlight = false;
-      await lockRef.transaction(v => {
-        if (!v || String(v.lockId || '') !== lockId) return v;
-        return null;
-      });
-    }
-  }
-
-  async function adminRevokeTicketsFromPlayer() {
-    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-    const userId = (document.getElementById('admin-revoke-ticket-user-id')?.value || '').trim();
-    const ticketNum = String(document.getElementById('admin-revoke-ticket-number')?.value || '').trim();
-    const note = (document.getElementById('admin-revoke-ticket-note')?.value || '').trim();
-    if (!userId) return alert('Укажи Telegram ID игрока.');
-    if (!/^\d+$/.test(ticketNum) || Number(ticketNum) < 1) return alert('Укажи корректный номер билетика для изъятия.');
-
-    const userSnap = await db.ref(`whitelist/${userId}`).once('value');
-    const user = userSnap.val();
-    const charIndex = Number(user?.charIndex);
-    if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
-
-    const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
-      db.ref('board').once('value'),
-      db.ref('tickets_archive').once('value'),
-      db.ref('revoked_tickets').once('value')
-    ]);
-
-    const revokedMap = revokedSnap.val() || {};
-    const rows = [];
-    const boardData = boardSnap.val() || {};
-    Object.entries(boardData).forEach(([cellIdx, cell]) => {
-      if (!cell) return;
-      rows.push({ ...cell, isArchived: false, cellIdx: Number(cellIdx) });
-    });
-
-    archiveSnap.forEach(item => {
-      rows.push({ ...(item.val() || {}), isArchived: true, archiveKey: item.key });
-    });
-
-    const updates = {};
-    let foundInPlayerActive = false;
-
-    rows.forEach(t => {
-      if (t.excluded) return;
-      if (Number(t.owner) !== Number(charIndex) && String(t.userId || '') !== String(userId)) return;
-      const nums = extractTicketNumbers(t.ticket);
-      if (!nums.length) return;
-      const hasTarget = nums.some(n => String(n) === ticketNum && !revokedMap[String(n)]);
-      if (!hasTarget) return;
-
-      foundInPlayerActive = true;
-      const left = nums.filter(n => String(n) !== ticketNum);
-      if (t.isArchived && t.archiveKey) {
-        updates[`tickets_archive/${t.archiveKey}/ticket`] = left.join(' и ');
-        updates[`tickets_archive/${t.archiveKey}/excluded`] = left.length === 0;
-      } else if (Number.isInteger(t.cellIdx) && t.cellIdx >= 0) {
-        updates[`board/${t.cellIdx}/ticket`] = left.join(' и ');
-        updates[`board/${t.cellIdx}/excluded`] = left.length === 0;
+      if (action === 'issue') {
+        const amount = Number(amountOrTicket);
+        const result = await window.createTicket(userId, amount, reason);
+        alert(`Готово: создан билет #${result.ticketId}.`);
+      } else if (action === 'revoke') {
+        const ticketId = Number(amountOrTicket);
+        await window.revokeTicket(ticketId, reason);
+        alert(`Готово: билет #${ticketId} вычеркнут.`);
+      } else {
+        alert('Неизвестный тип экстренного действия.');
       }
-    });
-
-    if (!foundInPlayerActive) return alert(`У игрока нет активного билетика №${ticketNum}.`);
-    if (!Object.keys(updates).length) return alert('Не удалось найти подходящие билетики для изъятия. Попробуй обновить страницу.');
-
-    const archiveKey = db.ref('tickets_archive').push().key;
-    updates[`tickets_archive/${archiveKey}`] = {
-      owner: charIndex,
-      userId,
-      ticket: ticketNum,
-      taskIdx: -1,
-      round: currentRoundNum,
-      cell: 0,
-      cellIdx: -1,
-      isManualRevoke: true,
-      adminNote: note || null,
-      taskLabel: note ? `Ручное изъятие: ${note}` : 'Ручное изъятие администратором',
-      archivedAt: Date.now(),
-      excluded: true,
-      revokeCancelledAt: null
-    };
-
-    await db.ref().update(updates);
-    const notePart = note ? ` Причина: ${note}` : '';
-    await postNews(`🧾 Администратор отозвал(а) билетик №${ticketNum} у игрока ${players[charIndex].n}.${notePart}`);
-    alert(`Готово! Отозван билетик №${ticketNum}.${note ? `\nПометка: ${note}` : ''}`);
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Не удалось выполнить экстренное действие.');
+    } finally {
+      if (executeBtn) executeBtn.disabled = !isAdminUser();
+    }
   }
 
   async function adminUndoTicketRevoke(archiveKey) {
@@ -514,16 +378,16 @@
     window.adminScheduleRound = adminScheduleRound;
     window.adminCancelScheduledRound = adminCancelScheduledRound;
     window.adminForceRenamePlayer = adminForceRenamePlayer;
-    window.adminGrantTicketsToPlayer = adminGrantTicketsToPlayer;
-    window.giveTicket = giveTicket;
-    window.adminRevokeTicketsFromPlayer = adminRevokeTicketsFromPlayer;
+    window.executeEmergencyAction = executeEmergencyAction;
     window.adminUndoTicketRevoke = adminUndoTicketRevoke;
     window.adminRevokeTicketRange = adminRevokeTicketRange;
     window.adminResetCurrentRound = adminResetCurrentRound;
   }
 
-  function initAdminPage() {
-    exposeAdminActions();
+  async function initAdminPage() {
+    window.waitForDbReady = window.waitForDbReady || waitForDbReady;
+  exposeAdminActions();
+    await waitForDbReady();
 
     const emergencyBody = document.getElementById('admin-emergency-body');
     if (emergencyBody) {
@@ -532,6 +396,9 @@
         el.disabled = !isAdminUser();
       });
     }
+
+    const executeBtn = document.getElementById('btn-execute-emergency');
+    if (executeBtn) executeBtn.onclick = executeEmergencyAction;
 
     ensureDateTimeInputDefault('round-start-at');
     syncRoundSchedules();
