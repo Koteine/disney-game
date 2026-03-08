@@ -120,6 +120,239 @@
     });
   }
 
+  async function adminForceRenamePlayer() {
+    if (currentUserId !== ADMIN_ID) return;
+    const userId = (document.getElementById('admin-rename-user-id')?.value || '').trim();
+    const charIndex = Number(document.getElementById('admin-rename-char-index')?.value);
+    if (!userId) return alert('Укажи Telegram ID игрока.');
+    if (!Number.isInteger(charIndex) || !players[charIndex]) return alert('Выбери корректный никнейм.');
+
+    const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+    if (!userSnap.exists()) return alert('Игрок с таким ID не найден в whitelist.');
+    await db.ref(`whitelist/${userId}/charIndex`).set(charIndex);
+    alert('Никнейм обновлён. Изменение сразу видно всем игрокам.');
+  }
+
+  async function adminGrantTicketsToPlayer() {
+    if (currentUserId !== ADMIN_ID) return;
+    const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
+    const count = Math.max(1, Math.floor(Number(document.getElementById('admin-grant-ticket-count')?.value || 1) || 1));
+    const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
+    if (!userId) return alert('Укажи Telegram ID игрока.');
+
+    const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+    const user = userSnap.val();
+    const charIndex = Number(user?.charIndex);
+    if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+
+    const awarded = await claimSequentialTickets(count);
+    if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+
+    const ticketValue = awarded.join(' и ');
+    await db.ref('tickets_archive').push({
+      owner: charIndex,
+      userId,
+      ticket: ticketValue,
+      taskIdx: -1,
+      round: currentRoundNum,
+      cell: 0,
+      cellIdx: -1,
+      isManualReward: true,
+      archivedAt: Date.now(),
+      excluded: false,
+      adminNote: note || null,
+      taskLabel: note ? `Ручная выдача: ${note}` : 'Ручная выдача администратором'
+    });
+
+    const notePart = note ? ` Причина: ${note}` : '';
+    await postNews(`🎫 Администратор выдал(а) ${awarded.length} билет(ов) игроку ${players[charIndex].n}.${notePart}`);
+    alert(`Готово! Выдано билетиков: ${awarded.length}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
+  }
+
+  async function adminRevokeTicketsFromPlayer() {
+    if (currentUserId !== ADMIN_ID) return;
+    const userId = (document.getElementById('admin-revoke-ticket-user-id')?.value || '').trim();
+    const ticketNum = String(document.getElementById('admin-revoke-ticket-number')?.value || '').trim();
+    const note = (document.getElementById('admin-revoke-ticket-note')?.value || '').trim();
+    if (!userId) return alert('Укажи Telegram ID игрока.');
+    if (!/^\d+$/.test(ticketNum) || Number(ticketNum) < 1) return alert('Укажи корректный номер билетика для изъятия.');
+
+    const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+    const user = userSnap.val();
+    const charIndex = Number(user?.charIndex);
+    if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+
+    const targetTickets = getActiveTicketsForWheel()
+      .filter(t => Number(t.owner) === Number(charIndex))
+      .map(t => String(t.num));
+
+    if (!targetTickets.length) return alert('У этого игрока нет активных билетиков для изъятия.');
+    if (!targetTickets.includes(ticketNum)) return alert(`У игрока нет активного билетика №${ticketNum}.`);
+
+    const revokeSet = new Set([ticketNum]);
+    const updates = {};
+
+    allTicketsData.forEach(t => {
+      if (t.excluded) return;
+      if (Number(t.owner) !== Number(charIndex) && String(t.userId) !== String(userId)) return;
+      const nums = extractTicketNumbers(t.ticket);
+      if (!nums.length) return;
+      const left = nums.filter(n => !revokeSet.has(String(n)));
+      if (left.length === nums.length) return;
+
+      if (t.isArchived && t.archiveKey) {
+        updates[`tickets_archive/${t.archiveKey}/ticket`] = left.join(' и ');
+        updates[`tickets_archive/${t.archiveKey}/excluded`] = left.length === 0;
+      } else if (Number.isInteger(t.cellIdx) && t.cellIdx >= 0) {
+        updates[`board/${t.cellIdx}/ticket`] = left.join(' и ');
+        updates[`board/${t.cellIdx}/excluded`] = left.length === 0;
+      }
+    });
+
+    if (!Object.keys(updates).length) return alert('Не удалось найти подходящие билетики для изъятия. Попробуй обновить страницу.');
+
+    const archiveKey = db.ref('tickets_archive').push().key;
+    updates[`tickets_archive/${archiveKey}`] = {
+      owner: charIndex,
+      userId,
+      ticket: ticketNum,
+      taskIdx: -1,
+      round: currentRoundNum,
+      cell: 0,
+      cellIdx: -1,
+      isManualRevoke: true,
+      adminNote: note || null,
+      taskLabel: note ? `Ручное изъятие: ${note}` : 'Ручное изъятие администратором',
+      archivedAt: Date.now(),
+      excluded: true,
+      revokeCancelledAt: null
+    };
+
+    await db.ref().update(updates);
+    const notePart = note ? ` Причина: ${note}` : '';
+    await postNews(`🧾 Администратор отозвал(а) билетик №${ticketNum} у игрока ${players[charIndex].n}.${notePart}`);
+    alert(`Готово! Отозван билетик №${ticketNum}.${note ? `\nПометка: ${note}` : ''}`);
+  }
+
+  async function adminUndoTicketRevoke(archiveKey) {
+    if (currentUserId !== ADMIN_ID) return;
+    if (!archiveKey) return;
+
+    const revokeSnap = await db.ref(`tickets_archive/${archiveKey}`).once('value');
+    const revokeRow = revokeSnap.val() || {};
+    if (!revokeSnap.exists() || !revokeRow.isManualRevoke) return alert('Запись об изъятии не найдена.');
+    if (revokeRow.revokeCancelledAt) return alert('Это изъятие уже отменено ранее.');
+
+    const ticketNum = extractTicketNumbers(revokeRow.ticket)[0];
+    if (!ticketNum) return alert('Не удалось определить номер билетика для восстановления.');
+    const owner = Number(revokeRow.owner);
+    const ownerName = players[owner]?.n || 'игрока';
+
+    const alreadyActive = getActiveTicketsForWheel().some(t => String(t.num) === String(ticketNum));
+    if (alreadyActive) return alert(`Билетик №${ticketNum} уже участвует в игре. Отмена изъятия не требуется.`);
+    if (!confirm(`Отменить изъятие билетика №${ticketNum} и вернуть его ${ownerName}?`)) return;
+
+    const restoreKey = db.ref('tickets_archive').push().key;
+    const note = revokeRow.adminNote ? `Возврат после изъятия: ${revokeRow.adminNote}` : 'Возврат после ручного изъятия администратором';
+    const updates = {
+      [`tickets_archive/${restoreKey}`]: {
+        owner,
+        userId: String(revokeRow.userId || ''),
+        ticket: String(ticketNum),
+        taskIdx: -1,
+        round: currentRoundNum,
+        cell: 0,
+        cellIdx: -1,
+        isManualReward: true,
+        archivedAt: Date.now(),
+        excluded: false,
+        adminNote: note,
+        taskLabel: note,
+        restoredFromRevokeKey: archiveKey
+      },
+      [`tickets_archive/${archiveKey}/revokeCancelledAt`]: Date.now(),
+      [`tickets_archive/${archiveKey}/revokeCancelledBy`]: currentUserId
+    };
+
+    await db.ref().update(updates);
+    await postNews(`↩️ Администратор отменил(а) изъятие билетика №${ticketNum} для игрока ${ownerName}.`);
+    alert(`Готово! Билетик №${ticketNum} снова участвует в игре.`);
+  }
+
+  async function adminRevokeTicketRange() {
+    if (currentUserId !== ADMIN_ID) return;
+
+    const from = Number(document.getElementById('admin-revoke-ticket-from')?.value || 0);
+    const to = Number(document.getElementById('admin-revoke-ticket-to')?.value || 0);
+    const note = (document.getElementById('admin-revoke-ticket-range-note')?.value || '').trim();
+
+    if (!Number.isInteger(from) || from < 1) return alert('Укажи корректный начальный номер билетика (от 1).');
+    if (!Number.isInteger(to) || to < 1) return alert('Укажи корректный конечный номер билетика (от 1).');
+    if (from > to) return alert('Начальный номер не может быть больше конечного.');
+    if (to > MAX_TICKETS) return alert(`Конечный номер не может быть больше лимита (${MAX_TICKETS}).`);
+
+    const amount = to - from + 1;
+    if (!confirm(`Вычеркнуть из игры билетики №${from}...№${to} (всего ${amount})?`)) return;
+
+    const updates = {};
+    for (let n = from; n <= to; n += 1) {
+      updates[`revoked_tickets/${n}`] = true;
+    }
+    await db.ref().update(updates);
+
+    const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+      db.ref('board').once('value'),
+      db.ref('tickets_archive').once('value'),
+      db.ref('revoked_tickets').once('value')
+    ]);
+    const boardData = boardSnap.val() || {};
+    const archiveData = archiveSnap.val() || {};
+    const revokedMap = revokedSnap.val() || {};
+    let maxActiveTicket = 0;
+
+    const includeTicketNum = num => {
+      const n = Number(num);
+      if (!Number.isInteger(n) || n < 1) return;
+      if (revokedMap[String(n)]) return;
+      if (n > maxActiveTicket) maxActiveTicket = n;
+    };
+
+    Object.values(boardData).forEach(cell => {
+      if (!cell || cell.excluded) return;
+      extractTicketNumbers(cell.ticket).forEach(includeTicketNum);
+    });
+
+    Object.values(archiveData).forEach(row => {
+      if (!row) return;
+      if (row.excluded && !row.isManualRevoke) return;
+      extractTicketNumbers(row.ticket).forEach(includeTicketNum);
+    });
+
+    await db.ref('ticket_counter').set(maxActiveTicket);
+
+    const notePart = note ? ` Причина: ${note}` : '';
+    await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${to}.${notePart}`);
+    alert(`Готово! Вычеркнуто билетиков: ${amount} (№${from}...№${to}).`);
+  }
+
+  async function adminResetCurrentRound() {
+    if (currentUserId !== ADMIN_ID) return;
+    if (!confirm('Сбросить текущий раунд? Поле очистится, прогресс раунда будет остановлен.')) return;
+
+    await db.ref('board').set({});
+    await db.ref('current_round').update({
+      endTime: 0,
+      traps: [],
+      magicCell: null,
+      miniGameCell: null,
+      wordSketchCell: null,
+      magnetCell: null,
+      itemCells: {}
+    });
+    await postNews('🔄 Администратор сбросил(а) текущий раунд.');
+    alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
+  }
+
   let roundSchedules = [];
   let roundSchedulesRef = null;
 
@@ -182,6 +415,12 @@
     window.adminStartNewRound = adminStartNewRound;
     window.adminScheduleRound = adminScheduleRound;
     window.adminCancelScheduledRound = adminCancelScheduledRound;
+    window.adminForceRenamePlayer = adminForceRenamePlayer;
+    window.adminGrantTicketsToPlayer = adminGrantTicketsToPlayer;
+    window.adminRevokeTicketsFromPlayer = adminRevokeTicketsFromPlayer;
+    window.adminUndoTicketRevoke = adminUndoTicketRevoke;
+    window.adminRevokeTicketRange = adminRevokeTicketRange;
+    window.adminResetCurrentRound = adminResetCurrentRound;
 
     ensureDateTimeInputDefault('round-start-at');
     syncRoundSchedules();
