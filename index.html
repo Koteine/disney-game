@@ -215,6 +215,13 @@
                     <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Вычеркнуть диапазон билетиков из игры</div>
+                    <input type="number" id="admin-revoke-ticket-from" placeholder="Номер от (например: 56)" class="admin-input" min="1">
+                    <input type="number" id="admin-revoke-ticket-to" placeholder="Номер до (например: 900)" class="admin-input" min="1">
+                    <input type="text" id="admin-revoke-ticket-range-note" placeholder="Пометка (почему вычеркнули диапазон)" class="admin-input">
+                    <button onclick="adminRevokeTicketRange()" class="admin-btn" style="background:#ad1457; width:100%; margin:0;">✂️ Вычеркнуть диапазон</button>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
                     <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
                     <select id="admin-rename-char-index" class="admin-input"></select>
@@ -1876,6 +1883,32 @@
 Пометка: ${note}` : ''}`);
         }
 
+        async function adminRevokeTicketRange() {
+            if (currentUserId !== ADMIN_ID) return;
+
+            const from = Number(document.getElementById('admin-revoke-ticket-from')?.value || 0);
+            const to = Number(document.getElementById('admin-revoke-ticket-to')?.value || 0);
+            const note = (document.getElementById('admin-revoke-ticket-range-note')?.value || '').trim();
+
+            if (!Number.isInteger(from) || from < 1) return alert('Укажи корректный начальный номер билетика (от 1).');
+            if (!Number.isInteger(to) || to < 1) return alert('Укажи корректный конечный номер билетика (от 1).');
+            if (from > to) return alert('Начальный номер не может быть больше конечного.');
+            if (to > MAX_TICKETS) return alert(`Конечный номер не может быть больше лимита (${MAX_TICKETS}).`);
+
+            const amount = to - from + 1;
+            if (!confirm(`Вычеркнуть из игры билетики №${from}...№${to} (всего ${amount})?`)) return;
+
+            const updates = {};
+            for (let n = from; n <= to; n += 1) {
+                updates[`revoked_tickets/${n}`] = true;
+            }
+            await db.ref().update(updates);
+
+            const notePart = note ? ` Причина: ${note}` : '';
+            await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${to}.${notePart}`);
+            alert(`Готово! Вычеркнуто билетиков: ${amount} (№${from}...№${to}).`);
+        }
+
         async function adminResetCurrentRound() {
             if (currentUserId !== ADMIN_ID) return;
             if (!confirm('Сбросить текущий раунд? Поле очистится, прогресс раунда будет остановлен.')) return;
@@ -2037,3 +2070,4 @@
     <script src="adminpage.js"></script>
 </body>
 </html>
+
