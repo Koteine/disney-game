@@ -162,11 +162,11 @@
   }
 
   async function registerParticipant() {
-    const uid = getUserId();
-    if (!uid || participantMarked) return;
+    const myId = localStorage.getItem('userId');
+    if (!myId || participantMarked) return;
     participantMarked = true;
     const db = await getDbReady();
-    await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
+    await db.ref('current_event/participants/' + myId).set(true);
   }
 
   async function startDrawing(evt) {
@@ -266,30 +266,29 @@
     return total ? (painted / total) * 100 : 0;
   }
 
+  async function rewardAllParticipants() {
+    const db = await getDbReady();
+    const snapshot = await db.ref('current_event/participants').once('value');
+    const participants = snapshot.val();
+    if (!participants) {
+      console.log('Участников нет, награда не выдана');
+      return;
+    }
+
+    for (const userId in participants) {
+      console.log('Выдаю награду участнику:', userId);
+      await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
+    }
+
+    await db.ref('current_event').remove();
+    alert('Ивент завершен! Награды отправлены участникам.');
+  }
+
   async function finalizeEventWithRewards() {
     if (finishing) return;
     finishing = true;
     try {
-      const db = await getDbReady();
-      const snap = await db.ref(EVENT_PATH).once('value');
-      const eventData = snap.val() || {};
-      let participants = Object.keys(eventData.participants || {});
-      if (!participants.length) {
-        const strokeUsers = new Set(Object.values(eventData.strokes || {}).map(v => String(v?.uid || '')).filter(Boolean));
-        participants = Array.from(strokeUsers);
-      }
-
-      if (participants.length) {
-        for (const uid of participants) {
-          if (typeof window.createTicket === 'function') {
-            await window.createTicket(uid, 2, 'Ивент: Эпичный раскрас');
-          }
-        }
-      } else if (typeof window.postNews === 'function') {
-        await window.postNews('Ивент завершен, никто не участвовал');
-      }
-
-      await db.ref(EVENT_PATH).remove();
+      await rewardAllParticipants();
     } catch (err) {
       console.error('Ошибка завершения ивента:', err);
     } finally {
