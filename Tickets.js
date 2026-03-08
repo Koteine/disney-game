@@ -256,7 +256,11 @@
             });
 
             const drift = counter - maxActiveTicket;
-            if (counter < maxActiveTicket || drift > 200) {
+            if (force) {
+                if (counter !== maxActiveTicket) {
+                    await db.ref('ticket_counter').set(maxActiveTicket);
+                }
+            } else if (counter < maxActiveTicket || drift > 200) {
                 await db.ref('ticket_counter').set(maxActiveTicket);
             }
 
