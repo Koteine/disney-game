@@ -2,6 +2,7 @@
 let epicPaintStrokeMap = {};
 let epicPaintRenderRaf = null;
 let lastParticipantUpdateByUid = {};
+const WALL_BATTLE_COVERAGE_TARGET = 75;
 
 function scheduleEpicPaintRender() {
     if (epicPaintRenderRaf) return;
@@ -148,7 +149,7 @@ function drawEpicPaint() {
 
     const { coverage, redCoverage, blueCoverage } = calculateEpicPaintCoverageStats(canvas);
     if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
-        progressEl.innerText = `Цель команды: 70% холста · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
+        progressEl.innerText = `Цель команды: ${WALL_BATTLE_COVERAGE_TARGET}% холста · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
         maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
     } else {
         progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
@@ -236,13 +237,13 @@ async function maybeFinalizeEpicPaintSuccess(coverage) {
     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
 }
 
-async function grantEpicPaintRewards() {
-    if (!currentGameEventKey) return 0;
+async function grantEpicPaintRewards(eventKey = currentGameEventKey) {
+    if (!eventKey) return 0;
     const [participantsSnap, strokesSnap, whitelistSnap, rewardedSnap] = await Promise.all([
         db.ref('epic_paint/participants').once('value'),
         db.ref('epic_paint/strokes').once('value'),
         db.ref('whitelist').once('value'),
-        db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+        db.ref(`epic_paint/rewarded/${eventKey}`).once('value')
     ]);
 
     const whitelist = whitelistSnap.val() || {};
@@ -283,7 +284,7 @@ async function grantEpicPaintRewards() {
             archivedAt: Date.now(),
             excluded: false
         });
-        await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
+        await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).set(true);
     }
 
     return rewardedCount;
@@ -292,7 +293,7 @@ async function grantEpicPaintRewards() {
 async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage) {
     if (!currentGameEvent || currentGameEvent.id !== WALL_BATTLE_EVENT_ID || currentGameEvent.status !== 'active') return;
     if (!currentGameEventKey) return;
-    if (redCoverage < 70 && blueCoverage < 70) return;
+    if (redCoverage < WALL_BATTLE_COVERAGE_TARGET && blueCoverage < WALL_BATTLE_COVERAGE_TARGET) return;
 
     const winnerTeam = redCoverage >= blueCoverage ? 'red' : 'blue';
     const eventRef = db.ref(`game_events/${currentGameEventKey}`);
@@ -326,7 +327,7 @@ async function maybeFinalizeCompletedEventByEndTime() {
     if (!tx.committed) return;
 
     const snapshotEvent = tx.snapshot.val() || {};
-    const rewardedPlayersCount = await grantEpicPaintRewards();
+    const rewardedPlayersCount = await grantEpicPaintRewards(active.key);
 
     await postEpicEventSummary({ ...snapshotEvent, completedAt: Date.now(), activatedAt: snapshotEvent.activatedAt || snapshotEvent.startAt }, true, rewardedPlayersCount);
 }
@@ -349,7 +350,6 @@ async function grantWallBattleRewards(winnerTeam, eventKey = currentGameEventKey
         const uid = Number(uidKey);
         const user = whitelist[uidKey] || whitelist[uid] || {};
         const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
-        if (!Number.isInteger(owner) || !players[owner]) continue;
         const awarded = await claimSequentialTickets(1);
         if (!awarded?.length) continue;
         await addInventoryItemForUser(uid, 'magnifier', 1);
@@ -360,19 +360,21 @@ async function grantWallBattleRewards(winnerTeam, eventKey = currentGameEventKey
     return rewardedCount;
 }
 
-function maybeNotifyWallBattleLoser(eventData) {
+function maybeNotifyWallBattleOutcome(eventData) {
     if (!eventData || eventData.id !== WALL_BATTLE_EVENT_ID || !eventData.key || !eventData.winnerTeam) return;
     if (!Number(currentUserId)) return;
-    const key = `wall_battle_loser_notified_${eventData.key}`;
+    const key = `wall_battle_outcome_notified_${eventData.key}`;
     if (window[key]) return;
     db.ref(`game_events/${eventData.key}/teams/${currentUserId}`).once('value').then(snap => {
         const myTeam = snap.val()?.team;
-        if (!myTeam || myTeam === eventData.winnerTeam) return;
+        if (!myTeam) return;
         window[key] = true;
         if (typeof showPlayerNotification === 'function') {
             showPlayerNotification({
-                id: `wall-battle-loser-${eventData.key}`,
-                text: 'Кажется, в другой команде перевесил Ван Гог. В следующий раз удача точно будет на твоей стороне!'
+                id: `wall-battle-outcome-${eventData.key}`,
+                text: myTeam === eventData.winnerTeam
+                    ? '🏆 Ваша команда победила в событии «Стенка на стенку»! Вы получили 1 билет и 1 Лупу.'
+                    : '😿 В этот раз победила другая команда. Спасибо за участие в событии «Стенка на стенку»!'
             });
         }
     }).catch(() => {});
@@ -477,7 +479,7 @@ function updateEventUiState() {
         setTimeout(() => playFireworksSound(), 18000);
         lastCompletedEpicEventKeyShown = latestCompleted.key;
         setTimeout(() => { if (successAlert && !isCelebration) successAlert.style.display = 'none'; }, 30000);
-        maybeNotifyWallBattleLoser(latestCompleted);
+        maybeNotifyWallBattleOutcome(latestCompleted);
     }
 
     const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
@@ -605,6 +607,10 @@ function syncGameEvents() {
 
         currentGameEvent = active || celebration;
         currentGameEventKey = (active || celebration)?.key || null;
+        const latestWallBattleCompleted = queuedGameEvents
+            .filter(ev => ev.id === WALL_BATTLE_EVENT_ID && ev.status === 'completed')
+            .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0] || null;
+        maybeNotifyWallBattleOutcome(latestWallBattleCompleted);
         if (!currentGameEvent || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id) || currentGameEvent.status !== 'active') {
             epicPaintHasDismissedStart = false;
         }
