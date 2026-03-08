@@ -29,6 +29,7 @@
     const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
     let lastTicketCounterRepairAt = 0;
     let ticketCounterRepairInFlight = null;
+    const createTicketGuardByUser = {};
 
     function updateAllTicketsDataAndRender() {
         allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
@@ -216,31 +217,67 @@
         if (!/^\d+$/.test(uid)) throw new Error('Некорректный userId.');
         if (!Number.isFinite(normalizedAmount)) throw new Error('Некорректный amount.');
 
-        let ticketId = null;
-        const txResult = await database.ref('lastTicketId').transaction(currentValue => {
-            const current = Number(currentValue) || 0;
-            ticketId = current + 1;
-            return ticketId;
-        });
-
-        if (!txResult.committed || !Number.isInteger(ticketId)) {
-            throw new Error('Не удалось создать ticketId через transaction().');
+        const now = Date.now();
+        const guard = createTicketGuardByUser[uid] || {};
+        if (guard.inFlightPromise && (now - (guard.startedAt || 0)) < 500) {
+            return guard.inFlightPromise;
+        }
+        if (guard.lastIssuedAt && (now - guard.lastIssuedAt) < 500) {
+            return guard.lastPayload || null;
         }
 
-        const payload = {
-            ticketId,
-            userId: uid,
-            amount: normalizedAmount,
-            reason: normalizedReason,
-            timestamp: Date.now()
+        const issuePromise = (async () => {
+            let ticketId = null;
+            const txResult = await database.ref('lastTicketId').transaction(currentValue => {
+                const current = Number(currentValue) || 0;
+                ticketId = current + 1;
+                return ticketId;
+            });
+
+            if (!txResult.committed || !Number.isInteger(ticketId)) {
+                throw new Error('Не удалось создать ticketId через transaction().');
+            }
+
+            const payload = {
+                ticketId,
+                userId: uid,
+                amount: normalizedAmount,
+                reason: normalizedReason,
+                timestamp: Date.now()
+            };
+
+            const updates = {};
+            updates[`ticket_archive/${ticketId}`] = payload;
+            updates[`users/${uid}/tickets/${ticketId}`] = payload;
+            await database.ref().update(updates);
+
+            createTicketGuardByUser[uid] = {
+                ...(createTicketGuardByUser[uid] || {}),
+                inFlightPromise: null,
+                startedAt: 0,
+                lastIssuedAt: Date.now(),
+                lastPayload: payload
+            };
+
+            return payload;
+        })();
+
+        createTicketGuardByUser[uid] = {
+            ...(guard || {}),
+            startedAt: now,
+            inFlightPromise: issuePromise
         };
 
-        const updates = {};
-        updates[`ticket_archive/${ticketId}`] = payload;
-        updates[`users/${uid}/tickets/${ticketId}`] = payload;
-        await database.ref().update(updates);
-
-        return payload;
+        try {
+            return await issuePromise;
+        } catch (error) {
+            createTicketGuardByUser[uid] = {
+                ...(createTicketGuardByUser[uid] || {}),
+                inFlightPromise: null,
+                startedAt: 0
+            };
+            throw error;
+        }
     }
 
     async function revokeTicket(ticketId, reason) {
