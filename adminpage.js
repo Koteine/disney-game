@@ -372,22 +372,23 @@
   }
 
 
-  async function adminLaunchEpicPaintEvent() {
+  async function adminLaunchEpicPaintEvent(durationMins = 10) {
     if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-    await waitForDbReady();
-    await db.ref('current_event').set({
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) return;
+    const mins = Math.max(1, Number(durationMins) || 10);
+    await database.ref('current_event').set({
       type: 'paint',
       status: 'active',
-      end_timestamp: Date.now() + (10 * 60 * 1000),
-      active_participants: {},
+      end_timestamp: Date.now() + (mins * 60 * 1000),
+      participants: {},
       strokes: {},
       progress: { percent: 0 }
     });
-    alert('Эпичный закрас запущен на 10 минут.');
+    alert('Эпичный раскрас запущен.');
   }
 
-
-  const EVENT_SCHEDULES_PATH = 'event_schedules';
+  const EVENT_SCHEDULES_PATH = 'event_schedule';
   let eventSchedules = [];
   let eventSchedulesRef = null;
   let adminServerOffsetMs = 0;
@@ -414,18 +415,19 @@
 
   async function adminScheduleEpicPaintEvent() {
     if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-    await waitForDbReady();
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) return;
 
     const startRaw = String(document.getElementById('event-start-at')?.value || '').trim();
     const durationMins = Number(document.getElementById('event-duration-mins')?.value || 0);
     if (!startRaw) return alert('Укажи дату и время старта ивента.');
-    if (!Number.isFinite(durationMins) || durationMins < 1) return alert('Укажи длительность ивента в минутах (минимум 1).');
+    if (!Number.isFinite(durationMins) || durationMins < 1) return alert('Укажи длительность (минуты).');
 
     const startAt = parseMoscowDateTimeLocalInput(startRaw);
     if (!Number.isFinite(startAt)) return alert('Некорректная дата/время.');
     if (startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
 
-    await db.ref(EVENT_SCHEDULES_PATH).push({
+    await database.ref(EVENT_SCHEDULES_PATH).push({
       type: 'paint',
       status: 'scheduled',
       startAt,
@@ -434,30 +436,32 @@
       createdBy: currentUserId
     });
 
-    alert('Ивент добавлен в очередь.');
+    alert('Событие добавлено в расписание.');
   }
 
   async function adminDeleteScheduledEvent(key) {
-    if (!isAdminUser()) return;
-    if (!key) return;
-    if (!confirm('Удалить ивент из очереди?')) return;
-    await db.ref(`${EVENT_SCHEDULES_PATH}/${key}`).transaction(v => {
+    if (!isAdminUser() || !key) return;
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) return;
+    await database.ref(`${EVENT_SCHEDULES_PATH}/${key}`).transaction(v => {
       if (!v || v.status !== 'scheduled') return v;
       return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
     });
   }
 
   async function maybeActivateScheduledEvent() {
-    const now = getAdminNow();
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) return;
+
     const due = eventSchedules
-      .filter(ev => ev.status === 'scheduled' && Number(ev.startAt || 0) <= now)
+      .filter(ev => ev.status === 'scheduled' && Number(ev.startAt || 0) <= getAdminNow())
       .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
     if (!due?.key) return;
 
-    const activeSnap = await db.ref('current_event/status').once('value');
-    if (String(activeSnap.val() || '') === 'active') return;
+    const currentStatusSnap = await database.ref('current_event/status').once('value').catch(() => null);
+    if (String(currentStatusSnap?.val() || '') === 'active') return;
 
-    const tx = await db.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).transaction(v => {
+    const tx = await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).transaction(v => {
       if (!v || v.status !== 'scheduled') return v;
       if (Number(v.startAt || 0) > getAdminNow()) return v;
       return { ...v, status: 'starting', startedAt: Date.now() };
@@ -465,25 +469,26 @@
     if (!tx.committed) return;
 
     const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
-    await db.ref('current_event').set({
+    await database.ref('current_event').set({
       type: 'paint',
       status: 'active',
-      end_timestamp: now + mins * 60000,
-      active_participants: {},
+      end_timestamp: getAdminNow() + (mins * 60 * 1000),
+      participants: {},
       strokes: {},
       progress: { percent: 0 }
     });
 
-    await db.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
+    await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
       status: 'completed',
-      completedAt: Date.now(),
-      activatedEventAt: now
+      completedAt: Date.now()
     });
   }
 
-  function syncEventSchedules() {
+  async function syncEventSchedules() {
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) return;
     if (eventSchedulesRef) eventSchedulesRef.off();
-    eventSchedulesRef = db.ref(EVENT_SCHEDULES_PATH);
+    eventSchedulesRef = database.ref(EVENT_SCHEDULES_PATH);
     eventSchedulesRef.on('value', snap => {
       const list = [];
       snap.forEach(item => list.push({ key: item.key, ...(item.val() || {}) }));
@@ -492,8 +497,16 @@
     });
   }
 
+  function ensureAdminTabVisibility() {
+    const navAdminBtn = document.getElementById('nav-admin-btn');
+    const tabAdmin = document.getElementById('tab-admin');
+    const adminVisible = Number(currentUserId) === Number(ADMIN_ID);
+    if (navAdminBtn) navAdminBtn.style.display = adminVisible ? 'flex' : 'none';
+    if (tabAdmin) tabAdmin.style.display = adminVisible ? '' : tabAdmin.style.display;
+  }
 
   function exposeAdminActions() {
+
     window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
     window.switchAdminInnerTab = switchAdminInnerTab;
     window.adminStartNewRound = adminStartNewRound;
@@ -511,8 +524,11 @@
 
   async function initAdminPage() {
     window.waitForDbReady = window.waitForDbReady || waitForDbReady;
-  exposeAdminActions();
-    await waitForDbReady();
+    exposeAdminActions();
+    ensureAdminTabVisibility();
+
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) return;
 
     const emergencyBody = document.getElementById('admin-emergency-body');
     if (emergencyBody) {
@@ -530,15 +546,20 @@
     syncRoundSchedules();
     syncEventSchedules();
 
-    db.ref('.info/serverTimeOffset').on('value', snap => {
+    database.ref('.info/serverTimeOffset').on('value', snap => {
       adminServerOffsetMs = Number(snap.val()) || 0;
     });
 
     if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
     window.adminRoundInterval = setInterval(async () => {
+      ensureAdminTabVisibility();
       await maybeActivateScheduledRound();
-      await maybeActivateScheduledEvent();
     }, 1000);
+
+    if (window.adminEventScheduleInterval) clearInterval(window.adminEventScheduleInterval);
+    window.adminEventScheduleInterval = setInterval(async () => {
+      await maybeActivateScheduledEvent();
+    }, 60000);
   }
 
   exposeAdminActions();
