@@ -136,7 +136,7 @@
   }
 
   async function adminGrantTicketsToPlayer() {
-    if (!isAdminUser()) return;
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
     const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
     const count = Math.max(1, Math.floor(Number(document.getElementById('admin-grant-ticket-count')?.value || 1) || 1));
     const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
@@ -172,7 +172,7 @@
   }
 
   async function adminRevokeTicketsFromPlayer() {
-    if (!isAdminUser()) return;
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
     const userId = (document.getElementById('admin-revoke-ticket-user-id')?.value || '').trim();
     const ticketNum = String(document.getElementById('admin-revoke-ticket-number')?.value || '').trim();
     const note = (document.getElementById('admin-revoke-ticket-note')?.value || '').trim();
@@ -251,7 +251,7 @@
   }
 
   async function adminUndoTicketRevoke(archiveKey) {
-    if (!isAdminUser()) return;
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
     if (!archiveKey) return;
 
     const revokeSnap = await db.ref(`tickets_archive/${archiveKey}`).once('value');
@@ -320,7 +320,7 @@
   }
 
   async function adminRevokeTicketRange() {
-    if (!isAdminUser()) return;
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
 
     const from = Number(document.getElementById('admin-revoke-ticket-from')?.value || 0);
     const to = Number(document.getElementById('admin-revoke-ticket-to')?.value || 0);
@@ -352,7 +352,7 @@
   }
 
   async function adminResetCurrentRound() {
-    if (!isAdminUser()) return;
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
     if (!confirm('Сбросить текущий раунд? Поле очистится, прогресс раунда будет остановлен.')) return;
 
     await db.ref('board').set({});
@@ -425,7 +425,7 @@
     });
   }
 
-  function initAdminPage() {
+  function exposeAdminActions() {
     window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
     window.switchAdminInnerTab = switchAdminInnerTab;
     window.adminStartNewRound = adminStartNewRound;
@@ -437,6 +437,18 @@
     window.adminUndoTicketRevoke = adminUndoTicketRevoke;
     window.adminRevokeTicketRange = adminRevokeTicketRange;
     window.adminResetCurrentRound = adminResetCurrentRound;
+  }
+
+  function initAdminPage() {
+    exposeAdminActions();
+
+    const emergencyBody = document.getElementById('admin-emergency-body');
+    if (emergencyBody) {
+      const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
+      controls.forEach(el => {
+        el.disabled = !isAdminUser();
+      });
+    }
 
     ensureDateTimeInputDefault('round-start-at');
     syncRoundSchedules();
@@ -446,6 +458,8 @@
       await maybeActivateScheduledRound();
     }, 1000);
   }
+
+  exposeAdminActions();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initAdminPage);
