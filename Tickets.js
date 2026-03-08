@@ -204,6 +204,14 @@
             awarded.push(String(nextTicketNum));
         }
 
+        if (awarded.length) {
+            const cleanup = {};
+            awarded.forEach(num => {
+                cleanup[`revoked_tickets/${num}`] = null;
+            });
+            await db.ref().update(cleanup);
+        }
+
         return awarded.length ? awarded : null;
     }
 
