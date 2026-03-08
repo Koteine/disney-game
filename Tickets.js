@@ -179,7 +179,7 @@
         await db.ref(`revoked_tickets/${num}`).remove();
     }
 
-    async function claimSequentialTickets(count = 1) {
+    async function claimSequentialTickets(count = 1, userId = currentUserId) {
         const needed = Math.max(1, Math.floor(Number(count) || 1));
 
         await maybeRepairTicketCounterDrift(true);
@@ -209,6 +209,15 @@
             delete revokedTicketsMap[String(num)];
         });
         await db.ref().update(revokedCleanup);
+
+        const normalizedUserId = String(userId || '').trim();
+        if (/^\d+$/.test(normalizedUserId)) {
+            const updates = {};
+            const ticketDelta = Number(awarded.length) || 0;
+            updates[`users/${normalizedUserId}/tickets`] = firebase.database.ServerValue.increment(ticketDelta);
+            updates[`whitelist/${normalizedUserId}/tickets`] = firebase.database.ServerValue.increment(ticketDelta);
+            await db.ref().update(updates);
+        }
 
         return awarded;
     }

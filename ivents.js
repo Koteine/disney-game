@@ -273,7 +273,7 @@ async function grantEpicPaintRewards(eventKey = currentGameEventKey) {
         const user = whitelist[uidKey] || whitelist[uid] || {};
         const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
 
-        const awarded = await claimSequentialTickets(2);
+        const awarded = await claimSequentialTickets(2, uid);
         if (!awarded) continue;
         rewardedCount += 1;
         const ticketValue = `${awarded[0]} и ${awarded[1]}`;
@@ -359,7 +359,7 @@ async function grantWallBattleRewards(winnerTeam, eventKey = currentGameEventKey
         const uid = Number(uidKey);
         const user = whitelist[uidKey] || whitelist[uid] || {};
         const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
-        const awarded = await claimSequentialTickets(1);
+        const awarded = await claimSequentialTickets(1, uid);
         if (!awarded?.length) continue;
         await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
         await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).set(true);
@@ -439,7 +439,7 @@ async function claimManualEventReward(eventKey) {
             showEventRewardNotification('Эта награда доступна только игрокам победившей команды.', `${eventKey}-not-winner`);
             return;
         }
-        const awarded = await claimSequentialTickets(1);
+        const awarded = await claimSequentialTickets(1, Number(currentUserId));
         if (!awarded?.length) {
             showEventRewardNotification(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`, `${eventKey}-no-tickets`);
             return;
@@ -469,7 +469,7 @@ async function claimManualEventReward(eventKey) {
         return;
     }
 
-    const awarded = await claimSequentialTickets(2);
+    const awarded = await claimSequentialTickets(2, Number(currentUserId));
     if (!awarded?.length || awarded.length < 2) {
         showEventRewardNotification(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`, `${eventKey}-no-tickets`);
         return;
