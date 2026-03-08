@@ -181,32 +181,27 @@
 
     async function claimSequentialTickets(count = 1) {
         const needed = Math.max(1, Math.floor(Number(count) || 1));
-        const awarded = [];
 
         await maybeRepairTicketCounterDrift(true);
 
-        while (awarded.length < needed) {
-            let rangeStart = null;
-            let rangeEnd = null;
-            const tx = await db.ref('ticket_counter').transaction(c => {
-                const current = Number(c) || 0;
-                if (current >= MAX_TICKETS) return;
-                const remain = MAX_TICKETS - current;
-                const reserve = Math.min(50, remain, Math.max(needed - awarded.length, 1));
-                rangeStart = current + 1;
-                rangeEnd = current + reserve;
-                return current + reserve;
-            });
+        let rangeStart = null;
+        let rangeEnd = null;
+        const tx = await db.ref('ticket_counter').transaction(c => {
+            const current = Number(c) || 0;
+            if (current >= MAX_TICKETS) return;
+            const remain = MAX_TICKETS - current;
+            if (remain < needed) return;
+            rangeStart = current + 1;
+            rangeEnd = current + needed;
+            return current + needed;
+        });
 
-            if (!tx.committed || !Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd)) break;
+        if (!tx.committed || !Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd)) return null;
 
-            for (let n = rangeStart; n <= rangeEnd; n += 1) {
-                awarded.push(String(n));
-                if (awarded.length >= needed) break;
-            }
+        const awarded = [];
+        for (let n = rangeStart; n <= rangeEnd; n += 1) {
+            awarded.push(String(n));
         }
-
-        if (!awarded.length) return null;
 
         const revokedCleanup = {};
         awarded.forEach(num => {
