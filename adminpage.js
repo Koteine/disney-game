@@ -18,8 +18,9 @@
   async function giveTicket(targetUserId) {
     if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
 
-    const uid = String(targetUserId || "").trim();
-    if (!/^\d+$/.test(uid)) return alert('Некорректный Telegram ID для выдачи билета.');
+    const uid = String(targetUserId || '').trim();
+    console.log('Выдаю билет для:', uid);
+    if (!/^\d+$/.test(uid)) return alert('Некорректный targetUserId для выдачи билета.');
 
     const lockKey = `giveTicket:${uid}`;
     if (giveTicketLocks.has(lockKey)) return;
