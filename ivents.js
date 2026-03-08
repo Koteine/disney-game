@@ -1,2010 +1,347 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Disney Battle: Trap Edition (💥 V.5)</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <script>
-        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        window.db = firebase.database();
-        window.waitForDbReady = window.waitForDbReady || (async function waitForDbReady(timeoutMs = 10000) {
-            if (window.db && typeof window.db.ref === "function") return window.db;
-            const startedAt = Date.now();
-            while (!(window.db && typeof window.db.ref === "function")) {
-                if (Date.now() - startedAt >= timeoutMs) throw new Error("Firebase db не инициализирован.");
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            return window.db;
-        });
-    </script>
-    
-</head>
-<body>
-
-    <div id="unauthorized-screen" style="display:none; padding:20px 12px;">
-        <div class="admin-section" style="max-width:520px; margin:20px auto; text-align:center;">
-            <h1 style="margin:5px 0 10px;">👋 Добро пожаловать!</h1>
-            <p style="font-size:14px; line-height:1.5; color:#555; margin:0 0 12px;">
-                Похоже, тебя ещё не добавили в игру.
-            </p>
-            <div id="welcome-user-id" style="font-size:14px; margin-bottom:10px;"></div>
-            <div style="padding:10px; border-radius:10px; background:#fff0f0; color:#c62828; font-size:13px; line-height:1.4;">
-                Ой, кажется, у тебя пока нет доступа к игре. Пожалуйста, передай свой ID @Koteine
-            </div>
-        </div>
-    </div>
-
-    <div id="game-ui">
-        <div id="tab-game" class="tab-content tab-active">
-            <h1>🏰 Disney Battle</h1>
-            <div id="player-identity" style="font-size:11px; margin-bottom:5px;">Загрузка профиля...</div>
-            <div class="timer-box">
-                <div id="round-info" style="font-size:11px; color:var(--p-pink); font-weight:bold;">Раунд №--</div>
-                <div id="round-timer">0д 00:00:00</div>
-            </div>
-            <div class="news-box">
-                <div class="news-header">
-                    <div class="news-title">📰 Лента событий</div>
-                    <button id="news-toggle-btn" class="news-toggle-btn" onclick="toggleNewsPanel()">Развернуть</button>
-                </div>
-                <div id="news-preview" class="news-preview">Пока новостей нет — откройте первую клетку! ✨</div>
-                <div id="news-list" class="news-list"></div>
-            </div>
-            <div class="inventory-box">
-                <div class="inventory-title">🎒 Рюкзачок</div>
-                <div id="inventory-row" class="inventory-row"><span class="inv-chip">Пусто</span></div>
-            </div>
-            <div id="event-notification" class="event-alert" style="display:none;"></div>
-            <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
-            <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
-            <div id="event-celebration-overlay"></div>
-            <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
-            <div class="grid" id="grid"></div>
-        </div>
-
-        <div id="event-overlay" class="event-overlay" style="display:none;">
-            <div class="event-overlay-header">
-                <div id="event-space-title" class="event-screen-title">Эпичный закрас</div>
-                <div class="event-time-wrap">⏱ <span id="event-timer">00:00</span></div>
-                <button id="btn-exit-event" class="event-back-btn">Назад</button>
-            </div>
-            <div class="event-overlay-canvas-wrap">
-                <canvas id="event-canvas" width="1200" height="1800"></canvas>
-            </div>
-            <div class="event-overlay-footer">
-                <div id="paint-progress">Закрашено: 0%</div>
-                <div id="event-done-message" style="display:none;"></div>
-            </div>
-        </div>
-
-       <div id="tab-tickets" class="tab-content">
-    <h1>🎫 История билетов</h1>
-    <div id="admin-tickets-subtabs" class="admin-inner-tabs" style="display:none; margin:8px;">
-        <button id="admin-tickets-all-btn" class="admin-inner-tab-btn active" onclick="switchAdminTicketsSubtab('all')">Все билеты в игре</button>
-        <button id="admin-tickets-player-btn" class="admin-inner-tab-btn" onclick="switchAdminTicketsSubtab('player')">Билеты игрока</button>
-    </div>
-    <div id="admin-tickets-all-panel" class="admin-inner-panel active" style="display:block;">
-        <div style="overflow-x: auto;">
-            <table>
-                <thead style="background:var(--p-pink); color:white;">
-                    <tr>
-                        <th>Рнд</th>
-                        <th>Клетка</th>
-                        <th id="th-user-name" style="display:none;">Игрок</th>
-                        <th>Билет</th>
-                        <th>Задание</th>
-                    </tr>
-                </thead>
-                <tbody id="tickets-body"></tbody>
-            </table>
-        </div>
-    </div>
-    <div id="admin-tickets-player-panel" class="admin-inner-panel" style="margin:0 8px;">
-        <div class="works-card" style="margin:0 0 8px 0;">
-            <b>Игроки (по алфавиту)</b>
-            <div id="admin-ticket-players-list" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div>
-        </div>
-        <div class="works-card" style="margin:0;">
-            <b id="admin-player-tickets-title">Выбери игрока, чтобы увидеть его билетики</b>
-            <div id="admin-player-tickets-list" style="margin-top:8px;"></div>
-        </div>
-    </div>
-</div>
-
-        <div id="tab-wheel" class="tab-content">
-            <h1>🎡 Колесо</h1>
-            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к розыгрышу?</div>
-            <div id="winner-toast" class="winner-toast">
-                <button class="winner-toast-close" onclick="closeWinnerToast()">✕</button>
-                <div id="winner-toast-text" style="font-weight:700; color:#6a1b9a;"></div>
-            </div>
-            <div class="wheel-wrap">
-                <div class="wheel-pointer" aria-hidden="true"></div>
-                <canvas id="wheel-canvas" width="280" height="280"></canvas>
-            </div>
-            <div id="wheel-admin-btn"></div>
-            <div class="news-box" style="margin-top:10px;">
-                <div class="news-header">
-                    <div class="news-title">🏆 История победителей</div>
-                    <button id="winner-history-toggle-btn" class="news-toggle-btn" onclick="toggleWinnerHistoryPanel()">Развернуть</button>
-                </div>
-                <div id="winner-history-preview" class="news-preview">Пока победителей нет.</div>
-                <div id="winner-history-list" class="news-list"></div>
-            </div>
-        </div>
-
-        <div id="tab-works" class="tab-content">
-            <h1 id="works-tab-title">📤 Сдача работ</h1>
-            <div id="works-upload-card" class="works-card">
-                <b>Загрузить новую работу</b>
-                <select id="work-task-select" class="admin-input" style="margin-top:8px;"></select>
-                <label style="font-size:12px; color:#777;">Фото «До» (не раскрашенная)</label>
-                <input type="file" id="work-image-before-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
-                <label style="font-size:12px; color:#777;">Фото «После» (раскрашенная)</label>
-                <input type="file" id="work-image-after-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
-                <button onclick="submitWork()" class="admin-btn" style="margin:0; width:100%;">📸 Загрузить работу</button>
-                <div style="font-size:11px; color:#888; margin-top:6px;">Игроки видят только свои работы. Админ видит все работы и может менять статус.</div>
-                <div id="ink-deadline-hint" style="font-size:11px; color:#d84315; margin-top:6px;"></div>
-            </div>
-            <div id="works-list"></div>
-        </div>
-
-        <div id="tab-admin" class="tab-content">
-            <h1>⚙️ Админ</h1>
-            <div class="admin-inner-tabs">
-                <button id="admin-inner-rounds-btn" class="admin-inner-tab-btn active" onclick="switchAdminInnerTab('rounds')">Раунды</button>
-                <button id="admin-inner-events-btn" class="admin-inner-tab-btn" onclick="switchAdminInnerTab('events')">События</button>
-                <button id="admin-inner-draw-btn" class="admin-inner-tab-btn" onclick="switchAdminInnerTab('draw')">Розыгрыш</button>
-            </div>
-            <div id="admin-rounds-panel" class="admin-inner-panel active">
-            <div class="admin-section">
-    <b>Установить длительность раунда:</b>
-    <div style="display:flex; gap:5px; margin:10px 0;">
-        <div style="flex:1;"><small>Дни</small><input type="number" id="r-days" class="admin-input" value="1"></div>
-        <div style="flex:1;"><small>Часы</small><input type="number" id="r-hours" class="admin-input" value="0"></div>
-        <div style="flex:1;"><small>Мин</small><input type="number" id="r-mins" class="admin-input" value="0"></div>
-    </div>
-    <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0; height:45px;">🚀 ЗАПУСТИТЬ РАУНД</button>
-    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-    <b>Отложенный запуск раундов:</b>
-    <label style="font-size:12px; color:#777;">Когда начнется раунд</label>
-    <input type="datetime-local" id="round-start-at" class="admin-input">
-    <button onclick="adminScheduleRound()" class="admin-btn" style="background:#26a69a; width:100%; margin:0;">🕒 Запланировать раунд</button>
-    <div id="admin-round-status" style="font-size:12px; margin-top:8px; color:#555;">Запланированных раундов нет.</div>
-    </div>
-            </div>
-            <div id="admin-events-panel" class="admin-inner-panel">
-                <div class="admin-section">
-                    <b>🎨 Управление ивентами</b>
-                    <div style="font-size:12px; color:#666; margin:8px 0;">Запуск сразу или планирование очереди будущих ивентов.</div>
-                    <button id="btn-launch-epic-paint" onclick="adminLaunchEpicPaintEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0 0 10px 0;">🚀 Запустить Эпичный раскрас сейчас</button>
-
-                    <label style="font-size:12px; color:#777;">Дата и время старта</label>
-                    <input type="datetime-local" id="event-start-at" class="admin-input">
-                    <label style="font-size:12px; color:#777;">Длительность (мин)</label>
-                    <input type="number" id="event-duration-mins" class="admin-input" min="1" value="10">
-                    <button onclick="adminScheduleEpicPaintEvent()" class="admin-btn" style="background:#ab47bc; width:100%; margin:0;">🕒 Добавить в очередь</button>
-
-                    <div id="admin-events-queue" style="margin-top:10px; font-size:12px; color:#555;">
-                        <b>Очередь запланированных ивентов:</b>
-                        <div id="admin-event-queue-list" style="margin-top:6px;">Нет запланированных ивентов.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="admin-draw-panel" class="admin-inner-panel">
-                <div class="admin-section">
-                    <b>Отложенный запуск розыгрыша:</b>
-                    <label style="font-size:12px; color:#777;">Когда начнется розыгрыш</label>
-                    <input type="datetime-local" id="draw-start-at" class="admin-input">
-                    <label style="font-size:12px; color:#777;">Сколько крутится колесо (минут)</label>
-                    <input type="number" id="draw-duration-mins" class="admin-input" min="1" value="10">
-                    <button onclick="adminScheduleDraw()" class="admin-btn" style="background:#ff7043; width:100%; margin:0;">🕒 Запланировать розыгрыш</button>
-                    <div id="admin-draw-status" style="font-size:12px; margin-top:8px; color:#555;">Розыгрыш не запланирован.</div>
-                </div>
-            </div>
-            <div class="admin-section">
-                <b>Игроки:</b>
-                <button onclick="toggleAdminPlayersList()" class="admin-btn" style="background:#607D8B; width:100%; margin:8px 0 6px;">👥 Список игроков: развернуть</button>
-                <div id="active-players-wrap" style="display:none;">
-                    <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
-                </div>
-                <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
-                <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
-            </div>
-            <div class="admin-section">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                    <b>Экстренные действия:</b>
-                    <button id="admin-emergency-toggle-btn" class="news-toggle-btn" onclick="toggleAdminEmergencyActions()">Развернуть</button>
-                </div>
-                <div id="admin-emergency-body" class="news-list" style="margin-top:8px;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Операции с билетами (Firebase)</div>
-                    <select id="emergency-action-type" class="admin-input">
-                        <option value="issue">Выдать</option>
-                        <option value="revoke">Вычеркнуть</option>
-                    </select>
-                    <input type="number" id="emergency-user-id" placeholder="ID игрока" class="admin-input">
-                    <input type="number" id="emergency-amount-or-ticket" placeholder="Количество / Номер" class="admin-input" min="1">
-                    <textarea id="emergency-reason" placeholder="Причина" class="admin-input" rows="3" style="resize:vertical;"></textarea>
-                    <button id="btn-execute-emergency" class="admin-btn" style="background:#455A64; width:100%; margin:0;">⚡ Выполнить</button>
-
-                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Вычеркнуть диапазон билетиков из игры</div>
-                    <input type="number" id="admin-revoke-ticket-from" placeholder="Номер от (например: 56)" class="admin-input" min="1">
-                    <input type="number" id="admin-revoke-ticket-to" placeholder="Номер до (например: 900)" class="admin-input" min="1">
-                    <input type="text" id="admin-revoke-ticket-range-note" placeholder="Пометка (почему вычеркнули диапазон)" class="admin-input">
-                    <button onclick="adminRevokeTicketRange()" class="admin-btn" style="background:#ad1457; width:100%; margin:0;">✂️ Вычеркнуть диапазон</button>
-
-                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
-                    <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <select id="admin-rename-char-index" class="admin-input"></select>
-                    <button onclick="adminForceRenamePlayer()" class="admin-btn" style="background:#5e35b1; width:100%; margin:0;">✏️ Сменить никнейм</button>
-
-                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
-                    <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
-                    <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ИГРУ</button>
-                    <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px; width:100%; margin-top:8px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="tab-rules" class="tab-content">
-            <h1>📜 Правила битвы</h1>
-            <div class="admin-section" style="font-size: 13px; line-height: 1.5;">
-                <p><b>1. Ход в раунде:</b> В каждом раунде ты можешь бросить кубик один раз. Тебе выпадет случайная клетка и задание.</p>
-                <p><b>2. Задания:</b> Выполни творческое задание и сдай его. Если задание выполнено — твой билет участвует в розыгрыше.</p>
-                <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание.</p>
-                <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
-                <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
-                <p><b>6. 👯 Тянет к тебе как магнитом:</b> В каждом раунде есть 1 такая клетка. Попав на неё, ты получаешь задание случайного игрока, который уже получил любое задание, кроме механики магической связи.</p>
-                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 2 мини-игры на случайных клетках: пятнашки 5×5 и «Словесный скетч». В «Словесном скетче» нужно угадать слово из списка за 3 попытки.  При успехе вы получаете кодовое слово и билет; при ошибке после 3 попыток — без билета и с пропуском раунда.</p>
-                <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 4 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b>, <b>Волшебной палочкой 🎆</b> и <b>Лупой 🔎</b>.</p>
-                <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
-                <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
-                <p><b>11. 🎆 Волшебная палочка:</b> Получив палочку, выбери игрока, который ещё не бросал кубик — его задание станет проще.</p>
-                <p><b>12. 🔎 Лупа:</b> Даёт возможность один раз за раунд посмотреть задание в выбранной свободной обычной ячейке и решить: «Беру» (пересесть на новую клетку, освободив прежнюю) или «Не беру» (остаться на текущей клетке). В обоих случаях Лупа сгорает.</p>
-                <p><b>13. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". Можно сдаться не чаще <b>1 раза за каждые 3 раунда</b> (минимум 1 раз за игру). Если лимит исчерпан и снова нажать "Сдаюсь", можно подтвердить выход из игры: в текущем раунде билетик не начислится, а в следующих раундах участие будет недоступно.</p>
-                <p><b>14. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
-                <p><b>15. 🎨 Событие «Эпичный закрас»:</b> Это общее событие по таймеру. Все игроки вместе закрашивают единое полотно; если закрашено 95%+ до конца времени, все участники получают по 2 билетика.</p>
-
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
-                <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
-            </div>
-        </div>
-
-        <nav class="nav-bar">
-            <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
-            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
-            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
-            <button class="nav-item" onclick="switchTab('tab-works', this)"><span>📤 Работы</span></button>
-            <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
-            <button id="nav-event-btn" class="nav-item" style="display:none;" onclick="openEventOverlay()"><span>🎨 Событие</span></button>
-            <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
-        </nav>
-    </div>
-
-    <div id="overlay" onclick="closeModal()"></div>
-    <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
-    <div id="player-notification-wrap"></div>
-
-    <script src="tasks.json" type="application/json" id="tasks-json"></script>
-    <script src="items.js"></script>
-    <script src="ivents.js"></script>
-    <script src="Tickets.js"></script>
-    <script src="adminpage.js"></script>
-    <script src="works.js"></script>
-    <script src="design.js"></script>
-    <script>
-       const JSON_URL = 'tasks.json';
-        const db = window.db;
-        const tg = window.Telegram.WebApp;
-        tg.ready(); tg.expand();
-
-        const ADMIN_ID = 341995937;
-        const currentUserId = tg.initDataUnsafe?.user?.id || 0;
-        const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
-
-        function generateBrightColors(count) {
-            const palette = [];
-            for (let i = 0; i < count; i++) {
-                const hue = Math.round((i * 360) / Math.max(1, count));
-                palette.push(`hsl(${hue}, 85%, 42%)`);
-            }
-            return palette;
-        }
-
-        const charColors = generateBrightColors(players.length);
-
-        let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
-        let archivedTicketsData = [];
-        let liveBoardTicketsData = [];
-        let shownMagicLinks = {};
-        let magicLinksRef = null;
-        let newsFeedRef = null;
-        let submissionsRef = null;
-        let inventoryRef = null;
-        let challengeRef = null;
-        let wandBlessingRef = null;
-        let gameEventsRef = null;
-        let epicPaintStrokesRef = null;
-        let winnerHistoryRef = null;
-        let drawScheduleRef = null;
-        let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
-        let myInkChallenge = null;
-        let myWandBlessing = null;
-        let allSubmissions = [];
-        let currentGameEvent = null;
-        let currentGameEventKey = null;
-        let queuedGameEvents = [];
-        let lastCompletedEpicEventKeyShown = null;
-        let lastFailedEpicEventKeyShown = null;
-        let epicPaintStrokes = [];
-        let epicPaintHasDismissedStart = false;
-        let epicPaintViewMode = 'event';
-        let myRoundHasMove = false;
-        let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
-        let currentWheelRotation = 0;
-        let wheelSpinInterval = null;
-        let wheelSystemInterval = null;
-        let winnerHistoryItems = [];
-        let currentDrawSchedule = null;
-        let serverTimeOffsetMs = 0;
-        window.serverTimeOffsetMs = 0;
-
-        const EPIC_PAINT_EVENT_ID = 'epic_paint';
-        const WALL_BATTLE_EVENT_ID = 'wall_battle';
-        const EPIC_PAINT_COVERAGE_TARGET = 95;
-        const MAX_SCHEDULED_EVENTS = 10;
-        const MAX_TICKETS = 2000;
-        const GAME_TIME_ZONE = 'Europe/Moscow';
-
-        function formatMoscowDateTime(ts) {
-            return new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: GAME_TIME_ZONE });
-        }
-
-        function parseMoscowDateTimeLocalInput(value) {
-            const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-            if (!m) return NaN;
-            const [, y, mon, d, h, min] = m.map(Number);
-            return Date.UTC(y, mon - 1, d, h - 3, min, 0, 0);
-        }
-
-        function toMoscowDateTimeLocalInput(ts) {
-            const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
-            return date.toISOString().slice(0, 16);
-        }
-
-        // Предметы вынесены в items.js (window.itemTypes).
-
-        const wandBlessingTasks = [
-            "Не успеваю! — ты можешь сдать только 70% работы, остальное доделаешь и покажешь нам потом.",
-            "Меньше — не значит хуже — ты можешь выбрать работу формата менее А4.",
-            "Золотая пыльца — игроку выдают предмет \"золотая пыльца\", он кладется в рюкзачок и его можно использовать на протяжении всей игры, но только один раз, после чего предмет исчезнет."
-        ];
-        // Опции кляксы вынесены в items.js (window.inkChallengeOptions).
-
-        const magicBondTasks = [
-            "Тема «Время и Эволюция»: один человек рисует персонажа в детстве, другой — в зрелости/старости.",
-            "Тема «День и Ночь» (контраст стилей): персонажи меняют не возраст, а состояние или облик.",
-            "Тема «Добро и Зло» (зеркальное отражение): персонаж один, но характер на рисунке должен быть разным.",
-            "Оригинал против Киберпанка: один человек рисует персонажа в классическом стиле, а второй — в стиле далекого будущего."
-        ];
-
-        const miniGameCodeWords = [
-            "Вау!",
-            "Это был бонус!",
-            "Я справилась!",
-            "Пятнашки? Легко!"
-        ];
-
-        const wordSketchWords = [
-            "кисть", "холст", "гуашь", "масло", "уголь", "линер", "пенал", "эскиз", "образ", "мазок",
-            "штрих", "линия", "пятно", "стиль", "бемби", "плуто", "алиса", "валик", "глина", "лампа",
-            "грунт", "лепка", "набор", "смесь", "блеск", "мулан", "ститч", "замок", "принц", "моана",
-            "акрил", "сепия", "губка", "лента", "скотч"
-        ].map(w => w.toLowerCase());
-
-        const WORD_SKETCH_MAX_ATTEMPTS = 3;
-
-        function normalizeWordSketchInput(value) {
-            return (value || '').trim().toLowerCase().replace(/ё/g, 'е');
-        }
-
-        function pickRandomWordSketchWord() {
-            return wordSketchWords[Math.floor(Math.random() * wordSketchWords.length)];
-        }
-
-        function evaluateWordSketchGuess(guess, answer) {
-            return [...guess].map((char, idx) => {
-                if (char === answer[idx]) return 'correct';
-                if (answer.includes(char)) return 'present';
-                return 'absent';
-            });
-        }
-
-        function buildWordSketchHintMarkup(answer) {
-            if (!answer) return '';
-            const first = answer[0]?.toUpperCase() || '';
-            const hidden = Math.max(answer.length - 1, 0);
-            return `
-                <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
-                    <div style="width:34px; height:34px; border-radius:8px; border:1px solid #6d4c41; background:#dcedc8; color:#33691e; display:flex; align-items:center; justify-content:center; font-weight:bold;">${first}</div>
-                    ${Array.from({length: hidden}).map(() => `<div style="width:34px; height:34px; border-radius:8px; border:1px dashed #a1887f; background:#fff;"></div>`).join('')}
-                </div>`;
-        }
-
-        function buildWordSketchAttemptRow(attempt) {
-            const guess = normalizeWordSketchInput(attempt?.guess || '');
-            const marks = Array.isArray(attempt?.marks) ? attempt.marks : [];
-            if (!guess) return '';
-
-            return `
-                <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
-                    ${[...guess].map((ch, idx) => {
-                        const mark = marks[idx] || 'absent';
-                        const color = mark === 'correct' ? '#2e7d32' : (mark === 'present' ? '#ef6c00' : '#90a4ae');
-                        const bg = mark === 'correct' ? '#e8f5e9' : (mark === 'present' ? '#fff3e0' : '#eceff1');
-                        return `<div style="width:34px; height:34px; border-radius:8px; border:1px solid ${color}; background:${bg}; color:${color}; display:flex; align-items:center; justify-content:center; font-weight:bold;">${ch.toUpperCase()}</div>`;
-                    }).join('')}
-                </div>`;
-        }
-
-        async function submitWordSketchGuess(cellIdx) {
-            const input = document.getElementById(`word-sketch-input-${cellIdx}`);
-            if (!input) return;
-
-            const guess = normalizeWordSketchInput(input.value);
-            const cellRef = db.ref('board/' + cellIdx);
-            const snap = await cellRef.once('value');
-            const cell = snap.val();
-            if (!cell?.isWordSketch) return;
-
-            const isOwner = cell.userId === currentUserId;
-            if (!isOwner) return alert('Угадывать слово может только владелец клетки.');
-            if (cell.wordSketchGuessed || cell.wordSketchFailed) return alert('Для этой клетки попытки уже завершены.');
-
-            const targetWord = normalizeWordSketchInput(cell.wordSketchAnswer || '');
-            if (!targetWord) return alert('Слово для этой клетки ещё не подготовлено.');
-            if (guess.length !== targetWord.length) return alert(`Нужно ввести слово из ${targetWord.length} букв.`);
-
-            const marks = evaluateWordSketchGuess(guess, targetWord);
-            const attempts = Array.isArray(cell.wordSketchAttempts) ? [...cell.wordSketchAttempts] : [];
-            attempts.push({ guess, marks, ts: Date.now() });
-            const attemptsUsed = attempts.length;
-            const attemptsLeft = Math.max(WORD_SKETCH_MAX_ATTEMPTS - attemptsUsed, 0);
-            const isCorrect = guess === targetWord;
-            const isFailed = !isCorrect && attemptsUsed >= WORD_SKETCH_MAX_ATTEMPTS;
-
-            const updates = {
-                wordSketchGuess: guess,
-                wordSketchAttempts: attempts,
-                wordSketchAttemptCount: attemptsUsed,
-                wordSketchGuessed: isCorrect,
-                wordSketchFailed: isFailed
-            };
-
-            if (isCorrect) {
-                const awarded = await claimSequentialTickets(1);
-                const ticket = awarded?.[0] || '';
-                if (!ticket) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
-                updates.ticket = ticket;
-                await postNews(`🧩 ${players[cell.owner].n} угадал(а) слово в игре «Словесный скетч» и получил(а) билет №${ticket}!`);
-                alert('Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет!');
-            } else if (isFailed) {
-                updates.ticket = '';
-                await postNews(`🧩 ${players[cell.owner].n} не угадал(а) слово в игре «Словесный скетч» и пропускает раунд.`);
-                alert('Увы, попытки закончились. В этом раунде билет не начисляется, ход пропущен.');
-            } else {
-                alert(`Неверно. Осталось попыток: ${attemptsLeft}. Подсказка по буквам обновлена в карточке.`);
-            }
-
-            await cellRef.update(updates);
-            const updated = await cellRef.once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        function buildWordSketchMarkup(cellIdx, cell, isOwner) {
-            const attempts = Array.isArray(cell.wordSketchAttempts) ? cell.wordSketchAttempts : [];
-            const attemptsUsed = attempts.length;
-            const isResolved = !!(cell.wordSketchGuessed || cell.wordSketchFailed);
-            const canGuess = isOwner && !isResolved;
-            const answer = normalizeWordSketchInput(cell.wordSketchAnswer || '');
-            const attemptsLeft = Math.max(WORD_SKETCH_MAX_ATTEMPTS - attemptsUsed, 0);
-
-            let statusText = `<div style="font-size:12px; color:#5d4037; margin-top:8px;">Угадай слово. Есть ${WORD_SKETCH_MAX_ATTEMPTS} попытки. Подсказка: первая буква открыта.</div>`;
-            if (cell.wordSketchGuessed) {
-                statusText = `<div style="font-size:13px; color:#2e7d32; font-weight:bold; margin-top:8px;">Ого! Самый мозговитый на этом холсте! Кодовое слово "Скетч". Рисуй картинку и получай билет.</div><div style="font-size:12px; margin-top:4px; color:#33691e;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`;
-            } else if (cell.wordSketchFailed) {
-                statusText = `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:8px;">Слово не угадано за ${WORD_SKETCH_MAX_ATTEMPTS} попытки. Билет не начисляется, этот раунд пропускается.</div>`;
-            } else {
-                statusText += `<div style="font-size:12px; color:#6d4c41; margin-top:4px;">Попыток осталось: <b>${attemptsLeft}</b></div>`;
-            }
-
-            const attemptsMarkup = attempts.length
-                ? `<div style="margin-top:8px;"><div style="font-size:12px; color:#5d4037;">История попыток:</div>${attempts.map(buildWordSketchAttemptRow).join('')}</div>`
-                : '';
-
-            return `
-                <div style="margin-top:12px; padding:12px; border:2px solid #8d6e63; border-radius:10px; background:#efebe9; text-align:left;">
-                    <div style="font-weight:bold; color:#4e342e; margin-bottom:8px;">🧩 Мини-игра: Словесный скетч</div>
-                    <div style="font-size:12px; color:#5d4037;">Первая буква известна сразу. Цвета в попытках: 🟩 буква и место верные, 🟧 буква есть в слове, но место другое.</div>
-                    ${buildWordSketchHintMarkup(answer)}
-                    ${canGuess ? `<div style="display:flex; gap:6px; margin-top:8px;"><input id="word-sketch-input-${cellIdx}" maxlength="${answer.length || 5}" placeholder="Введи слово" style="flex:1; border:1px solid #bcaaa4; border-radius:8px; padding:8px; text-transform:lowercase;"><button onclick="submitWordSketchGuess(${cellIdx})" style="border:1px solid #6d4c41; background:#fff; color:#4e342e; border-radius:8px; padding:8px 10px;">Проверить</button></div>` : ''}
-                    ${attemptsMarkup}
-                    ${statusText}
-                </div>`;
-        }
-
-        function buildSolvedMiniGameTiles(size = 5) {
-            return [...Array(size * size - 1).keys()].map(i => i + 1).concat(0);
-        }
-
-        function isMiniGameSolved(tiles, size = 5) {
-            const solved = buildSolvedMiniGameTiles(size);
-            return tiles.length === solved.length && tiles.every((v, idx) => v === solved[idx]);
-        }
-
-        function miniGameIsSolvable(tiles, size = 5) {
-            const nums = tiles.filter(v => v !== 0);
-            let inversions = 0;
-            for (let i = 0; i < nums.length; i++) {
-                for (let j = i + 1; j < nums.length; j++) {
-                    if (nums[i] > nums[j]) inversions++;
-                }
-            }
-
-            if (size % 2 === 1) return inversions % 2 === 0;
-
-            const blankRowFromBottom = size - Math.floor(tiles.indexOf(0) / size);
-            return (blankRowFromBottom % 2 === 0) ? (inversions % 2 === 1) : (inversions % 2 === 0);
-        }
-
-        function createShuffledMiniGameTiles(size = 5) {
-            const tiles = buildSolvedMiniGameTiles(size);
-            do {
-                for (let i = tiles.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
-                }
-            } while (!miniGameIsSolvable(tiles, size) || isMiniGameSolved(tiles, size));
-            return tiles;
-        }
-
-        function canMoveMiniGameTile(emptyIdx, tileIdx, size = 5) {
-            if (tileIdx < 0 || emptyIdx < 0) return false;
-            const er = Math.floor(emptyIdx / size), ec = emptyIdx % size;
-            const tr = Math.floor(tileIdx / size), tc = tileIdx % size;
-            return Math.abs(er - tr) + Math.abs(ec - tc) === 1;
-        }
-
-        function pickRandomMiniGameCodeWord() {
-            return miniGameCodeWords[Math.floor(Math.random() * miniGameCodeWords.length)];
-        }
-
-        async function moveMiniGameTile(cellIdx, tileIdx) {
-            const cellRef = db.ref('board/' + cellIdx);
-            const snap = await cellRef.once('value');
-            const cell = snap.val();
-            const isInkMiniGame = !!(cell?.isInkChallenge && myInkChallenge?.selectedOption === 1);
-            if (!cell || (!cell.isMiniGame && !isInkMiniGame)) return;
-
-            const isOwner = cell.userId === currentUserId;
-            if (!isOwner) return alert('Передвигать плитки может только владелец клетки.');
-            if (cell.miniGameWon) return alert('Мини-игра уже собрана!');
-            if (cell.miniGameFailed || (cell.isMiniGame && cell.round === currentRoundNum && Date.now() >= roundEndTime)) return alert('Раунд завершён — билет за пятнашки уже недоступен.');
-
-            const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
-                ? [...cell.miniGameTiles]
-                : createShuffledMiniGameTiles(5);
-
-            const emptyIdx = tiles.indexOf(0);
-            if (!canMoveMiniGameTile(emptyIdx, tileIdx, 5)) return;
-
-            [tiles[emptyIdx], tiles[tileIdx]] = [tiles[tileIdx], tiles[emptyIdx]];
-
-            const updates = { miniGameTiles: tiles };
-            if (isMiniGameSolved(tiles, 5)) {
-                const codeWord = pickRandomMiniGameCodeWord();
-                let ticket = '';
-                if (cell.isInkChallenge && myInkChallenge?.selectedOption === 1) {
-                    ticket = myInkChallenge.pendingTicket || '';
-                    await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, selectedOptionLabel: inkChallengeOptions[0] });
-                } else {
-                    const awarded = await claimSequentialTickets(1);
-                    ticket = awarded?.[0] || '';
-                    if (!ticket) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
-                }
-                updates.miniGameWon = true;
-                updates.miniGameCodeWord = codeWord;
-                updates.ticket = ticket;
-                await postNews(`🎮 ${players[cell.owner].n} собрал(а) пятнашки 5×5 и получил(а) билет №${ticket || '—'}!`);
-            }
-
-            await cellRef.update(updates);
-            const updated = await cellRef.once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        function buildMiniGameMarkup(cellIdx, cell, isOwner) {
-            const tiles = Array.isArray(cell.miniGameTiles) && cell.miniGameTiles.length === 25
-                ? cell.miniGameTiles
-                : createShuffledMiniGameTiles(5);
-
-            const tileButtons = tiles.map((value, idx) => {
-                if (value === 0) {
-                    return `<div style="aspect-ratio:1/1; border:1px dashed #80deea; border-radius:8px; background:#b2ebf2;"></div>`;
-                }
-
-                const emptyIdx = tiles.indexOf(0);
-                const movable = canMoveMiniGameTile(emptyIdx, idx, 5);
-                const commonStyle = `aspect-ratio:1/1; border-radius:8px; font-weight:bold; font-size:15px;`;
-                if (!isOwner || cell.miniGameWon || cell.miniGameFailed || !movable) {
-                    return `<div style="${commonStyle} display:flex; align-items:center; justify-content:center; border:1px solid #4dd0e1; background:#e0f7fa; color:#006064;">${value}</div>`;
-                }
-
-                return `<button onclick="moveMiniGameTile(${cellIdx}, ${idx})" style="${commonStyle} border:1px solid #00acc1; background:white; color:#006064;">${value}</button>`;
-            }).join('');
-
-            const winText = cell.miniGameWon
-                ? `<div style="font-size:14px; font-weight:bold; color:#2e7d32; margin-top:10px;">Вау! А ты не промах! Вот кодовое слово: <span style="background:#fff; border:1px solid #80cbc4; border-radius:8px; padding:3px 8px;">${cell.miniGameCodeWord || pickRandomMiniGameCodeWord()}</span></div><div style="font-size:12px; color:#006064; margin-top:6px;">🎟 Билет: <b>${cell.ticket || '—'}</b></div>`
-                : (cell.miniGameFailed
-                    ? `<div style="font-size:13px; color:#c62828; font-weight:bold; margin-top:10px;">Ой, кажется, кому то надо чаще играть в пятнашки!</div><div style="font-size:12px; color:#607d8b; margin-top:6px;">Раунд завершён. Теперь можно закрыть окошко и ждать следующий раунд, чтобы снова бросить кубик.</div>`
-                    : `<div style="font-size:12px; color:#006064; margin-top:10px;">Собери пятнашки 5×5: расставь числа от 1 до 24 по порядку. Билет выдаётся только за успешную сборку до конца раунда.</div>`);
-
-            return `
-                <div style="margin-top:12px; padding:12px; border:2px solid #00acc1; border-radius:10px; background:#e0f7fa; text-align:left;">
-                    <div style="font-weight:bold; color:#006064; margin-bottom:8px;">🎮 Мини-игра: пятнашки 5×5</div>
-                    <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">${tileButtons}</div>
-                    ${winText}
-                </div>`;
-        }
-
-        async function init() {
-            try {
-                const res = await fetch(JSON_URL);
-                tasks = await res.json();
-                db.ref('.info/serverTimeOffset').on('value', snap => {
-                    serverTimeOffsetMs = Number(snap.val()) || 0;
-                    window.serverTimeOffsetMs = serverTimeOffsetMs;
-                });
-                setupEpicPaintCanvas();
-                checkAccess();
-                syncData();
-                syncGameEvents();
-                observeEvents();
-                syncWheelSystems();
-            } catch(e) { console.error(e); }
-        }
-
-        function playExplosion() {
-            const audio = new Audio('https://www.soundjay.com/mechanical/explosion-01.mp3');
-            audio.volume = 0.3;
-            audio.play().catch(e => console.log("Sound blocked"));
-        }
-
-        function playFanfare() {
-            const audio = new Audio('https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg');
-            audio.volume = 0.35;
-            audio.play().catch(e => console.log("Sound blocked"));
-        }
-
-        function playFireworksSound() {
-            const audio = new Audio('https://actions.google.com/sounds/v1/fireworks/fireworks.ogg');
-            audio.volume = 0.6;
-            audio.play().catch(() => console.log('Sound blocked'));
-        }
-
-        function launchCelebrationFireworks(durationMs = 1600) {
-            const overlay = document.getElementById('event-celebration-overlay');
-            if (!overlay) return;
-            const colors = ['#ff1744', '#ffea00', '#00e5ff', '#7c4dff', '#69f0ae', '#ff9100', '#f50057'];
-
-            const drawBurst = () => {
-                for (let burst = 0; burst < 8; burst++) {
-                    const originX = Math.random() * window.innerWidth;
-                    const originY = 80 + Math.random() * (window.innerHeight * 0.45);
-                    for (let i = 0; i < 24; i++) {
-                        const dot = document.createElement('div');
-                        dot.className = 'firework-dot';
-                        dot.style.left = `${originX}px`;
-                        dot.style.top = `${originY}px`;
-                        dot.style.background = colors[Math.floor(Math.random() * colors.length)];
-                        const angle = (Math.PI * 2 * i) / 24;
-                        const dist = 70 + Math.random() * 140;
-                        dot.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
-                        dot.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
-                        overlay.appendChild(dot);
-                    }
-                }
-            };
-
-            overlay.innerHTML = '';
-            drawBurst();
-            const burstInt = setInterval(drawBurst, 1800);
-
-            setTimeout(() => {
-                clearInterval(burstInt);
-                if (overlay) overlay.innerHTML = '';
-            }, Math.max(1200, durationMs));
-        }
-
-        function setAuthorizedView(isAuthorized) {
-            const gameUi = document.getElementById('game-ui');
-            const unauthorizedScreen = document.getElementById('unauthorized-screen');
-            if (!gameUi || !unauthorizedScreen) return;
-            gameUi.style.display = isAuthorized ? 'block' : 'none';
-            unauthorizedScreen.style.display = isAuthorized ? 'none' : 'block';
-        }
-
-
-        // Механики предметов (инвентарь, активация и выдача эффектов) подключаются из items.js.
-
-
-        async function chooseInkChallengeOption(cellIdx, optionNumber) {
-            const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
-            const challenge = challengeSnap.val();
-            if (!challenge || challenge.round !== currentRoundNum || challenge.isResolved) return alert('Клякса для текущего раунда не активна.');
-            if (![1,2,3,4].includes(optionNumber)) return;
-            if (challenge.selectedOption) return alert('Усложнение уже выбрано.');
-
-            const optionLabel = inkChallengeOptions[optionNumber - 1] || '';
-            await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({
-                draftOption: optionNumber,
-                draftOptionLabel: optionLabel,
-                draftUpdatedAt: Date.now()
-            });
-            alert(`Вариант №${optionNumber} выбран. Теперь нажми «Утвердить выбор».`);
-            const updated = await db.ref(`board/${cellIdx}`).once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        async function confirmInkChallengeOption(cellIdx) {
-            const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
-            const challenge = challengeSnap.val();
-            if (!challenge || challenge.round !== currentRoundNum || challenge.isResolved) return alert('Клякса для текущего раунда не активна.');
-            if (challenge.selectedOption) return alert('Усложнение уже утверждено.');
-            const optionNumber = Number(challenge.draftOption);
-            if (![1,2,3,4].includes(optionNumber)) return alert('Сначала выбери вариант из списка.');
-
-            const patch = {
-                selectedOption: optionNumber,
-                selectedOptionLabel: inkChallengeOptions[optionNumber - 1],
-                selectedAt: Date.now(),
-                updatedAt: Date.now(),
-                draftOption: null,
-                draftOptionLabel: null
-            };
-            if (optionNumber === 4) patch.optionDeadline = Date.now() + 24 * 60 * 60 * 1000;
-            await db.ref(`whitelist/${currentUserId}/ink_challenge`).update(patch);
-            await db.ref(`board/${cellIdx}/inkOption`).set(optionNumber);
-            await db.ref(`board/${cellIdx}/inkOptionLabel`).set(inkChallengeOptions[optionNumber - 1]);
-
-            if (optionNumber === 2 || optionNumber === 3) {
-                await db.ref(`board/${cellIdx}/ticket`).set(challenge.pendingTicket || '');
-                await db.ref(`whitelist/${currentUserId}/ink_challenge/isResolved`).set(true);
-            }
-
-            alert(optionNumber === 4 ? 'Выбор утверждён. Таймер на 24 часа запущен во вкладке сдачи работ.' : 'Выбор утверждён. Усложнение закреплено.');
-            const updated = await db.ref(`board/${cellIdx}`).once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        async function checkInkDeadline() {
-            if (!myInkChallenge || myInkChallenge.round !== currentRoundNum) return;
-            if (myInkChallenge.selectedOption !== 4 || myInkChallenge.isResolved) return;
-            if ((myInkChallenge.optionDeadline || 0) > Date.now()) return;
-
-            await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({
-                isResolved: true,
-                failed: true,
-                failedReason: 'deadline'
-            });
-            if (Number.isInteger(myInkChallenge.cellIdx)) {
-                await db.ref(`board/${myInkChallenge.cellIdx}/ticket`).set('');
-            }
-            alert('⏰ 24 часа на кляксу истекли. Билетик за это задание не начислен.');
-        }
-        // Логика вкладки «Работы» вынесена в works.js.
-
-        async function chooseWandBlessingOption(cellIdx, optionNum) {
-            if (![1,2,3].includes(optionNum)) return;
-            const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
-            const blessing = blessingSnap.val();
-            if (!blessing || blessing.round !== currentRoundNum || blessing.isResolved) return alert('Эта магия уже недоступна.');
-            if (blessing.selectedOption) return alert('Вариант уже утверждён.');
-
-            const optionLabel = wandBlessingTasks[optionNum - 1] || '';
-            await db.ref(`whitelist/${currentUserId}/wand_blessing`).update({
-                draftOption: optionNum,
-                draftOptionLabel: optionLabel,
-                draftUpdatedAt: Date.now()
-            });
-            alert(`Вариант №${optionNum} выбран. Теперь нажми «Утвердить выбор».`);
-            const updated = await db.ref(`board/${cellIdx}`).once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        async function confirmWandBlessingOption(cellIdx) {
-            const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
-            const blessing = blessingSnap.val();
-            if (!blessing || blessing.round !== currentRoundNum || blessing.isResolved) return alert('Эта магия уже недоступна.');
-            if (blessing.selectedOption) return alert('Вариант уже утверждён.');
-            const optionNum = Number(blessing.draftOption);
-            if (![1,2,3].includes(optionNum)) return alert('Сначала выбери вариант из списка.');
-
-            const updates = {
-                selectedOption: optionNum,
-                selectedOptionLabel: wandBlessingTasks[optionNum - 1],
-                selectedAt: Date.now(),
-                isResolved: true,
-                draftOption: null,
-                draftOptionLabel: null
-            };
-            await db.ref(`whitelist/${currentUserId}/wand_blessing`).update(updates);
-            await db.ref(`board/${cellIdx}`).update({
-                ticket: blessing.pendingTicket || '',
-                wandOptionLabel: wandBlessingTasks[optionNum - 1]
-            });
-
-            if (optionNum === 3) {
-                await addInventoryItem('goldenPollen', 1);
-                alert('🎇 Ты получил(а) предмет "Золотая пыльца" в рюкзачок. Использовать можно один раз за игру.');
-            }
-            alert('Выбор утверждён! Добрая фея помогла тебе: теперь рисуй и загружай работу.');
-            const updated = await db.ref(`board/${cellIdx}`).once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        async function surrenderCell(cellIdx) {
-            const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
-            const cell = cellSnap.val();
-            if (!cell || cell.userId !== currentUserId) return alert('Сдаться можно только в своём задании.');
-            if (cell.excluded) return alert('Ты уже сдался(ась) в этой клетке.');
-
-            const roundSnap = await db.ref('current_round').once('value');
-            const roundData = roundSnap.val() || {};
-            const totalRounds = Math.max(1, Number(roundData.totalRounds || roundData.plannedRounds || roundData.number || currentRoundNum || 1));
-            const surrenderLimit = Math.max(1, Math.floor(totalRounds / 3));
-
-            const boardSnap = await db.ref('board').once('value');
-            const board = boardSnap.val() || {};
-            const usedSurrenders = Object.values(board)
-                .filter(Boolean)
-                .filter(c => c.userId === currentUserId && c.excluded)
-                .length;
-
-            if (usedSurrenders >= surrenderLimit) {
-                const confirmedExit = await askForcedSurrenderExit();
-                if (!confirmedExit) return;
-
-                await db.ref(`board/${cellIdx}`).update({ excluded: true, ticket: '' });
-                await db.ref(`whitelist/${currentUserId}`).update({
-                    isEliminated: true,
-                    eliminatedAtRound: currentRoundNum,
-                    eliminatedAt: Date.now(),
-                    eliminationReason: 'forced_surrender'
-                });
-                if (cell.isInkChallenge) {
-                    await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, surrendered: true });
-                }
-                if (cell.isWandBlessing) {
-                    await db.ref(`whitelist/${currentUserId}/wand_blessing`).update({ isResolved: true, surrendered: true });
-                }
-
-                await postNews(`🏳️ ${players[myIndex].n} подтвердил(а) выход из игры: за раунд билет не начисляется, дальнейшие раунды недоступны.`);
-                alert('Ты покидаешь игру. Билет за текущий раунд не начислен, но ранее полученные билетики сохранены.');
-                const updated = await db.ref(`board/${cellIdx}`).once('value');
-                showCell(cellIdx, updated.val());
-                return;
-            }
-
-            if (!confirm('Сдаёшься в этом задании?')) return;
-            if (!confirm('Точно-точно?')) return;
-
-            await db.ref(`board/${cellIdx}`).update({ excluded: true, ticket: '' });
-            if (cell.isInkChallenge) {
-                await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, surrendered: true });
-            }
-            if (cell.isWandBlessing) {
-                await db.ref(`whitelist/${currentUserId}/wand_blessing`).update({ isResolved: true, surrendered: true });
-            }
-            await postNews(`🏳️ ${players[myIndex].n} сдал(а) задание в клетке №${cellIdx + 1} и пропускает билетик за раунд.`);
-            alert('Окей, в этом раунде билетик за это задание не засчитан. Жди следующий раунд!');
-            const updated = await db.ref(`board/${cellIdx}`).once('value');
-            showCell(cellIdx, updated.val());
-        }
-
-        function askForcedSurrenderExit() {
-            return new Promise(resolve => {
-                const existing = document.getElementById('forced-surrender-dialog');
-                if (existing) existing.remove();
-
-                const dialog = document.createElement('div');
-                dialog.id = 'forced-surrender-dialog';
-                dialog.style.position = 'fixed';
-                dialog.style.inset = '0';
-                dialog.style.background = 'rgba(0,0,0,0.45)';
-                dialog.style.display = 'flex';
-                dialog.style.alignItems = 'center';
-                dialog.style.justifyContent = 'center';
-                dialog.style.zIndex = '2200';
-                dialog.innerHTML = `
-                    <div style="width:90%; max-width:420px; background:#fff; border-radius:16px; padding:16px; box-shadow:0 8px 28px rgba(0,0,0,0.25); text-align:center;">
-                        <div style="font-size:16px; font-weight:700; margin-bottom:12px; color:#212121;">Точно хочешь сдаться? После подтверждения ты покинешь игру</div>
-                        <div style="display:flex; flex-direction:column; gap:8px;">
-                            <button id="forced-surrender-yes" class="admin-btn" style="margin:0; background:#d32f2f;">Да, сдаюсь</button>
-                            <button id="forced-surrender-no" class="admin-btn" style="margin:0; background:#757575;">Нет, останусь</button>
-                        </div>
-                    </div>
-                `;
-
-                const cleanup = result => {
-                    dialog.remove();
-                    resolve(result);
-                };
-
-                dialog.addEventListener('click', e => {
-                    if (e.target === dialog) cleanup(false);
-                });
-                document.body.appendChild(dialog);
-                document.getElementById('forced-surrender-yes').onclick = () => cleanup(true);
-                document.getElementById('forced-surrender-no').onclick = () => cleanup(false);
-            });
-        }
-
-        function postNews(text) {
-            if (!text) return;
-            return db.ref('news_feed').push({
-                text,
-                round: currentRoundNum,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
-        }
-
-        function toggleNewsPanel() {
-            toggleExpandablePanel('news-list', 'news-toggle-btn');
-        }
-
-        function toggleAdminEmergencyActions() {
-            toggleExpandablePanel('admin-emergency-body', 'admin-emergency-toggle-btn');
-        }
-
-        function toggleExpandablePanel(listId, btnId) {
-            const list = document.getElementById(listId);
-            const btn = document.getElementById(btnId);
-            if (!list || !btn) return;
-            const isExpanded = list.classList.toggle('expanded');
-            if (listId === 'admin-emergency-body') {
-                list.style.maxHeight = isExpanded ? '72vh' : '0';
-                list.style.overflowY = 'auto';
-            }
-            btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
-        }
-
-        function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
-            const input = document.getElementById(inputId);
-            if (!input || input.value) return;
-            input.value = toMoscowDateTimeLocalInput(Date.now() + plusMs);
-        }
-
-        function switchAdminInnerTab(tabName) {
-            const roundsBtn = document.getElementById('admin-inner-rounds-btn');
-            const eventsBtn = document.getElementById('admin-inner-events-btn');
-            const drawBtn = document.getElementById('admin-inner-draw-btn');
-            const roundsPanel = document.getElementById('admin-rounds-panel');
-            const eventsPanel = document.getElementById('admin-events-panel');
-            const drawPanel = document.getElementById('admin-draw-panel');
-            const isRounds = tabName === 'rounds';
-            const isEvents = tabName === 'events';
-            const isDraw = tabName === 'draw';
-            roundsBtn?.classList.toggle('active', isRounds);
-            eventsBtn?.classList.toggle('active', isEvents);
-            drawBtn?.classList.toggle('active', isDraw);
-            roundsPanel?.classList.toggle('active', isRounds);
-            eventsPanel?.classList.toggle('active', isEvents);
-            drawPanel?.classList.toggle('active', isDraw);
-        }
-        // Логика игровых событий вынесена в ivents.js.
-
-        // Механики билетов (выдача, хранение, таблица) вынесены в Tickets.js.
-
-        async function handleMiniGameRoundFailure() {
-            if (myIndex === -1) return;
-            if (window.miniGameRoundFailChecked === currentRoundNum) return;
-
-            const snap = await db.ref('board').once('value');
-            const board = snap.val() || {};
-            let failedCellIdx = -1;
-
-            for (let i = 0; i < 50; i++) {
-                const cell = board[i];
-                if (!cell) continue;
-                if (cell.userId !== currentUserId) continue;
-                if (cell.round !== currentRoundNum) continue;
-                if (!cell.isMiniGame) continue;
-                if (cell.miniGameWon) continue;
-                failedCellIdx = i;
-                break;
-            }
-
-            if (failedCellIdx !== -1) {
-                await db.ref(`board/${failedCellIdx}`).update({
-                    miniGameFailed: true,
-                    ticket: ''
-                });
-                alert('Ой, кажется, кому то надо чаще играть в пятнашки!');
-            }
-
-            window.miniGameRoundFailChecked = currentRoundNum;
-        }
-
-
-        function getMagnetSourceCandidates(boardData) {
-            const cells = Object.values(boardData || {}).filter(Boolean);
-            return cells.filter(c => !c.isMagic)
-                .filter(c => c.userId !== currentUserId)
-                .filter(c => {
-                    const user = (window.cachedWhitelistData || {})[c.userId] || (window.cachedWhitelistData || {})[String(c.userId)] || {};
-                    return !user.isEliminated && !user.isParticipationBlocked;
-                })
-                                .filter(c => {
-                    if (c.isTrap || c.isGold || c.isMiniGame || c.isInkChallenge || c.isWandBlessing || c.isMagnet) return true;
-                    if (c.itemType) return true;
-                    return Number.isInteger(c.taskIdx) && c.taskIdx >= 0;
-                });
-        }
-
-        function updateTimerDisplay() {
-            if (window.timerInt) clearInterval(window.timerInt);
-            const btn = document.getElementById('dice-btn');
-            const isAdminUser = Number(currentUserId) === Number(ADMIN_ID);
-            if (btn) btn.style.display = isAdminUser ? 'none' : 'block';
-
-            window.timerInt = setInterval(async () => {
-                await checkInkDeadline();
-                await activateScheduledEventIfNeeded();
-                await maybeFinalizeCompletedEventByEndTime();
-                await failExpiredEventIfNeeded();
-                await maybeActivateScheduledDraw();
-                await maybeFinalizeScheduledDraw();
-                if (!window.lastSubmissionDeadlineCheckAt || Date.now() - window.lastSubmissionDeadlineCheckAt > 60000) {
-                    window.lastSubmissionDeadlineCheckAt = Date.now();
-                    await checkSubmissionRoundDeadlines();
-                }
-                const diff = roundEndTime - Date.now();
-                if (diff <= 0) {
-                    document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
-                    btn.disabled = true;
-                    btn.innerText = "⏳ Раунд завершен";
-                    await handleMiniGameRoundFailure();
-                    return;
-                }
-
-                const d = Math.floor(diff / 86400000);
-                const h = Math.floor((diff % 86400000) / 3600000);
-                const m = Math.floor((diff % 3600000) / 60000);
-                const s = Math.floor((diff % 60000) / 1000);
-                document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-
-                if (isAdminUser) {
-                    btn.disabled = true;
-                    btn.innerText = '🛡️ Для админа ход отключён';
-                    return;
-                }
-
-                if (myIndex === -1) {
-                    btn.disabled = true;
-                    btn.innerText = "🔒 Нет доступа";
-                    return;
-                }
-
-                const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
-                const userState = userStateSnap.val() || {};
-                if (userState.isEliminated) {
-                    myRoundHasMove = true;
-                    btn.disabled = true;
-                    btn.innerText = "🚫 Ты выбыл(а) из игры";
-                    updateEventUiState();
-                    return;
-                }
-
-                myRoundHasMove = (userState.last_round === currentRoundNum);
-                btn.disabled = myRoundHasMove;
-                btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
-                updateEventUiState();
-            }, 1000);
-        }
-
-        async function roll() {
-            if (Number(currentUserId) === Number(ADMIN_ID)) return;
-            const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
-            const userState = userStateSnap.val() || {};
-            if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
-
-            const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
-            const roundSnap = await db.ref('current_round').once('value'), rData = roundSnap.val();
-            let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
-            const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
-            let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
-            if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
-
-            const cellIdx = free[Math.floor(Math.random()*free.length)];
-            const isMagic = rData?.magicCell === cellIdx;
-            const isTrap = rData.traps && rData.traps.includes(cellIdx);
-            const isMiniGame = rData?.miniGameCell === cellIdx;
-            const isWordSketch = rData?.wordSketchCell === cellIdx;
-            const isMagnet = rData?.magnetCell === cellIdx;
-            const itemCells = rData?.itemCells || {};
-            const itemType = itemCells[cellIdx] || null;
-            const isGold = !isTrap && !isMagic && !isMiniGame && !isWordSketch && !isMagnet && !itemType && Math.random() < 0.05;
-
-            let tStr = '';
-            if (!isMiniGame && !isWordSketch) {
-                const awarded = await claimSequentialTickets(isGold ? 2 : 1);
-                if (!awarded) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
-                tStr = awarded[0];
-                if (isGold) tStr += " и " + awarded[1];
-            }
-
-            const pendingItemTicket = (itemType === 'inkSaboteur') ? tStr : '';
-            if (itemType === 'inkSaboteur') tStr = '';
-
-            let taskIdx = -1;
-            let trapText = "";
-            let magicLinkId = null;
-            if (isMagic) {
-                const whiteSnap = await db.ref('whitelist').once('value');
-                const candidates = [];
-                whiteSnap.forEach(s => {
-                    const uid = Number(s.key);
-                    const playerState = s.val() || {};
-                    const cIdx = playerState.charIndex;
-                    if (uid !== currentUserId && Number.isInteger(cIdx) && players[cIdx] && !playerState.isEliminated && !playerState.isParticipationBlocked) {
-                        candidates.push({ userId: uid, charIndex: cIdx, name: players[cIdx].n });
-                    }
-                });
-
-                if (candidates.length) {
-                    const partner = candidates[Math.floor(Math.random() * candidates.length)];
-                    const linkRef = db.ref(`magic_links/${currentRoundNum}`).push();
-                    await linkRef.set({
-                        createdAt: Date.now(),
-                        playerA: { userId: currentUserId, charIndex: myIndex, name: players[myIndex].n },
-                        playerB: partner,
-                        tasks: magicBondTasks
-                    });
-                    magicLinkId = linkRef.key;
-                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и связался(ась) с ${partner.name}.`);
-                    alert(`Вау! Это Магические узы! Свяжись с игроком ${partner.name}.`);
-                } else {
-                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и ждёт связи с напарником.`);
-                    alert("Вау! Это Магические узы! Пока нет второго доступного игрока для связи.");
-                }
-            } else if (isTrap) {
-                const traps = [
-                    "Детка, это ловушка Капитана Крюка! Чтобы освободиться, рисуй своей не ведущей рукой! Смотри не мухлюй, злой пират всё видит и порвет твой счастливый билетик у тебя на глазах!",
-                    "Ха-ха! Как же тебе не повезло! Задача трудная - за тобой разворот. Рисуй скорее, а то счастливый билетик растворится как утренняя заря!"
-                ];
-                trapText = traps[Math.floor(Math.random()*traps.length)];
-                await postNews(`💣 ${players[myIndex].n} открыл(а) клетку с бомбой!`);
-            } else if (isMiniGame) {
-                taskIdx = -1;
-                await postNews(`🎮 ${players[myIndex].n} открыл(а) клетку с пятнашками.`);
-                playFanfare();
-            } else if (isWordSketch) {
-                taskIdx = -1;
-                await postNews(`🧩 ${players[myIndex].n} открыл(а) клетку «Словесный скетч».`);
-                playFanfare();
-            } else if (isMagnet) {
-                const magnetCandidates = getMagnetSourceCandidates(board);
-                if (!magnetCandidates.length) {
-                    alert('Пока не с кого тянуть задание, поэтому тебе выпало обычное задание.');
-                    taskIdx = avail[Math.floor(Math.random()*avail.length)];
-                } else {
-                    const source = magnetCandidates[Math.floor(Math.random() * magnetCandidates.length)];
-                    const sourceName = players[source.owner]?.n || 'Неизвестный';
-                    const sourceTaskLabel = getTaskLabelByCell(source);
-                    trapText = sourceTaskLabel;
-                    alert(`Я - это ты, ты - это я. Будь как ${sourceName}, рисуй то же самое`);
-                    await postNews(`👯 ${players[myIndex].n} попал(а) на магнитную клетку и получил(а) задание игрока ${sourceName}.`);
-                }
-            } else if (itemType === 'magnifier') {
-                taskIdx = avail[Math.floor(Math.random()*avail.length)];
-            } else if (itemType) {
-                // В предметной клетке нет обычного задания: либо предмет, либо механика, либо задание.
-            } else if (!isGold) {
-                taskIdx = avail[Math.floor(Math.random()*avail.length)];
-            }
-
-            if (isGold) {
-                await postNews(`👑 ${players[myIndex].n} нашёл(ла) золотую клетку и получил(а) 2 билетика!`);
-            }
-
-            if (itemType) {
-                if (itemType !== 'magicWand' && itemType !== 'inkSaboteur') {
-                    await addInventoryItem(itemType, 1);
-                }
-                await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
-            }
-
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, trapText, round: currentRoundNum, excluded: false };
-            await db.ref('board/'+cellIdx).set(cellData);
-            if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
-            await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
-            showCell(cellIdx, cellData);
-
-            if (itemType === 'magicWand') {
-                await sendWandBlessingImmediately();
-            }
-        }
-
-        function showCell(i, cell) {
-            if (!cell) return;
-
-            const isAdmin = (currentUserId === ADMIN_ID);
-            const isOwner = (cell.owner === myIndex);
-
-            if (cell.isTrap && (isOwner || isAdmin)) {
-                playExplosion();
-                document.body.classList.add('apply-shake');
-                setTimeout(() => document.body.classList.remove('apply-shake'), 500);
-                if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
-            }
-
-            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isWordSketch ? '🧩 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : (cell.itemType ? '🎁 ПРЕДМЕТНАЯ КЛЕТКА' : ('КЛЕТКА №' + (i + 1))))))))));
-            const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
-
-            let h = `
-                <div style="text-align:center; margin-bottom:15px;">
-                    <div style="font-size:16px;">Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b>${userTgId}</div>
-                    <div style="font-size:14px; margin-top:5px;">Билет: <span style="background:var(--p-pink); color:white; padding:2px 8px; border-radius:10px;">${cell.ticket || '—'}</span></div>
-                    ${cell.itemType ? `<div style="font-size:12px; margin-top:6px; color:#6a1b9a;">🎁 Предмет: ${itemTypes[cell.itemType]?.emoji || '🎁'} ${itemTypes[cell.itemType]?.name || cell.itemType}</div>` : ''}
-                </div>
-                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
-            `;
-
-            if (isOwner || isAdmin) {
-                if (cell.isTrap) {
-                    h += `<div style="padding:15px; border:2px dashed red; border-radius:10px; background:#fff0f0; color:#ff4444; font-weight:bold; text-align:center;">${cell.trapText}</div>`;
-                } else if (cell.isMagic) {
-                    h += `
-                    <div style="padding:15px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:left;">
-                        <div style="font-weight:bold; color:#5e35b1; margin-bottom:8px;">Вау! Это Магические узы! Выберите одно совместное задание:</div>
-                        <ol style="margin:0 0 10px 18px; padding:0; line-height:1.4; font-size:14px; color:#333;">
-                            ${magicBondTasks.map(t => `<li style="margin-bottom:6px;">${t}</li>`).join('')}
-                        </ol>
-                        <div style="font-size:13px; color:#4a148c; background:#ede7f6; border-radius:8px; padding:8px;">
-                            🎟 Если договорились и выполнили задание вместе — <b>по 3 билетика</b> каждому.<br>
-                            🎫 Если не договорились, но выполнили свою часть задания — <b>по 1 билетику</b> каждому.
-                        </div>
-                    </div>`;
-                } else if (cell.isGold) {
-                    h += `<div style="padding:15px; border:2px solid #fbc02d; border-radius:10px; background:#fff9c4; text-align:center;">✨ Твое задание: Рисуй на любую свободную тему!</div>`;
-                } else if (cell.itemType === 'goldenPollen') {
-                    h += `<div style="padding:12px; border:2px solid #8e24aa; border-radius:10px; background:#f8e9ff; text-align:left; color:#4a148c;">🎇 Ты получил(а) предмет «Золотая пыльца». Он уже добавлен в рюкзачок и может быть использован для переброса задания на твоей обычной открытой клетке.</div>`;
-                } else if (cell.itemType === 'inkSaboteur') {
-                    h += `<div style="padding:12px; border:2px solid #ce93d8; border-radius:10px; background:#fff7ff; text-align:center; color:#6a1b9a; font-weight:bold;">Сделал гадось - сердцу радость! Кодовое слово "Клякса", нарисовать можешь что хочешь, злючка!</div>`;
-                    h += `<div style="margin-top:8px; font-size:12px; color:#6a1b9a;">Пока не выберешь цель для кляксы, билетик за клетку не начислится.</div>`;
-                    h += `<button onclick="activateInkSaboteur(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🫧 Выбрать игрока для кляксы</button>`;
-                } else if (cell.itemType === 'magicWand') {
-                    h += `<div style="padding:12px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:center; color:#5e35b1; font-weight:bold;">Ты просто прелесть! Твоё кодовое слово "Фея", рисуй что дорого твоему добродушному сердцу!</div>`;
-                } else if (cell.itemType === 'magnifier') {
-                    h += `<div style="padding:12px; border:2px solid #3949ab; border-radius:10px; background:#eef2ff; text-align:left; color:#1a237e; font-weight:600;">🔎 Ты нашёл(ла) Лупу! Текущее задание на этой клетке уже открыто, а Лупа добавлена в рюкзак для другой клетки.</div>`;
-                    const t = tasks[cell.taskIdx];
-                    if (t) {
-                        if (t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin:10px 0; box-shadow:0 4px 10px rgba(0,0,0,0.1);">`;
-                        h += `<p style="text-align:left; line-height:1.4; font-size:15px; color:#444;">${t.text}</p>`;
-                    }
-                    h += `<div style="margin-top:8px; font-size:12px; color:#283593;">На этой клетке Лупу использовать нельзя — выбери другую свою обычную клетку.</div>`;
-                } else if (cell.isMagnet) {
-                    h += `<div style="padding:12px; border:2px dashed #ec407a; border-radius:10px; background:#fff1f7; text-align:left;">
-                        <div style="font-weight:bold; margin-bottom:8px; color:#ad1457;">Я - это ты, ты - это я. Повтори задание выбранного игрока:</div>
-                        <div style="font-size:14px; color:#4a148c;">${cell.magnetTaskLabel || 'Задание будет показано после выбора системой.'}</div>
-                    </div>`;
-                } else if (cell.isInkChallenge) {
-                    const challenge = (myInkChallenge && myInkChallenge.round === cell.round) ? myInkChallenge : null;
-                    const picked = challenge?.selectedOption;
-                    const draft = challenge?.draftOption;
-                    h += `<div style="padding:12px; border:2px dashed #6a1b9a; border-radius:10px; background:#fdf3ff; text-align:left;">
-                        <div style="font-weight:bold; margin-bottom:8px; color:#6a1b9a;">Хах! Кому-то ты не угодил! Твою работу покрыли кляксами! Вот твоё задание:</div>
-                        <ol style="margin:0 0 8px 18px; padding:0; line-height:1.4;">${inkChallengeOptions.map(o => `<li>${o}</li>`).join('')}</ol>
-                        ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">${[1,2,3,4].map(n => `<button onclick="chooseInkChallengeOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
-                        ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmInkChallengeOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
-                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${formatMoscowDateTime(challenge.optionDeadline)}</div>` : ''}
-                    </div>`;
-                } else if (cell.isWandBlessing) {
-                    const wand = (myWandBlessing && myWandBlessing.round === cell.round) ? myWandBlessing : null;
-                    const picked = wand?.selectedOption;
-                    const draft = wand?.draftOption;
-                    h += `<div style="padding:12px; border:2px dashed #6a1b9a; border-radius:10px; background:#fff7ff; text-align:left;">
-                        <div style="font-weight:bold; margin-bottom:8px; color:#6a1b9a;">Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай:</div>
-                        <ol style="margin:0 0 8px 18px; padding:0; line-height:1.4;">${wandBlessingTasks.map(o => `<li>${o}</li>`).join('')}</ol>
-                        ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
-                        <div style="display:grid; grid-template-columns:1fr; gap:6px; margin-top:8px;">${[1,2,3].map(n => `<button onclick="chooseWandBlessingOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
-                        ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmWandBlessingOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
-                    </div>`;
-                } else if (cell.isMiniGame || cell.isWordSketch) {
-                    h += `<div style="padding:12px; border:1px dashed #80cbc4; border-radius:10px; background:#f1f8e9; text-align:center; color:#33691e;">В этой клетке только мини-игра. Дополнительных заданий и механик нет.</div>`;
-                } else {
-                    const t = tasks[cell.taskIdx];
-                    if (t) {
-                        if (t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin-bottom:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">`;
-                        h += `<p style="text-align:left; line-height:1.4; font-size:15px; color:#444;">${t.text}</p>`;
-                    }
-                }
-
-                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && isOwner && (myInventory.goldenPollen || 0) > 0) {
-                    h += `<button onclick="activateGoldenPollen(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🎇 Использовать Золотую пыльцу (x${myInventory.goldenPollen})</button>`;
-                }
-                if (!cell.isTrap && !cell.isMagic && !cell.isMiniGame && !cell.isWordSketch && !cell.isGold && !cell.isInkChallenge && !cell.isWandBlessing && !cell.isMagnet && !cell.itemType && isOwner && (myInventory.magnifier || 0) > 0) {
-                    h += `<button onclick="activateMagnifier(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#3949ab;">🔎 Использовать Лупу (x${myInventory.magnifier})</button>`;
-                }
-
-                if (isOwner && !cell.excluded) {
-                    h += `<button onclick="surrenderCell(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#9e9e9e;">🏳️ Сдаюсь</button>`;
-                }
-
-                if (cell.isMiniGame || (cell.isInkChallenge && myInkChallenge?.selectedOption === 1)) {
-                    h += buildMiniGameMarkup(i, cell, isOwner);
-                }
-
-                if (cell.isWordSketch) {
-                    h += buildWordSketchMarkup(i, cell, isOwner);
-                }
-            } else {
-                if (cell.itemType) {
-                    h += `<div style="padding:12px; border:1px solid #e1bee7; border-radius:10px; background:#faf5ff; text-align:left;"><b>${players[cell.owner]?.n || 'Игрок'}</b> получил(а) предмет: ${itemTypes[cell.itemType]?.emoji || '🎁'} ${itemTypes[cell.itemType]?.name || cell.itemType}.<br><span style="font-size:12px; color:#777;">Задание по этой клетке скрыто для других игроков.</span></div>`;
-                } else {
-                    h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Задание скрыто.<br>Его видит только автор и админ.</p></div>`;
-                }
-            }
-
-            document.getElementById('mText').innerHTML = h;
-            document.getElementById('modal').style.display = 'block';
-            document.getElementById('overlay').style.display = 'block';
-        }
-
-        // Источник активных билетиков для колеса вынесен в Tickets.js.
-
-        function drawWheel() {
-            const canvas = document.getElementById('wheel-canvas');
-            const ctx = canvas.getContext('2d');
-            const tickets = getActiveTicketsForWheel();
-            ctx.clearRect(0, 0, 280, 280);
-
-            if (!tickets.length) {
-                ctx.beginPath();
-                ctx.arc(140, 140, 122, 0, Math.PI * 2);
-                ctx.fillStyle = '#f2f2f2';
-                ctx.fill();
-                ctx.fillStyle = '#999';
-                ctx.font = 'bold 14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Нет активных билетов', 140, 145);
-                return;
-            }
-
-            const segs = tickets.length;
-            const angle = (2 * Math.PI) / segs;
-            tickets.forEach((t, i) => {
-                const startA = i * angle;
-                const endA = (i + 1) * angle;
-
-                ctx.beginPath();
-                ctx.moveTo(140, 140);
-                ctx.arc(140, 140, 122, startA, endA);
-                ctx.closePath();
-                ctx.fillStyle = (i % 2 === 0) ? '#ef1e1e' : '#ffffff';
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.moveTo(140, 140);
-                ctx.lineTo(140 + 122 * Math.cos(startA), 140 + 122 * Math.sin(startA));
-                ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-
-                ctx.save();
-                ctx.translate(140, 140);
-                ctx.rotate(startA + angle / 2);
-                ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#b71c1c';
-                ctx.font = segs > 120 ? 'bold 8px Arial' : 'bold 10px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(t.num, 92, 3);
-                ctx.restore();
-            });
-
-            const rimGradOuter = ctx.createLinearGradient(12, 12, 268, 268);
-            rimGradOuter.addColorStop(0, '#fbe5a6');
-            rimGradOuter.addColorStop(0.55, '#efbe47');
-            rimGradOuter.addColorStop(1, '#d49a2e');
-
-            ctx.beginPath();
-            ctx.arc(140, 140, 133, 0, Math.PI * 2);
-            ctx.strokeStyle = rimGradOuter;
-            ctx.lineWidth = 10;
-            ctx.stroke();
-
-            const rimGradInner = ctx.createLinearGradient(24, 24, 256, 256);
-            rimGradInner.addColorStop(0, '#fff3c8');
-            rimGradInner.addColorStop(1, '#d89d2f');
-            ctx.beginPath();
-            ctx.arc(140, 140, 127, 0, Math.PI * 2);
-            ctx.strokeStyle = rimGradInner;
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(140, 140, 17, 0, Math.PI * 2);
-            const centerGrad = ctx.createRadialGradient(134, 132, 2, 140, 140, 18);
-            centerGrad.addColorStop(0, '#fff7dc');
-            centerGrad.addColorStop(0.45, '#e7bf65');
-            centerGrad.addColorStop(1, '#ca9224');
-            ctx.fillStyle = centerGrad;
-            ctx.fill();
-            ctx.strokeStyle = '#b37c1f';
-            ctx.lineWidth = 1.2;
-            ctx.stroke();
-        }
-
-        function closeWinnerToast() {
-            const toast = document.getElementById('winner-toast');
-            if (toast) toast.style.display = 'none';
-        }
-
-        function showWinnerToast(text) {
-            const toast = document.getElementById('winner-toast');
-            const textEl = document.getElementById('winner-toast-text');
-            if (!toast || !textEl) return;
-            textEl.innerText = text;
-            toast.style.display = 'block';
-        }
-
-        function startContinuousWheelSpin() {
-            const canvas = document.getElementById('wheel-canvas');
-            if (!canvas) return;
-            if (wheelSpinInterval) clearInterval(wheelSpinInterval);
-            canvas.style.transition = 'none';
-            wheelSpinInterval = setInterval(() => {
-                currentWheelRotation += 18;
-                canvas.style.transform = `rotate(${currentWheelRotation}deg)`;
-            }, 100);
-        }
-
-        function stopContinuousWheelSpin() {
-            if (wheelSpinInterval) {
-                clearInterval(wheelSpinInterval);
-                wheelSpinInterval = null;
-            }
-        }
-
-        function getWinnerIndexByTicketNum(ticketNum) {
-            const tickets = getActiveTicketsForWheel();
-            return tickets.findIndex(t => String(t.num) === String(ticketNum));
-        }
-
-        function computeRotationForWinnerIndex(index, segs, baseRotation) {
-            const segmentDeg = 360 / Math.max(1, segs);
-            const val = index * segmentDeg + segmentDeg / 2;
-            const targetMod = (630 - val) % 360;
-            const baseMod = ((baseRotation % 360) + 360) % 360;
-            const delta = (targetMod - baseMod + 360) % 360;
-            return baseRotation + (6 * 360) + delta;
-        }
-
-        function runWheelStopAnimationAndShowWinner(winnerTicket, winnerName, drawId) {
-            const tickets = getActiveTicketsForWheel();
-            const winnerIdx = tickets.findIndex(t => String(t.num) === String(winnerTicket));
-            if (winnerIdx < 0) return;
-            const canvas = document.getElementById('wheel-canvas');
-            stopContinuousWheelSpin();
-            const targetRotation = computeRotationForWinnerIndex(winnerIdx, tickets.length, currentWheelRotation);
-            currentWheelRotation = targetRotation;
-            canvas.style.transition = 'transform 6s cubic-bezier(0.16, 0.84, 0.24, 1)';
-            canvas.style.transform = `rotate(${targetRotation}deg)`;
-
-            setTimeout(async () => {
-                const text = `Поздравляю, ${winnerName}, великая азиатская фортуна выбрала тебя победителем!`;
-                document.getElementById('winner-display').innerHTML = `🏆 Билет №${winnerTicket}: <b>${winnerName}</b>`;
-                showWinnerToast(text);
-                launchCelebrationFireworks();
-                playFireworksSound();
-            }, 6200);
-        }
-
-        function renderWinnerHistory() {
-            const preview = document.getElementById('winner-history-preview');
-            const list = document.getElementById('winner-history-list');
-            if (!preview || !list) return;
-            if (!winnerHistoryItems.length) {
-                preview.innerText = 'Пока победителей нет.';
-                list.innerHTML = '';
-                return;
-            }
-            const latest = winnerHistoryItems[0];
-            preview.innerText = `${formatMoscowDateTime(latest.createdAt || 0)} · №${latest.ticket} · ${latest.winnerName}`;
-            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${formatMoscowDateTime(item.createdAt || 0)} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
-        }
-
-        function toggleWinnerHistoryPanel() {
-            toggleExpandablePanel('winner-history-list', 'winner-history-toggle-btn');
-        }
-
-        async function maybeActivateScheduledDraw() {
-            if (!currentDrawSchedule || currentDrawSchedule.status !== 'scheduled') return;
-            if (Date.now() < (currentDrawSchedule.startAt || 0)) return;
-            await db.ref('wheel_draw').transaction(v => {
-                if (!v || v.status !== 'scheduled') return v;
-                if (Date.now() < (v.startAt || 0)) return v;
-                return { ...v, status: 'spinning', startedAt: Date.now() };
-            });
-        }
-
-        async function maybeFinalizeScheduledDraw() {
-            if (!currentDrawSchedule || currentDrawSchedule.status !== 'spinning') return;
-            const finishAt = (currentDrawSchedule.startedAt || 0) + (currentDrawSchedule.durationMs || 0);
-            if (Date.now() < finishAt) return;
-
-            const tickets = getActiveTicketsForWheel();
-            if (!tickets.length) {
-                await db.ref('wheel_draw').transaction(v => {
-                    if (!v || v.status !== 'spinning') return v;
-                    return { ...v, status: 'completed', completedAt: Date.now(), noTickets: true };
-                });
-                return;
-            }
-
-            const randomIdx = Math.floor(Math.random() * tickets.length);
-            const winner = tickets[randomIdx];
-            const tx = await db.ref('wheel_draw').transaction(v => {
-                if (!v || v.status !== 'spinning') return v;
-                return {
-                    ...v,
-                    status: 'completed',
-                    completedAt: Date.now(),
-                    winnerTicket: winner.num,
-                    winnerName: winner.name,
-                    randomIdx
-                };
-            });
-            if (tx.committed) {
-                await db.ref('wheel_history').push({
-                    drawId: tx.snapshot.val()?.completedAt || Date.now(),
-                    ticket: String(winner.num),
-                    winnerName: winner.name,
-                    createdAt: Date.now()
-                });
-            }
-        }
-
-        function updateAdminDrawStatus() {
-            const el = document.getElementById('admin-draw-status');
-            if (!el) return;
-            if (!currentDrawSchedule) {
-                el.innerText = 'Розыгрыш не запланирован.';
-                return;
-            }
-            const start = currentDrawSchedule.startAt ? formatMoscowDateTime(currentDrawSchedule.startAt) : '—';
-            const state = currentDrawSchedule.status || '—';
-            const mins = Math.round((currentDrawSchedule.durationMs || 0) / 60000);
-            el.innerText = `Статус: ${state}. Старт: ${start}. Длительность крутки: ${mins} мин.`;
-        }
-
-        async function adminScheduleDraw() {
-            if (currentUserId !== ADMIN_ID) return;
-            const startRaw = document.getElementById('draw-start-at')?.value;
-            const mins = Number(document.getElementById('draw-duration-mins')?.value || 0);
-            if (!startRaw) return alert('Выбери дату и время старта розыгрыша.');
-            if (!mins || mins < 1) return alert('Укажи длительность крутки в минутах.');
-            const startAt = parseMoscowDateTimeLocalInput(startRaw);
-            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
-
-            await db.ref('wheel_draw').set({
-                status: 'scheduled',
-                startAt,
-                durationMs: mins * 60000,
-                createdAt: Date.now(),
-                createdBy: currentUserId
-            });
-            alert('Розыгрыш запланирован.');
-        }
-
-        function syncWheelSystems() {
-            if (winnerHistoryRef) winnerHistoryRef.off();
-            winnerHistoryRef = db.ref('wheel_history').limitToLast(100);
-            winnerHistoryRef.on('value', snap => {
-                const items = [];
-                snap.forEach(item => items.push(item.val() || {}));
-                winnerHistoryItems = items.reverse();
-                renderWinnerHistory();
-            });
-
-            if (drawScheduleRef) drawScheduleRef.off();
-            drawScheduleRef = db.ref('wheel_draw');
-            drawScheduleRef.on('value', snap => {
-                currentDrawSchedule = snap.val() || null;
-                updateAdminDrawStatus();
-                if (!currentDrawSchedule) {
-                    stopContinuousWheelSpin();
-                    return;
-                }
-                if (currentDrawSchedule.status === 'spinning') {
-                    startContinuousWheelSpin();
-                } else if (currentDrawSchedule.status === 'completed') {
-                    stopContinuousWheelSpin();
-                    if (currentDrawSchedule.winnerTicket && currentDrawSchedule.winnerName && currentDrawSchedule.completedAt && window.lastHandledDrawCompletedAt !== currentDrawSchedule.completedAt) {
-                        window.lastHandledDrawCompletedAt = currentDrawSchedule.completedAt;
-                        runWheelStopAnimationAndShowWinner(currentDrawSchedule.winnerTicket, currentDrawSchedule.winnerName, currentDrawSchedule.completedAt);
-                    }
-                }
-            });
-
-            if (wheelSystemInterval) clearInterval(wheelSystemInterval);
-            wheelSystemInterval = setInterval(async () => {
-                await maybeActivateScheduledDraw();
-                await maybeFinalizeScheduledDraw();
-            }, 1000);
-        }
-
-        async function adminStartNewRound() {
-    // Получаем значения из полей
-    const d = parseInt(document.getElementById('r-days').value) || 0;
-    const h = parseInt(document.getElementById('r-hours').value) || 0;
-    const m = parseInt(document.getElementById('r-mins').value) || 0;
-
-    // Переводим всё в миллисекунды
-    const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
-
-    if (durationMs <= 0) return alert("Укажите время раунда!");
-
-    await archiveAndClearBoard();
-    let free = []; for(let i=0; i<50; i++) free.push(i);
-
-    const magicCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
-    const miniGameCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
-    const wordSketchCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
-    const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
-
-    const itemCells = {};
-    const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier'];
-    for (const itemType of itemPool) {
-        if (!free.length) break;
-        const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
-        itemCells[idx] = itemType;
+(function () {
+  const EVENT_PATH = 'current_event';
+  const EVENT_TYPE = 'paint';
+  const STATUS_ACTIVE = 'active';
+  const STATUS_IDLE = 'idle';
+  const TARGET_PERCENT = 95;
+  const BRUSH_SIZE = 20;
+
+  let eventRef = null;
+  let strokesRef = null;
+  let timerHandle = null;
+  let progressHandle = null;
+  let isFinishing = false;
+  let firstStrokeSent = false;
+
+  let state = { status: STATUS_IDLE, type: EVENT_TYPE, end_timestamp: 0, progress: 0, participants: {} };
+  let strokeMap = {};
+  let drawing = false;
+  let lastPoint = { x: 0, y: 0 };
+
+  const $ = (id) => document.getElementById(id);
+
+  async function getDbReady() {
+    if (window.db && typeof window.db.ref === 'function') return window.db;
+    if (typeof window.waitForDbReady === 'function') return window.waitForDbReady();
+    throw new Error('Firebase db not ready');
+  }
+
+  function getCanvas() { return $('event-canvas'); }
+  function getCtx() { return getCanvas()?.getContext('2d'); }
+  function getUserId() { return String(window.currentUserId || '').trim(); }
+
+  function normalizeEvent(v) {
+    const e = v || {};
+    return {
+      status: String(e.status || e.event_status || STATUS_IDLE),
+      type: String(e.type || EVENT_TYPE),
+      end_timestamp: Number(e.end_timestamp || 0),
+      progress: Number(e.progress?.percent ?? e.progress ?? 0),
+      participants: e.participants || {}
+    };
+  }
+
+  function formatTimer(ts) {
+    const left = Math.max(0, Number(ts || 0) - Date.now());
+    const sec = Math.floor(left / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function showNotification() {
+    const box = $('event-notification');
+    if (!box) return;
+
+    if (state.status === STATUS_ACTIVE && state.type === EVENT_TYPE) {
+      box.style.display = 'block';
+      box.classList.add('event-notification-pink');
+      box.innerHTML = `
+        <div class="event-notification-text">✨🎨 ✨ Внимание! Начался ивент: Эпичный раскрас! Присоединяйся и получи билетики! 🎫</div>
+        <button id="btn-join-event" class="event-notification-join">Присоединиться</button>
+      `;
+      const join = $('btn-join-event');
+      if (join) join.onclick = () => openEventOverlay();
+    } else {
+      box.style.display = 'none';
+      box.classList.remove('event-notification-pink');
+      box.innerHTML = '';
+    }
+  }
+
+  function updateOverlayUi() {
+    const timer = $('event-timer');
+    const title = $('event-space-title');
+    const progress = $('paint-progress');
+
+    if (title) title.textContent = 'Эпичный раскрас';
+    if (timer) timer.textContent = state.status === STATUS_ACTIVE ? formatTimer(state.end_timestamp) : '00:00';
+    if (progress) progress.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
+  }
+
+  function resizeCanvasToViewport() {
+    const canvas = getCanvas();
+    if (!canvas) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const width = Math.max(320, window.innerWidth);
+    const height = Math.max(420, window.innerHeight - 120);
+
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    redrawStrokes();
+  }
+
+  function openEventOverlay() {
+    const overlay = $('event-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    document.body.classList.add('event-mode');
+    resizeCanvasToViewport();
+    redrawStrokes();
+  }
+
+  function closeEventOverlay() {
+    const overlay = $('event-overlay');
+    if (overlay) overlay.style.display = 'none';
+    document.body.classList.remove('event-mode');
+  }
+
+  function getPointerPos(evt) {
+    const canvas = getCanvas();
+    const rect = canvas.getBoundingClientRect();
+    const touch = evt.touches?.[0] || evt.changedTouches?.[0];
+    const cx = touch ? touch.clientX : evt.clientX;
+    const cy = touch ? touch.clientY : evt.clientY;
+    return {
+      x: ((cx - rect.left) / rect.width) * canvas.width,
+      y: ((cy - rect.top) / rect.height) * canvas.height
+    };
+  }
+
+  async function registerParticipantOnFirstDraw() {
+    const uid = getUserId();
+    if (!uid || firstStrokeSent) return;
+    firstStrokeSent = true;
+
+    try {
+      const db = await getDbReady();
+      await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
+    } catch (e) {
+      console.error('Не удалось записать участника:', e);
+    }
+  }
+
+  async function startDrawing(evt) {
+    if (state.status !== STATUS_ACTIVE) return;
+    evt.preventDefault();
+    const p = getPointerPos(evt);
+    drawing = true;
+    lastPoint = p;
+    await registerParticipantOnFirstDraw();
+    await pushStroke(p.x, p.y, p.x, p.y);
+  }
+
+  async function draw(evt) {
+    if (!drawing || state.status !== STATUS_ACTIVE) return;
+    evt.preventDefault();
+    const p = getPointerPos(evt);
+    await pushStroke(lastPoint.x, lastPoint.y, p.x, p.y);
+    lastPoint = p;
+  }
+
+  function stopDrawing() {
+    drawing = false;
+  }
+
+  function bindCanvasEvents() {
+    const canvas = getCanvas();
+    if (!canvas || canvas.dataset.bound === '1') return;
+    canvas.dataset.bound = '1';
+
+    canvas.addEventListener('touchstart', startDrawing, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchcancel', stopDrawing);
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseleave', stopDrawing);
+  }
+
+  async function pushStroke(x1, y1, x2, y2) {
+    if (!strokesRef) return;
+    await strokesRef.push({ x1, y1, x2, y2, size: BRUSH_SIZE, color: '#ff4fa3', at: Date.now(), uid: getUserId() });
+  }
+
+  function redrawStrokes() {
+    const canvas = getCanvas();
+    const ctx = getCtx();
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    Object.values(strokeMap).forEach((s) => {
+      ctx.beginPath();
+      ctx.lineCap = 'round';
+      ctx.lineWidth = Number(s.size) || BRUSH_SIZE;
+      ctx.strokeStyle = s.color || '#ff4fa3';
+      ctx.moveTo(Number(s.x1) || 0, Number(s.y1) || 0);
+      ctx.lineTo(Number(s.x2) || 0, Number(s.y2) || 0);
+      ctx.stroke();
+    });
+  }
+
+  function calculateProgressPercent() {
+    const canvas = getCanvas();
+    const ctx = getCtx();
+    if (!canvas || !ctx) return 0;
+
+    const step = 5;
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let total = 0;
+    let painted = 0;
+
+    for (let y = 0; y < canvas.height; y += step) {
+      for (let x = 0; x < canvas.width; x += step) {
+        total += 1;
+        const i = (y * canvas.width + x) * 4;
+        const alpha = img[i + 3];
+        if (alpha > 0) painted += 1;
+      }
     }
 
-    let traps = [];
-    // Ставим 2 ловушки на свободные клетки
-    for(let j=0; j<2; j++) {
-        if(free.length) {
-            const randomIndex = Math.floor(Math.random() * free.length);
-            traps.push(free.splice(randomIndex, 1)[0]);
+    return total ? (painted / total) * 100 : 0;
+  }
+
+  async function finalizeRewardsAndCleanup() {
+    if (isFinishing) return;
+    isFinishing = true;
+    try {
+      const db = await getDbReady();
+      const snap = await db.ref(EVENT_PATH).once('value');
+      const eventData = snap.val() || {};
+      const participants = Object.keys(eventData.participants || {});
+
+      for (const uid of participants) {
+        if (typeof window.createTicket === 'function') {
+          await window.createTicket(uid, 2, 'Ивент: Эпичный раскрас');
         }
+      }
+
+      await db.ref(EVENT_PATH).remove();
+
+      if (!participants.length && typeof window.postNews === 'function') {
+        await window.postNews('Ивент завершен, никто не участвовал');
+      }
+    } catch (e) {
+      console.error('Ошибка завершения ивента:', e);
+    } finally {
+      isFinishing = false;
     }
+  }
 
-    const s = await db.ref('current_round/number').once('value');
-    const newRoundNum = (s.val() || 0) + 1;
+  async function syncProgressLoop() {
+    if (state.status !== STATUS_ACTIVE) return;
+    try {
+      const db = await getDbReady();
+      const percent = Number(calculateProgressPercent().toFixed(2));
+      state.progress = percent;
+      updateOverlayUi();
+      await db.ref(`${EVENT_PATH}/progress`).set({ percent, updated_at: Date.now() });
+      if (percent >= TARGET_PERCENT) {
+        await finalizeRewardsAndCleanup();
+      }
+    } catch (e) {
+      console.error('Ошибка синхронизации прогресса:', e);
+    }
+  }
 
-    // Сохраняем в Firebase
-    await db.ref('current_round').set({
-        number: newRoundNum,
-        endTime: Date.now() + durationMs,
-        traps: traps,
-        magicCell: magicCell,
-        miniGameCell: miniGameCell,
-        wordSketchCell: wordSketchCell,
-        magnetCell: magnetCell,
-        itemCells
+  async function attachRealtimeListeners() {
+    const db = await getDbReady();
+
+    if (eventRef) eventRef.off();
+    if (strokesRef) strokesRef.off();
+
+    eventRef = db.ref(EVENT_PATH);
+    eventRef.on('value', (snap) => {
+      const prev = state.status;
+      state = normalizeEvent(snap.val());
+      if (prev !== STATUS_ACTIVE && state.status === STATUS_ACTIVE) firstStrokeSent = false;
+      showNotification();
+      updateOverlayUi();
     });
 
-    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 4 клетки с предметами.`);
+    strokesRef = db.ref(`${EVENT_PATH}/strokes`);
+    strokesRef.on('value', (snap) => {
+      strokeMap = snap.val() || {};
+      redrawStrokes();
+    });
+  }
 
-    alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
-}
+  async function initEventSystem() {
+    try {
+      await getDbReady();
+      bindCanvasEvents();
+      resizeCanvasToViewport();
+      await attachRealtimeListeners();
 
-        function pickRandom(arr) {
-            if (!arr.length) return null;
-            return arr[Math.floor(Math.random() * arr.length)];
-        }
+      const exit = $('btn-exit-event');
+      if (exit && exit.dataset.bound !== '1') {
+        exit.dataset.bound = '1';
+        exit.onclick = () => closeEventOverlay();
+      }
 
-        function shuffleArray(arr) {
-            const copy = [...arr];
-            for (let i = copy.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [copy[i], copy[j]] = [copy[j], copy[i]];
-            }
-            return copy;
-        }
+      if (timerHandle) clearInterval(timerHandle);
+      timerHandle = setInterval(() => {
+        updateOverlayUi();
+      }, 1000);
 
-        async function getUsedCharIndexes() {
-            const snap = await db.ref('whitelist').once('value');
-            const used = new Set();
-            snap.forEach(userSnap => {
-                const idx = userSnap.val()?.charIndex;
-                if (Number.isInteger(idx) && players[idx]) used.add(idx);
-            });
-            return used;
-        }
+      if (progressHandle) clearInterval(progressHandle);
+      progressHandle = setInterval(syncProgressLoop, 5000);
 
-        async function saveNewUserRandomly() {
-            const id = document.getElementById('new-user-id').value;
-            if (!id) return;
+      window.addEventListener('resize', resizeCanvasToViewport);
+      window.addEventListener('orientationchange', resizeCanvasToViewport);
+    } catch (e) {
+      console.error('initEventSystem failed:', e);
+    }
+  }
 
-            const existing = await db.ref('whitelist/' + id).once('value');
-            if (existing.exists()) {
-                alert('Этот Telegram ID уже есть в списке игроков.');
-                return;
-            }
+  async function adminLaunchEpicPaintEvent(durationMins = 10) {
+    try {
+      const db = await getDbReady();
+      if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+      const mins = Math.max(1, Number(durationMins) || 10);
+      await db.ref(EVENT_PATH).set({
+        type: EVENT_TYPE,
+        status: STATUS_ACTIVE,
+        end_timestamp: Date.now() + mins * 60000,
+        participants: {},
+        strokes: {},
+        progress: { percent: 0 }
+      });
+    } catch (e) {
+      console.error('adminLaunchEpicPaintEvent failed:', e);
+    }
+  }
 
-            const used = await getUsedCharIndexes();
-            const freeIndexes = players
-                .map((_, idx) => idx)
-                .filter(idx => !used.has(idx));
+  // exports / compatibility
+  window.initEventSystem = initEventSystem;
+  window.syncGameEvents = initEventSystem;
+  window.setupEpicPaintCanvas = bindCanvasEvents;
+  window.openEventOverlay = openEventOverlay;
+  window.closeEventOverlay = closeEventOverlay;
+  window.openEventSpace = openEventOverlay;
+  window.backToGameFromEvent = closeEventOverlay;
+  window.startDrawing = startDrawing;
+  window.draw = draw;
+  window.stopDrawing = stopDrawing;
+  window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
+  window.adminScheduleEvent = adminLaunchEpicPaintEvent;
 
-            if (!freeIndexes.length) {
-                alert('Свободные никнеймы закончились. Удалите игрока или расширьте пул ников.');
-                return;
-            }
-
-            const charIndex = pickRandom(freeIndexes);
-            await db.ref('whitelist/' + id).set({
-                charIndex,
-                used_tasks: [],
-                last_round: 0
-            });
-            document.getElementById('new-user-id').value = "";
-        }
-
-        async function adminReplaceAllNicknames() {
-            if (currentUserId !== ADMIN_ID) return;
-            if (!confirm('Заменить всем игрокам никнеймы на новые случайные из полного пула?')) return;
-
-            const snap = await db.ref('whitelist').once('value');
-            const users = [];
-            snap.forEach(userSnap => {
-                users.push({
-                    userId: userSnap.key,
-                    currentCharIndex: userSnap.val()?.charIndex
-                });
-            });
-
-            if (!users.length) {
-                alert('Список игроков пуст.');
-                return;
-            }
-
-            if (users.length > players.length) {
-                alert('Игроков больше, чем доступных никнеймов. Невозможно выдать уникальные имена всем.');
-                return;
-            }
-
-            const shuffledNickIndexes = shuffleArray(players.map((_, idx) => idx)).slice(0, users.length);
-
-            if (users.length > 1) {
-                for (let i = 0; i < users.length; i++) {
-                    if (shuffledNickIndexes[i] !== users[i].currentCharIndex) continue;
-
-                    const swapIdx = shuffledNickIndexes.findIndex((nickIdx, j) => {
-                        if (i === j) return false;
-                        const myCurrent = users[i].currentCharIndex;
-                        const otherCurrent = users[j].currentCharIndex;
-                        return nickIdx !== myCurrent && shuffledNickIndexes[i] !== otherCurrent;
-                    });
-
-                    if (swapIdx !== -1) {
-                        [shuffledNickIndexes[i], shuffledNickIndexes[swapIdx]] = [shuffledNickIndexes[swapIdx], shuffledNickIndexes[i]];
-                    }
-                }
-            }
-
-            const updates = {};
-            users.forEach((user, i) => {
-                updates[`whitelist/${user.userId}/charIndex`] = shuffledNickIndexes[i];
-            });
-
-            await db.ref().update(updates);
-            alert('Никнеймы всех игроков успешно заменены (уникально и случайно).');
-        }
-
-
-        function fillAdminNickOptions() {
-            const sel = document.getElementById('admin-rename-char-index');
-            if (!sel) return;
-            sel.innerHTML = players.map((p, idx) => `<option value="${idx}">${idx + 1}. ${p.n}</option>`).join('');
-        }
-
-      function syncAdminList() {
-            db.ref('whitelist').on('value', snap => {
-                const users = [];
-                snap.forEach(u => {
-                    const userData = u.val() || {};
-                    users.push({
-                        userTgId: u.key,
-                        charIndex: userData.charIndex
-                    });
-                });
-
-                users.sort((a, b) => {
-                    const aIdx = Number.isInteger(a.charIndex) ? a.charIndex : 999;
-                    const bIdx = Number.isInteger(b.charIndex) ? b.charIndex : 999;
-                    if (aIdx !== bIdx) return aIdx - bIdx;
-                    return String(a.userTgId).localeCompare(String(b.userTgId));
-                });
-
-                const activePlayersEl = document.getElementById('active-players');
-                if (!activePlayersEl) return;
-                activePlayersEl.innerHTML = '';
-
-                const title = document.createElement('b');
-                title.innerText = `Список художников (${users.length}):`;
-                activePlayersEl.appendChild(title);
-                activePlayersEl.appendChild(document.createElement('br'));
-
-                users.forEach(({ userTgId, charIndex }) => {
-                    const charName = players[charIndex]?.n || 'Неизвестный';
-                    const charColor = charColors[charIndex] || '#333';
-
-                    const row = document.createElement('div');
-                    row.style.display = 'flex';
-                    row.style.justifyContent = 'space-between';
-                    row.style.alignItems = 'center';
-                    row.style.fontSize = '12px';
-                    row.style.padding = '5px 0';
-                    row.style.borderBottom = '1px solid #eee';
-                    row.style.gap = '8px';
-
-                    const left = document.createElement('span');
-                    left.style.textAlign = 'left';
-                    left.innerHTML = `<b style="color:${charColor}">${charName}</b><br><code style="color:#888; font-size:10px;">ID: ${userTgId}</code>`;
-
-                    const right = document.createElement('div');
-                    right.style.display = 'flex';
-                    right.style.alignItems = 'center';
-                    right.style.gap = '6px';
-
-                    const kickBtn = document.createElement('button');
-                    kickBtn.style.color = 'red';
-                    kickBtn.style.border = '1px solid red';
-                    kickBtn.style.borderRadius = '5px';
-                    kickBtn.style.background = 'none';
-                    kickBtn.style.padding = '2px 6px';
-                    kickBtn.style.fontSize = '10px';
-                    kickBtn.innerText = 'Удалить';
-                    kickBtn.addEventListener('click', () => kick(String(userTgId)));
-
-                    right.appendChild(kickBtn);
-                    row.appendChild(left);
-                    row.appendChild(right);
-                    activePlayersEl.appendChild(row);
-                });
-
-                if (!users.length) {
-                    const empty = document.createElement('small');
-                    empty.style.color = '#999';
-                    empty.innerText = 'Пока список пуст.';
-                    activePlayersEl.appendChild(empty);
-                }
-            });
-        }
-
-        async function archiveAndClearBoard() {
-            const boardSnap = await db.ref('board').once('value');
-            const board = boardSnap.val() || {};
-            const updates = {};
-
-            Object.entries(board).forEach(([cellIdx, cell]) => {
-                if (!cell) return;
-                const archiveKey = db.ref('tickets_archive').push().key;
-                updates[`tickets_archive/${archiveKey}`] = {
-                    ...cell,
-                    cell: Number(cellIdx) + 1,
-                    cellIdx: Number(cellIdx),
-                    archivedAt: Date.now()
-                };
-            });
-
-            updates['board'] = {};
-            await db.ref().update(updates);
-        }
-
-        function toggleAdminPlayersList() {
-            const wrap = document.getElementById('active-players-wrap');
-            const btn = document.querySelector('#tab-admin button[onclick="toggleAdminPlayersList()"]');
-            if (!wrap || !btn) return;
-            const expanded = wrap.style.display !== 'none';
-            wrap.style.display = expanded ? 'none' : 'block';
-            btn.innerText = expanded ? '👥 Список игроков: развернуть' : '👥 Список игроков: свернуть';
-        }
-
-        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
-        async function adminResetGame() {
-            if (!confirm("Точно сбросить?")) return;
-
-            const whitelistSnap = await db.ref('whitelist').once('value');
-            const updates = {
-                board: {},
-                tickets_archive: null,
-                news_feed: null,
-                submissions: null,
-                game_event: null,
-                game_events: null,
-                epic_paint: null,
-                revoked_tickets: null,
-                ticket_counter: 0,
-                wheel_event: null,
-                wheel_draw: null,
-                wheel_history: null,
-                current_round: {
-                    number: 0,
-                    endTime: 0,
-                    traps: [],
-                    magicCell: null,
-                    miniGameCell: null,
-                    wordSketchCell: null,
-                    magnetCell: null,
-                    itemCells: {}
-                }
-            };
-
-            whitelistSnap.forEach(userSnap => {
-                const uid = userSnap.key;
-                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
-                updates[`whitelist/${uid}/magnifier_used_round`] = 0;
-                updates[`whitelist/${uid}/last_round`] = 0;
-                updates[`whitelist/${uid}/used_tasks`] = [];
-                updates[`whitelist/${uid}/isEliminated`] = false;
-                updates[`whitelist/${uid}/eliminatedAt`] = null;
-                updates[`whitelist/${uid}/eliminatedAtRound`] = null;
-                updates[`whitelist/${uid}/eliminationReason`] = null;
-                updates[`whitelist/${uid}/ink_challenge`] = null;
-                updates[`whitelist/${uid}/wand_blessing`] = null;
-            });
-
-            await db.ref().update(updates);
-            alert('Игра сброшена полностью: поле, раунды, билеты, предметы, лента событий и работы очищены. Нажми «Запустить раунд», чтобы начать заново.');
-            location.reload();
-        }
-        function adminFullReset() { if(confirm("Точно сбросить?")) db.ref().remove(); }
-        async function adminTriggerSpin() {
-            if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет активных билетиков для розыгрыша.");
-            await db.ref('wheel_draw').set({
-                status: 'scheduled',
-                startAt: Date.now() + 1000,
-                durationMs: 30000,
-                createdAt: Date.now(),
-                createdBy: currentUserId
-            });
-        }
-
-        function switchTab(id, el) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
-            document.getElementById(id).classList.add('tab-active');
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            if (el) el.classList.add('active');
-            if (id === 'tab-wheel') drawWheel();
-            if (id === 'tab-works') {
-                fillSubmissionTaskOptions();
-                renderSubmissions();
-            }
-        }
-        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
-        init();
-    </script>
-</body>
-</html>
-
-
-
-
-
-
+  window.activateScheduledEventIfNeeded = async function () {};
+  window.maybeFinalizeCompletedEventByEndTime = async function () {};
+  window.failExpiredEventIfNeeded = async function () {};
+  window.dismissEpicPaintStartAlert = async function () { openEventOverlay(); };
+  window.chooseRoundInsteadOfEvent = function () { closeEventOverlay(); };
+})();
