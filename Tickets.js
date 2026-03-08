@@ -123,12 +123,6 @@
         return !!revokedTicketsMap[String(ticketNum)];
     }
 
-    async function isTicketRevokedAnywhere(ticketNum) {
-        if (isTicketRevoked(ticketNum)) return true;
-        const snap = await db.ref(`revoked_tickets/${ticketNum}`).once('value');
-        return !!snap.val();
-    }
-
     function hasRevokedTicket(ticketValue) {
         return extractTicketNumbers(ticketValue).some(n => isTicketRevoked(n));
     }
@@ -183,25 +177,30 @@
         const needed = Math.max(1, Number(count) || 1);
         const awarded = [];
 
-        for (let i = 0; i < needed; i += 1) {
-            let nextTicketNum = null;
+        const revokedSnap = await db.ref('revoked_tickets').once('value');
+        const revoked = { ...(revokedSnap.val() || {}), ...revokedTicketsMap };
+        const revokedSet = new Set(Object.keys(revoked).filter(k => revoked[k]));
+
+        while (awarded.length < needed) {
+            let rangeStart = null;
+            let rangeEnd = null;
             const tx = await db.ref('ticket_counter').transaction(c => {
                 const current = Number(c) || 0;
-                if (current + 1 > MAX_TICKETS) return;
-                nextTicketNum = current + 1;
-                return current + 1;
+                if (current >= MAX_TICKETS) return;
+                const remain = MAX_TICKETS - current;
+                const reserve = Math.min(50, remain, Math.max(needed - awarded.length, 1));
+                rangeStart = current + 1;
+                rangeEnd = current + reserve;
+                return current + reserve;
             });
 
-            if (!tx.committed || !Number.isInteger(nextTicketNum)) {
-                return awarded.length ? awarded : null;
-            }
+            if (!tx.committed || !Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd)) break;
 
-            if (await isTicketRevokedAnywhere(nextTicketNum)) {
-                i -= 1;
-                continue;
+            for (let n = rangeStart; n <= rangeEnd; n += 1) {
+                if (revokedSet.has(String(n))) continue;
+                awarded.push(String(n));
+                if (awarded.length >= needed) break;
             }
-
-            awarded.push(String(nextTicketNum));
         }
 
         if (awarded.length) {
