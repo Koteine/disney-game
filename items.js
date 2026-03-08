@@ -98,7 +98,10 @@ async function activateMagnifier(sourceCellIdx) {
     const sourceCell = srcSnap.val();
     if (!sourceCell || sourceCell.userId !== currentUserId) return alert('Лупу можно применить только в своей клетке.');
     if (sourceCell.excluded) return alert('Нельзя применить Лупу в сданной клетке.');
-    if (sourceCell.isTrap || sourceCell.isMagic || sourceCell.isMiniGame || sourceCell.isWordSketch || sourceCell.isInkChallenge || sourceCell.isWandBlessing || sourceCell.isMagnet) {
+    if (sourceCell.itemType === 'magnifier') {
+        return alert('На клетке, где ты нашёл(ла) Лупу, её использовать нельзя. Выбери другую свою обычную клетку.');
+    }
+    if (sourceCell.isTrap || sourceCell.isMagic || sourceCell.isMiniGame || sourceCell.isWordSketch || sourceCell.isInkChallenge || sourceCell.isWandBlessing || sourceCell.isMagnet || sourceCell.itemType) {
         return alert('Лупа работает только для обычных заданий.');
     }
 
