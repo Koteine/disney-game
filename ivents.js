@@ -1,4 +1,16 @@
 // Логика игровых событий, вынесенная из index.html
+let epicPaintStrokeMap = {};
+let epicPaintRenderRaf = null;
+let lastParticipantUpdateByUid = {};
+
+function scheduleEpicPaintRender() {
+    if (epicPaintRenderRaf) return;
+    epicPaintRenderRaf = requestAnimationFrame(() => {
+        epicPaintRenderRaf = null;
+        drawEpicPaint();
+    });
+}
+
 function getPlayerColorByUid(uid) {
     const entry = Object.entries(window.cachedWhitelistData || {}).find(([id]) => Number(id) === Number(uid));
     const charIndex = entry?.[1]?.charIndex;
@@ -107,7 +119,11 @@ async function pushEpicPaintStroke(x1, y1, x2, y2) {
     const teamInfo = ((await db.ref(`game_events/${activeEvent.key}/teams/${uid}`).once('value')).val() || {});
     const team = teamInfo.team || 'red';
     const color = activeEvent.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
-    await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: Date.now() });
+    const now = Date.now();
+    if (!lastParticipantUpdateByUid[uid] || now - lastParticipantUpdateByUid[uid] > 4000) {
+        await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: now });
+        lastParticipantUpdateByUid[uid] = now;
+    }
     await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, team, at: Date.now() });
 }
 
@@ -286,8 +302,7 @@ async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverag
     });
     if (!tx.committed) return;
 
-    const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
-    await postNews('Кажется, в другой команде перевесил Ван Гог. В следующий раз удача точно будет на твоей стороне!');
+    const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam, currentGameEventKey);
     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
 }
 
@@ -316,12 +331,12 @@ async function maybeFinalizeCompletedEventByEndTime() {
     await postEpicEventSummary({ ...snapshotEvent, completedAt: Date.now(), activatedAt: snapshotEvent.activatedAt || snapshotEvent.startAt }, true, rewardedPlayersCount);
 }
 
-async function grantWallBattleRewards(winnerTeam) {
-    if (!currentGameEventKey) return 0;
+async function grantWallBattleRewards(winnerTeam, eventKey = currentGameEventKey) {
+    if (!eventKey) return 0;
     const [teamsSnap, whitelistSnap, rewardedSnap] = await Promise.all([
-        db.ref(`game_events/${currentGameEventKey}/teams`).once('value'),
+        db.ref(`game_events/${eventKey}/teams`).once('value'),
         db.ref('whitelist').once('value'),
-        db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+        db.ref(`epic_paint/rewarded/${eventKey}`).once('value')
     ]);
     const teams = teamsSnap.val() || {};
     const whitelist = whitelistSnap.val() || {};
@@ -339,10 +354,28 @@ async function grantWallBattleRewards(winnerTeam) {
         if (!awarded?.length) continue;
         await addInventoryItemForUser(uid, 'magnifier', 1);
         await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
-        await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
+        await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).set(true);
         rewardedCount += 1;
     }
     return rewardedCount;
+}
+
+function maybeNotifyWallBattleLoser(eventData) {
+    if (!eventData || eventData.id !== WALL_BATTLE_EVENT_ID || !eventData.key || !eventData.winnerTeam) return;
+    if (!Number(currentUserId)) return;
+    const key = `wall_battle_loser_notified_${eventData.key}`;
+    if (window[key]) return;
+    db.ref(`game_events/${eventData.key}/teams/${currentUserId}`).once('value').then(snap => {
+        const myTeam = snap.val()?.team;
+        if (!myTeam || myTeam === eventData.winnerTeam) return;
+        window[key] = true;
+        if (typeof showPlayerNotification === 'function') {
+            showPlayerNotification({
+                id: `wall-battle-loser-${eventData.key}`,
+                text: 'Кажется, в другой команде перевесил Ван Гог. В следующий раз удача точно будет на твоей стороне!'
+            });
+        }
+    }).catch(() => {});
 }
 
 function openEventSpace() {
@@ -444,6 +477,7 @@ function updateEventUiState() {
         setTimeout(() => playFireworksSound(), 18000);
         lastCompletedEpicEventKeyShown = latestCompleted.key;
         setTimeout(() => { if (successAlert && !isCelebration) successAlert.style.display = 'none'; }, 30000);
+        maybeNotifyWallBattleLoser(latestCompleted);
     }
 
     const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
@@ -531,6 +565,9 @@ async function activateScheduledEventIfNeeded() {
 
     if (tx.committed) {
         epicPaintHasDismissedStart = false;
+        epicPaintStrokeMap = {};
+        epicPaintStrokes = [];
+        lastParticipantUpdateByUid = {};
         await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
     }
 }
@@ -580,15 +617,27 @@ function syncGameEvents() {
     });
 
     if (epicPaintStrokesRef) epicPaintStrokesRef.off();
+    epicPaintStrokeMap = {};
+    epicPaintStrokes = [];
     epicPaintStrokesRef = db.ref('epic_paint/strokes');
-    epicPaintStrokesRef.on('value', snap => {
-        const strokes = [];
-        snap.forEach(s => {
-            const v = s.val();
-            if (v) strokes.push(v);
-        });
-        epicPaintStrokes = strokes;
-        drawEpicPaint();
+    epicPaintStrokesRef.on('child_added', snap => {
+        const v = snap.val();
+        if (!v) return;
+        epicPaintStrokeMap[snap.key] = v;
+        epicPaintStrokes.push(v);
+        scheduleEpicPaintRender();
+    });
+    epicPaintStrokesRef.on('child_changed', snap => {
+        const v = snap.val();
+        if (!v) return;
+        epicPaintStrokeMap[snap.key] = v;
+        epicPaintStrokes = Object.values(epicPaintStrokeMap);
+        scheduleEpicPaintRender();
+    });
+    epicPaintStrokesRef.on('child_removed', snap => {
+        delete epicPaintStrokeMap[snap.key];
+        epicPaintStrokes = Object.values(epicPaintStrokeMap);
+        scheduleEpicPaintRender();
     });
 
     db.ref('whitelist').on('value', snap => {
