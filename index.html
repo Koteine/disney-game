@@ -327,6 +327,8 @@
         let wheelSystemInterval = null;
         let winnerHistoryItems = [];
         let currentDrawSchedule = null;
+        let serverTimeOffsetMs = 0;
+        window.serverTimeOffsetMs = 0;
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
         const WALL_BATTLE_EVENT_ID = 'wall_battle';
@@ -622,6 +624,10 @@
             try {
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
+                db.ref('.info/serverTimeOffset').on('value', snap => {
+                    serverTimeOffsetMs = Number(snap.val()) || 0;
+                    window.serverTimeOffsetMs = serverTimeOffsetMs;
+                });
                 setupEpicPaintCanvas();
                 checkAccess();
                 syncData();
@@ -648,32 +654,38 @@
             audio.play().catch(() => console.log('Sound blocked'));
         }
 
-        function launchCelebrationFireworks() {
+        function launchCelebrationFireworks(durationMs = 1600) {
             const overlay = document.getElementById('event-celebration-overlay');
             if (!overlay) return;
-            overlay.innerHTML = '';
             const colors = ['#ff1744', '#ffea00', '#00e5ff', '#7c4dff', '#69f0ae', '#ff9100', '#f50057'];
 
-            for (let burst = 0; burst < 8; burst++) {
-                const originX = Math.random() * window.innerWidth;
-                const originY = 80 + Math.random() * (window.innerHeight * 0.45);
-                for (let i = 0; i < 24; i++) {
-                    const dot = document.createElement('div');
-                    dot.className = 'firework-dot';
-                    dot.style.left = `${originX}px`;
-                    dot.style.top = `${originY}px`;
-                    dot.style.background = colors[Math.floor(Math.random() * colors.length)];
-                    const angle = (Math.PI * 2 * i) / 24;
-                    const dist = 70 + Math.random() * 140;
-                    dot.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
-                    dot.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
-                    overlay.appendChild(dot);
+            const drawBurst = () => {
+                for (let burst = 0; burst < 8; burst++) {
+                    const originX = Math.random() * window.innerWidth;
+                    const originY = 80 + Math.random() * (window.innerHeight * 0.45);
+                    for (let i = 0; i < 24; i++) {
+                        const dot = document.createElement('div');
+                        dot.className = 'firework-dot';
+                        dot.style.left = `${originX}px`;
+                        dot.style.top = `${originY}px`;
+                        dot.style.background = colors[Math.floor(Math.random() * colors.length)];
+                        const angle = (Math.PI * 2 * i) / 24;
+                        const dist = 70 + Math.random() * 140;
+                        dot.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+                        dot.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+                        overlay.appendChild(dot);
+                    }
                 }
-            }
+            };
+
+            overlay.innerHTML = '';
+            drawBurst();
+            const burstInt = setInterval(drawBurst, 1800);
 
             setTimeout(() => {
+                clearInterval(burstInt);
                 if (overlay) overlay.innerHTML = '';
-            }, 1600);
+            }, Math.max(1200, durationMs));
         }
 
         function setAuthorizedView(isAuthorized) {
@@ -1010,7 +1022,7 @@
             window.timerInt = setInterval(async () => {
                 await checkInkDeadline();
                 await activateScheduledEventIfNeeded();
-                await failExpiredEventIfNeeded();
+                await maybeFinalizeCompletedEventByEndTime();
                 await maybeActivateScheduledDraw();
                 await maybeFinalizeScheduledDraw();
                 if (!window.lastSubmissionDeadlineCheckAt || Date.now() - window.lastSubmissionDeadlineCheckAt > 60000) {
