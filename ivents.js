@@ -241,24 +241,16 @@ async function maybeFinalizeEpicPaintSuccess(coverage) {
 
 async function grantEpicPaintRewards(eventKey = currentGameEventKey) {
     if (!eventKey) return 0;
-    const [participantsSnap, strokesSnap, whitelistSnap, rewardedSnap] = await Promise.all([
-        db.ref('epic_paint/participants').once('value'),
-        db.ref('epic_paint/strokes').once('value'),
+    const [teamsSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+        db.ref(`game_events/${eventKey}/teams`).once('value'),
         db.ref('whitelist').once('value'),
         db.ref(`epic_paint/rewarded/${eventKey}`).once('value')
     ]);
 
+    const teams = teamsSnap.val() || {};
     const whitelist = whitelistSnap.val() || {};
     const alreadyRewarded = rewardedSnap.val() || {};
-    const participantUidSet = new Set();
-
-    participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
-    strokesSnap.forEach(strokeSnap => {
-        const stroke = strokeSnap.val() || {};
-        if (stroke.uid !== undefined && stroke.uid !== null) participantUidSet.add(String(stroke.uid));
-    });
-
-    const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
+    const participantUids = Object.keys(teams).filter(uid => /^\d+$/.test(uid));
     if (!participantUids.length) return 0;
 
     let rewardedCount = 0;

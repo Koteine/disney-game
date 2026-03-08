@@ -1912,10 +1912,36 @@
                 updates[`revoked_tickets/${n}`] = true;
             }
             await db.ref().update(updates);
-            await db.ref('ticket_counter').transaction(c => {
-                const current = Number(c) || 0;
-                return Math.min(current, Math.max(0, from - 1));
+
+            const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+                db.ref('board').once('value'),
+                db.ref('tickets_archive').once('value'),
+                db.ref('revoked_tickets').once('value')
+            ]);
+            const boardData = boardSnap.val() || {};
+            const archiveData = archiveSnap.val() || {};
+            const revokedMap = revokedSnap.val() || {};
+            let maxActiveTicket = 0;
+
+            const includeTicketNum = num => {
+                const n = Number(num);
+                if (!Number.isInteger(n) || n < 1) return;
+                if (revokedMap[String(n)]) return;
+                if (n > maxActiveTicket) maxActiveTicket = n;
+            };
+
+            Object.values(boardData).forEach(cell => {
+                if (!cell || cell.excluded) return;
+                extractTicketNumbers(cell.ticket).forEach(includeTicketNum);
             });
+
+            Object.values(archiveData).forEach(row => {
+                if (!row) return;
+                if (row.excluded && !row.isManualRevoke) return;
+                extractTicketNumbers(row.ticket).forEach(includeTicketNum);
+            });
+
+            await db.ref('ticket_counter').set(maxActiveTicket);
 
             const notePart = note ? ` Причина: ${note}` : '';
             await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${to}.${notePart}`);
