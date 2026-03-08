@@ -80,17 +80,31 @@ function extractTeamFromCurrentEventPlayer(playerData) {
 
 async function grantCurrentEventRewardsByType(eventData) {
     const type = String(eventData?.type || '').trim();
-    if (!type) return;
+    if (!type) return { winnersCount: 0, message: '' };
 
     if (type === 'Эпичный закрас') {
-        const players = eventData?.players || {};
-        for (const [userId, playerData] of Object.entries(players)) {
-            if (!playerData?.hasPainted) continue;
-            if (typeof window.createTicket === 'function') {
-                await window.createTicket(userId, 2, 'Награда за Эпичный закрас');
-            }
+        const usersSnap = await db.ref('users').once('value');
+        const users = usersSnap.val() || {};
+        const updates = {};
+        let winnersCount = 0;
+
+        for (const [userId, userData] of Object.entries(users)) {
+            const wasActive = userData?.last_event_active === true;
+            if (!wasActive) continue;
+            if (typeof window.createTicket !== 'function') continue;
+            const ticketResult = await window.createTicket(userId, 2, 'Награда за Эпичный закрас');
+            if (ticketResult) winnersCount += 1;
         }
-        return;
+
+        for (const userId of Object.keys(users)) {
+            updates[`users/${userId}/last_event_active`] = false;
+        }
+        if (Object.keys(updates).length) await db.ref().update(updates);
+
+        return {
+            winnersCount,
+            message: `Ивент 'Эпичный закрас' завершен! Награду в 2 билета получили: ${winnersCount} чел.`
+        };
     }
 
     if (type === 'Стенка на стенку') {
@@ -116,27 +130,34 @@ async function grantCurrentEventRewardsByType(eventData) {
             }
             await addInventoryItemForUser(userId, 'magnifier', 1);
         }
+
+        return {
+            winnersCount: Object.values(players).filter(playerData => extractTeamFromCurrentEventPlayer(playerData) === winnerTeam).length,
+            message: `Ивент '${type}' завершен! Призы разосланы.`
+        };
     }
+
+    return { winnersCount: 0, message: `Ивент '${type}' завершен! Призы разосланы.` };
 }
 
 async function finalizeCurrentEventByTimer(eventData) {
     const tx = await db.ref('current_event').transaction(eventValue => {
         if (!eventValue || eventValue.status !== 'active') return eventValue;
         const eventEndTs = Number(eventValue.end_timestamp) || 0;
-        if (!eventEndTs || Date.now() <= eventEndTs) return eventValue;
+        if (!eventEndTs || getNowByServerClock() <= eventEndTs) return eventValue;
         return {
             ...eventValue,
             status: 'finished',
-            finished_at: Date.now()
+            finished_at: firebase.database.ServerValue.TIMESTAMP
         };
     });
 
     if (!tx.committed) return;
 
     const finalEventData = tx.snapshot.val() || eventData || {};
-    await grantCurrentEventRewardsByType(finalEventData);
+    const rewardResult = await grantCurrentEventRewardsByType(finalEventData);
     await db.ref('event_feed').push({
-        message: `Ивент ${finalEventData?.name || finalEventData?.type || 'без названия'} завершен! Призы разосланы.`,
+        message: rewardResult?.message || `Ивент '${finalEventData?.name || finalEventData?.type || 'без названия'}' завершен! Призы разосланы.`,
         timestamp: firebase.database.ServerValue.TIMESTAMP
     });
 }
@@ -149,7 +170,7 @@ function observeEvents() {
         const eventData = snap.val() || {};
         const isActive = eventData.status === 'active';
         const endTimestamp = Number(eventData.end_timestamp) || 0;
-        if (!isActive || !endTimestamp || Date.now() <= endTimestamp) return;
+        if (!isActive || !endTimestamp || getNowByServerClock() <= endTimestamp) return;
 
         isCurrentEventFinishInProgress = true;
         try {
