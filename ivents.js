@@ -110,6 +110,21 @@
     }
   }
 
+  function clearEventUi() {
+    state = {
+      status: STATUS_IDLE,
+      type: EVENT_TYPE,
+      end_timestamp: 0,
+      progress: 0,
+      participants: {},
+      colors: {}
+    };
+    participantMarked = false;
+    showNotification();
+    updateOverlayUi();
+    closeEventOverlay();
+  }
+
   function updateOverlayUi() {
     const timerEl = $('event-timer');
     const titleEl = $('event-space-title');
@@ -281,6 +296,7 @@
     }
 
     await db.ref('current_event').remove();
+    clearEventUi();
     alert('Ивент завершен! Награды отправлены участникам.');
   }
 
@@ -325,6 +341,10 @@
     eventRef.on('value', (snap) => {
       const prevStatus = state.status;
       state = normalizeEvent(snap.val());
+      if (!snap.exists()) {
+        clearEventUi();
+        return;
+      }
       if (prevStatus !== STATUS_ACTIVE && state.status === STATUS_ACTIVE) {
         myColor = null;
         participantMarked = false;
