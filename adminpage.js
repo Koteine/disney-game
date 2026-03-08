@@ -379,12 +379,119 @@
       type: 'paint',
       status: 'active',
       end_timestamp: Date.now() + (10 * 60 * 1000),
-      participants: {},
+      active_participants: {},
       strokes: {},
       progress: { percent: 0 }
     });
     alert('Эпичный закрас запущен на 10 минут.');
   }
+
+
+  const EVENT_SCHEDULES_PATH = 'event_schedules';
+  let eventSchedules = [];
+  let eventSchedulesRef = null;
+  let adminServerOffsetMs = 0;
+
+  function getAdminNow() {
+    return Date.now() + (Number(adminServerOffsetMs) || 0);
+  }
+
+  function renderEventSchedules() {
+    const listEl = document.getElementById('admin-event-queue-list');
+    if (!listEl) return;
+    const scheduled = eventSchedules.filter(ev => ev.status === 'scheduled');
+    if (!scheduled.length) {
+      listEl.innerHTML = 'Нет запланированных ивентов.';
+      return;
+    }
+
+    listEl.innerHTML = scheduled.map((ev, idx) => {
+      const start = formatMoscowDateTime(ev.startAt || 0);
+      const mins = Number(ev.durationMins) || 10;
+      return `<div style="padding:6px; border:1px solid #f2d3e4; border-radius:8px; margin-bottom:6px; background:#fff;">${idx + 1}) ${start} · ${mins} мин <button onclick="adminDeleteScheduledEvent('${ev.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Удалить из очереди</button></div>`;
+    }).join('');
+  }
+
+  async function adminScheduleEpicPaintEvent() {
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+    await waitForDbReady();
+
+    const startRaw = String(document.getElementById('event-start-at')?.value || '').trim();
+    const durationMins = Number(document.getElementById('event-duration-mins')?.value || 0);
+    if (!startRaw) return alert('Укажи дату и время старта ивента.');
+    if (!Number.isFinite(durationMins) || durationMins < 1) return alert('Укажи длительность ивента в минутах (минимум 1).');
+
+    const startAt = parseMoscowDateTimeLocalInput(startRaw);
+    if (!Number.isFinite(startAt)) return alert('Некорректная дата/время.');
+    if (startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
+
+    await db.ref(EVENT_SCHEDULES_PATH).push({
+      type: 'paint',
+      status: 'scheduled',
+      startAt,
+      durationMins,
+      createdAt: Date.now(),
+      createdBy: currentUserId
+    });
+
+    alert('Ивент добавлен в очередь.');
+  }
+
+  async function adminDeleteScheduledEvent(key) {
+    if (!isAdminUser()) return;
+    if (!key) return;
+    if (!confirm('Удалить ивент из очереди?')) return;
+    await db.ref(`${EVENT_SCHEDULES_PATH}/${key}`).transaction(v => {
+      if (!v || v.status !== 'scheduled') return v;
+      return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
+    });
+  }
+
+  async function maybeActivateScheduledEvent() {
+    const now = getAdminNow();
+    const due = eventSchedules
+      .filter(ev => ev.status === 'scheduled' && Number(ev.startAt || 0) <= now)
+      .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+    if (!due?.key) return;
+
+    const activeSnap = await db.ref('current_event/status').once('value');
+    if (String(activeSnap.val() || '') === 'active') return;
+
+    const tx = await db.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).transaction(v => {
+      if (!v || v.status !== 'scheduled') return v;
+      if (Number(v.startAt || 0) > getAdminNow()) return v;
+      return { ...v, status: 'starting', startedAt: Date.now() };
+    });
+    if (!tx.committed) return;
+
+    const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
+    await db.ref('current_event').set({
+      type: 'paint',
+      status: 'active',
+      end_timestamp: now + mins * 60000,
+      active_participants: {},
+      strokes: {},
+      progress: { percent: 0 }
+    });
+
+    await db.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
+      status: 'completed',
+      completedAt: Date.now(),
+      activatedEventAt: now
+    });
+  }
+
+  function syncEventSchedules() {
+    if (eventSchedulesRef) eventSchedulesRef.off();
+    eventSchedulesRef = db.ref(EVENT_SCHEDULES_PATH);
+    eventSchedulesRef.on('value', snap => {
+      const list = [];
+      snap.forEach(item => list.push({ key: item.key, ...(item.val() || {}) }));
+      eventSchedules = list.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+      renderEventSchedules();
+    });
+  }
+
 
   function exposeAdminActions() {
     window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
@@ -398,6 +505,8 @@
     window.adminRevokeTicketRange = adminRevokeTicketRange;
     window.adminResetCurrentRound = adminResetCurrentRound;
     window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
+    window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
+    window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;
   }
 
   async function initAdminPage() {
@@ -417,11 +526,18 @@
     if (executeBtn) executeBtn.onclick = executeEmergencyAction;
 
     ensureDateTimeInputDefault('round-start-at');
+    ensureDateTimeInputDefault('event-start-at');
     syncRoundSchedules();
+    syncEventSchedules();
+
+    db.ref('.info/serverTimeOffset').on('value', snap => {
+      adminServerOffsetMs = Number(snap.val()) || 0;
+    });
 
     if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
     window.adminRoundInterval = setInterval(async () => {
       await maybeActivateScheduledRound();
+      await maybeActivateScheduledEvent();
     }, 1000);
   }
 
