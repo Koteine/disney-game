@@ -212,6 +212,7 @@
         const playersListEl = document.getElementById('admin-ticket-players-list');
         const ticketsListEl = document.getElementById('admin-player-tickets-list');
         const titleEl = document.getElementById('admin-player-tickets-title');
+        const isAdmin = currentUserId === ADMIN_ID;
         if (!playersListEl || !ticketsListEl || !titleEl) return;
 
         const users = getAdminPlayersAlphabetically();
@@ -247,11 +248,11 @@
                 <div style="text-align:left;">
                     <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
                     <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
-                    <div style="font-size:11px; color:#444;">${isAdmin ? t.taskLabel : 'Задание скрыто'}</div>
                 </div>
-                <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
-                    ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
-                </button>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:12px; padding:5px 8px;">👀</button>
+                    ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
+                </div>
             </div>
         `).join('');
     }
@@ -292,9 +293,8 @@
                     <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                     <td>
                         <div style="font-size:11px;">${t.sourceLabel}</div>
-                        <div style="font-size:11px; color:#444;">${isAdmin ? t.taskLabel : 'Задание скрыто'}</div>
                         ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
-                        <button onclick="openTicketTask('${t.ticketNum}')" style="margin-top:4px; background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:10px; padding:3px 6px;">👀 Показать задание</button>
+                        <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="margin-top:4px; background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:10px; padding:3px 6px;">👀</button>
                         ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; margin-left:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                     </td>
                 </tr>`;
