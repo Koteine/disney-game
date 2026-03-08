@@ -30,6 +30,10 @@ async function addInventoryItemForUser(uid, itemType, count = 1) {
     await db.ref(`whitelist/${uid}/inventory/${itemType}`).transaction(v => (Number(v) || 0) + count);
 }
 
+function getNowByServerClock() {
+    return Date.now() + (Number(window.serverTimeOffsetMs) || 0);
+}
+
 function setupEpicPaintCanvas() {
     const canvas = document.getElementById('epic-paint-canvas');
     if (!canvas || canvas.dataset.ready === '1') return;
@@ -211,7 +215,6 @@ async function grantEpicPaintRewards() {
         const uid = Number(uidKey);
         const user = whitelist[uidKey] || whitelist[uid] || {};
         const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
-        if (!Number.isInteger(owner) || !players[owner]) continue;
 
         const awarded = await claimSequentialTickets(2);
         if (!awarded) continue;
@@ -253,6 +256,46 @@ async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverag
     const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
     await postNews('Кажется, в другой команде перевесил Ван Гог. В следующий раз удача точно будет на твоей стороне!');
     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
+}
+
+async function maybeFinalizeCompletedEventByEndTime() {
+    const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id));
+    if (!active?.key) return;
+    if (getNowByServerClock() < (active.endAt || 0)) return;
+
+    const eventRef = db.ref(`game_events/${active.key}`);
+    const tx = await eventRef.transaction(ev => {
+        if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+        if (getNowByServerClock() < (ev.endAt || 0)) return ev;
+        return {
+            ...ev,
+            status: 'completed',
+            completedAt: Date.now(),
+            celebrationUntil: Date.now() + 30000,
+            resultText: 'Событие завершено. Награды выданы участникам.'
+        };
+    });
+    if (!tx.committed) return;
+
+    const snapshotEvent = tx.snapshot.val() || {};
+    let rewardedPlayersCount = 0;
+    if (snapshotEvent.id === EPIC_PAINT_EVENT_ID) {
+        rewardedPlayersCount = await grantEpicPaintRewards();
+    } else if (snapshotEvent.id === WALL_BATTLE_EVENT_ID) {
+        const teamsSnap = await db.ref(`game_events/${active.key}/teams`).once('value');
+        const teams = teamsSnap.val() || {};
+        let redCount = 0;
+        let blueCount = 0;
+        Object.values(teams).forEach(teamInfo => {
+            if (teamInfo?.team === 'red') redCount += 1;
+            if (teamInfo?.team === 'blue') blueCount += 1;
+        });
+        const winnerTeam = redCount >= blueCount ? 'red' : 'blue';
+        await db.ref(`game_events/${active.key}/winnerTeam`).set(winnerTeam);
+        rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
+    }
+
+    await postEpicEventSummary({ ...snapshotEvent, completedAt: Date.now(), activatedAt: snapshotEvent.activatedAt || snapshotEvent.startAt }, true, rewardedPlayersCount);
 }
 
 async function grantWallBattleRewards(winnerTeam) {
@@ -300,10 +343,12 @@ function updateEventUiState() {
     const failAlert = document.getElementById('event-fail-alert');
     const eventTitle = document.getElementById('event-space-title');
     const navEventBtn = document.getElementById('nav-event-btn');
-    const isActive = currentGameEvent && currentGameEvent.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
+    const isEventType = currentGameEvent && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
+    const isActive = isEventType && currentGameEvent.status === 'active';
+    const isCelebration = isEventType && currentGameEvent.status === 'completed' && (currentGameEvent.celebrationUntil || 0) > getNowByServerClock();
 
-    if (navEventBtn) navEventBtn.style.display = isActive ? 'flex' : 'none';
-    if (eventTitle) eventTitle.innerText = isActive ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
+    if (navEventBtn) navEventBtn.style.display = (isActive || isCelebration) ? 'flex' : 'none';
+    if (eventTitle) eventTitle.innerText = (isActive || isCelebration) ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
 
     if (isActive) {
         startAlert.style.display = 'block';
@@ -323,19 +368,32 @@ function updateEventUiState() {
         startAlert.classList.remove('epic');
     }
 
+    if (isCelebration) {
+        const secondsLeft = Math.max(0, Math.ceil(((currentGameEvent.celebrationUntil || 0) - getNowByServerClock()) / 1000));
+        successAlert.style.display = 'block';
+        successAlert.innerHTML = `
+            <div class="event-title">🏆 Событие «${currentGameEvent.name || 'Эпичный закрас'}» успешно завершено!</div>
+            <div class="event-sub">Награды выданы. Фанфары и салютики идут ещё ${secondsLeft} сек.</div>
+            <div class="event-sub" style="margin-top:6px;">Когда будешь готов(а), нажми кнопку ниже.</div>
+            <button class="event-join-btn" style="margin-top:8px; background:linear-gradient(135deg,#5e35b1,#3949ab);" onclick="backToGameFromEvent()">⬅️ Вернуться на главное поле</button>
+        `;
+    }
+
     const latestCompleted = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
     const latestFailed = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'failed').sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
 
-    const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
+    const showSuccess = Boolean(!isCelebration && latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
     successAlert.style.display = showSuccess ? 'block' : 'none';
     if (showSuccess) {
         successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
             ? '🏁 Командная битва завершена! Победители получили по 1 билету и Лупе.'
             : '🎆 Событие прошло круто! Все участники получили по 2 билетика.';
-        launchCelebrationFireworks();
+        launchCelebrationFireworks(30000);
         playFireworksSound();
+        setTimeout(() => playFireworksSound(), 9000);
+        setTimeout(() => playFireworksSound(), 18000);
         lastCompletedEpicEventKeyShown = latestCompleted.key;
-        setTimeout(() => { if (successAlert) successAlert.style.display = 'none'; }, 12000);
+        setTimeout(() => { if (successAlert && !isCelebration) successAlert.style.display = 'none'; }, 30000);
     }
 
     const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
@@ -409,7 +467,7 @@ async function activateScheduledEventIfNeeded() {
     const active = queuedGameEvents.find(ev => ev.status === 'active');
     if (active) return;
 
-    const now = Date.now();
+    const now = getNowByServerClock();
     const due = queuedGameEvents
         .filter(ev => ev.status === 'scheduled' && (ev.startAt || 0) <= now)
         .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
@@ -417,7 +475,7 @@ async function activateScheduledEventIfNeeded() {
 
     const tx = await db.ref(`game_events/${due.key}`).transaction(ev => {
         if (!ev || ev.status !== 'scheduled') return ev;
-        if (Date.now() < (ev.startAt || 0)) return ev;
+        if (getNowByServerClock() < (ev.startAt || 0)) return ev;
         return { ...ev, status: 'active', activatedAt: Date.now(), nextTeam: 'red', teams: null };
     });
 
@@ -430,11 +488,11 @@ async function activateScheduledEventIfNeeded() {
 async function failExpiredEventIfNeeded() {
     const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id));
     if (!active?.key) return;
-    if (Date.now() < (active.endAt || 0)) return;
+    if (getNowByServerClock() < (active.endAt || 0)) return;
 
     const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
         if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
-        if (Date.now() < (ev.endAt || 0)) return ev;
+        if (getNowByServerClock() < (ev.endAt || 0)) return ev;
         return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели выполнить цель события' };
     });
     if (tx.committed) {
@@ -454,8 +512,12 @@ function syncGameEvents() {
         queuedGameEvents = events.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
 
         const active = queuedGameEvents.find(ev => ev.status === 'active') || null;
-        currentGameEvent = active;
-        currentGameEventKey = active?.key || null;
+        const celebration = queuedGameEvents
+            .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && (ev.celebrationUntil || 0) > getNowByServerClock())
+            .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0] || null;
+
+        currentGameEvent = active || celebration;
+        currentGameEventKey = (active || celebration)?.key || null;
         if (!currentGameEvent || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id) || currentGameEvent.status !== 'active') {
             epicPaintHasDismissedStart = false;
         }
@@ -463,7 +525,7 @@ function syncGameEvents() {
         updateEventUiState();
         updateAdminEventStatus();
         activateScheduledEventIfNeeded();
-        failExpiredEventIfNeeded();
+        maybeFinalizeCompletedEventByEndTime();
     });
 
     if (epicPaintStrokesRef) epicPaintStrokesRef.off();
@@ -504,4 +566,3 @@ function updateAdminEventStatus() {
 
     el.innerHTML = `${activeLine}<br><br><b>Запланировано (${scheduled.length}/${MAX_SCHEDULED_EVENTS}):</b><br>${scheduledLines}`;
 }
-
