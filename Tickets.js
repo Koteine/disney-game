@@ -247,7 +247,7 @@
                 <div style="text-align:left;">
                     <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
                     <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
-                    <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
+                    <div style="font-size:11px; color:#444;">${isAdmin ? t.taskLabel : 'Задание скрыто'}</div>
                 </div>
                 <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
                     ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
@@ -292,9 +292,10 @@
                     <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                     <td>
                         <div style="font-size:11px;">${t.sourceLabel}</div>
-                        <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
+                        <div style="font-size:11px; color:#444;">${isAdmin ? t.taskLabel : 'Задание скрыто'}</div>
                         ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
-                        ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
+                        <button onclick="openTicketTask('${t.ticketNum}')" style="margin-top:4px; background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:10px; padding:3px 6px;">👀 Показать задание</button>
+                        ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; margin-left:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                     </td>
                 </tr>`;
         }).join('');
@@ -308,6 +309,26 @@
         db.ref('board/' + cellIdx).once('value', s => {
             if (s.exists()) showCell(cellIdx, s.val());
         });
+    }
+
+
+
+    function openTicketTask(ticketNum) {
+        const num = String(ticketNum || '').trim();
+        if (!/^\d+$/.test(num)) return;
+        const isAdmin = currentUserId === ADMIN_ID;
+        const entry = allTicketsData.find(t => {
+            const owns = Number(t.userId) === Number(currentUserId) || t.owner === myIndex;
+            return extractTicketNumbers(t.ticket).includes(num) && (isAdmin || owns);
+        });
+        if (!entry) {
+            alert('Не удалось найти задание для этого билетика.');
+            return;
+        }
+        const taskText = getTicketTaskLabel(entry);
+        alert(`🎫 Билет ${num}
+
+${taskText}`);
     }
 
     function getActiveTicketsForWheel() {
@@ -331,4 +352,5 @@
     window.toggleTicketRevocation = toggleTicketRevocation;
     window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
     window.selectAdminTicketUser = selectAdminTicketUser;
+    window.openTicketTask = openTicketTask;
 })();
