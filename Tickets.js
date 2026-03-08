@@ -1,4 +1,6 @@
 (function () {
+    const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+
     function updateAllTicketsDataAndRender() {
         allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
         updateTicketsTable();
@@ -42,7 +44,7 @@
         archivedTicketsData = [];
         updateAllTicketsDataAndRender();
 
-        if (currentUserId === ADMIN_ID) {
+        if (isAdminUser()) {
             const adminRef = db.ref('tickets_archive');
             archiveRefs.push(adminRef);
             adminRef.on('value', snap => {
@@ -108,7 +110,7 @@
 
         subscribeArchiveTickets();
         db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
-            if (currentUserId === ADMIN_ID) return;
+            if (isAdminUser()) return;
             subscribeArchiveTickets();
         });
     }
@@ -165,7 +167,7 @@
     }
 
     async function toggleTicketRevocation(ticketNum, shouldRevoke) {
-        if (currentUserId !== ADMIN_ID) return;
+        if (!isAdminUser()) return;
         const num = String(ticketNum || '').trim();
         if (!/^\d+$/.test(num)) return;
         if (shouldRevoke) {
@@ -239,7 +241,7 @@
         const playersListEl = document.getElementById('admin-ticket-players-list');
         const ticketsListEl = document.getElementById('admin-player-tickets-list');
         const titleEl = document.getElementById('admin-player-tickets-title');
-        const isAdmin = currentUserId === ADMIN_ID;
+        const isAdmin = isAdminUser();
         if (!playersListEl || !ticketsListEl || !titleEl) return;
 
         const users = getAdminPlayersAlphabetically();
@@ -290,7 +292,7 @@
 
     function updateTicketsTable() {
         const body = document.getElementById('tickets-body');
-        const isAdmin = (currentUserId === ADMIN_ID);
+        const isAdmin = isAdminUser();
         const adminSubtabs = document.getElementById('admin-tickets-subtabs');
 
         if (adminSubtabs) adminSubtabs.style.display = isAdmin ? 'flex' : 'none';
@@ -343,7 +345,7 @@
     function openTicketTask(ticketNum) {
         const num = String(ticketNum || '').trim();
         if (!/^\d+$/.test(num)) return;
-        const isAdmin = currentUserId === ADMIN_ID;
+        const isAdmin = isAdminUser();
         const entry = allTicketsData.find(t => {
             const owns = Number(t.userId) === Number(currentUserId) || t.owner === myIndex;
             return extractTicketNumbers(t.ticket).includes(num) && (isAdmin || owns);
