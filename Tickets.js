@@ -206,7 +206,16 @@
             }
         }
 
-        return awarded.length ? awarded : null;
+        if (!awarded.length) return null;
+
+        const revokedCleanup = {};
+        awarded.forEach(num => {
+            revokedCleanup[`revoked_tickets/${num}`] = null;
+            delete revokedTicketsMap[String(num)];
+        });
+        await db.ref().update(revokedCleanup);
+
+        return awarded;
     }
 
     async function maybeRepairTicketCounterDrift() {
