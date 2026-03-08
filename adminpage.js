@@ -1,9 +1,20 @@
 (function () {
+  const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
+  const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
+    const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+    if (!m) return NaN;
+    const [, y, mon, d, h, min] = m.map(Number);
+    return Date.UTC(y, mon - 1, d, h - 3, min, 0, 0);
+  });
+  const toMoscowDateTimeLocalInput = window.toMoscowDateTimeLocalInput || ((ts) => {
+    const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
+    return date.toISOString().slice(0, 16);
+  });
+
   function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
     const input = document.getElementById(inputId);
     if (!input || input.value) return;
-    const local = new Date(Date.now() + plusMs - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    input.value = local;
+    input.value = toMoscowDateTimeLocalInput(Date.now() + plusMs);
   }
 
   function switchAdminInnerTab(tabName) {
@@ -84,7 +95,7 @@
     const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
     if (!startRaw) return alert('Выбери дату и время старта раунда.');
     if (!durationMs || durationMs < 60000) return alert('Минимальная длительность раунда — 1 минута.');
-    const startAt = new Date(startRaw).getTime();
+    const startAt = parseMoscowDateTimeLocalInput(startRaw);
     if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
 
     const payload = {
@@ -118,7 +129,7 @@
 
     const content = scheduled.length
       ? scheduled.map((r, i) => {
-          const start = new Date(r.startAt || 0).toLocaleString('ru-RU');
+          const start = formatMoscowDateTime(r.startAt || 0);
           const mins = Math.max(1, Math.round((r.durationMs || 0) / 60000));
           const cancelBtn = currentUserId === ADMIN_ID
             ? ` <button onclick="adminCancelScheduledRound('${r.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`
