@@ -1,4 +1,31 @@
 (function () {
+    function getDbInstance() {
+        if (typeof db !== 'undefined' && db && typeof db.ref === 'function') return db;
+        if (window.db && typeof window.db.ref === 'function') return window.db;
+        return null;
+    }
+
+    async function waitForDbReady(timeoutMs = 10000) {
+        const readyDb = getDbInstance();
+        if (readyDb) return readyDb;
+
+        return new Promise((resolve, reject) => {
+            const startedAt = Date.now();
+            const timer = setInterval(() => {
+                const instance = getDbInstance();
+                if (instance) {
+                    clearInterval(timer);
+                    resolve(instance);
+                    return;
+                }
+                if (Date.now() - startedAt >= timeoutMs) {
+                    clearInterval(timer);
+                    reject(new Error('Firebase db не инициализирован.'));
+                }
+            }, 100);
+        });
+    }
+
     const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
     let lastTicketCounterRepairAt = 0;
     let ticketCounterRepairInFlight = null;
@@ -177,6 +204,74 @@
             return;
         }
         await db.ref(`revoked_tickets/${num}`).remove();
+    }
+
+
+    async function createTicket(userId, amount, reason) {
+        const database = await waitForDbReady();
+        const uid = String(userId || '').trim();
+        const normalizedAmount = Number(amount);
+        const normalizedReason = String(reason || '').trim();
+
+        if (!/^\d+$/.test(uid)) throw new Error('Некорректный userId.');
+        if (!Number.isFinite(normalizedAmount)) throw new Error('Некорректный amount.');
+
+        let ticketId = null;
+        const txResult = await database.ref('lastTicketId').transaction(currentValue => {
+            const current = Number(currentValue) || 0;
+            ticketId = current + 1;
+            return ticketId;
+        });
+
+        if (!txResult.committed || !Number.isInteger(ticketId)) {
+            throw new Error('Не удалось создать ticketId через transaction().');
+        }
+
+        const payload = {
+            ticketId,
+            userId: uid,
+            amount: normalizedAmount,
+            reason: normalizedReason,
+            timestamp: Date.now()
+        };
+
+        const updates = {};
+        updates[`ticket_archive/${ticketId}`] = payload;
+        updates[`users/${uid}/tickets/${ticketId}`] = payload;
+        await database.ref().update(updates);
+
+        return payload;
+    }
+
+    async function revokeTicket(ticketId, reason) {
+        const database = await waitForDbReady();
+        const normalizedTicketId = String(ticketId || '').trim();
+        const normalizedReason = String(reason || '').trim();
+
+        if (!/^\d+$/.test(normalizedTicketId)) throw new Error('Некорректный ticketId.');
+
+        const ticketRef = database.ref(`ticket_archive/${normalizedTicketId}`);
+        const ticketSnap = await ticketRef.once('value');
+        if (!ticketSnap.exists()) throw new Error(`Билет #${normalizedTicketId} не найден в ticket_archive.`);
+
+        const ticketData = ticketSnap.val() || {};
+        const ownerUserId = String(ticketData.userId || '').trim();
+
+        const revokedPayload = {
+            ...ticketData,
+            revokeReason: normalizedReason,
+            revokedAt: Date.now()
+        };
+
+        const updates = {};
+        updates[`revoked_tickets/${normalizedTicketId}`] = revokedPayload;
+        updates[`ticket_archive/${normalizedTicketId}`] = null;
+        if (ownerUserId) {
+            updates[`users/${ownerUserId}/tickets/${normalizedTicketId}`] = null;
+        }
+
+        await database.ref().update(updates);
+        return revokedPayload;
     }
 
     async function claimSequentialTickets(count = 1, userId = currentUserId) {
@@ -455,4 +550,7 @@ ${taskText}`);
     window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
     window.selectAdminTicketUser = selectAdminTicketUser;
     window.openTicketTask = openTicketTask;
+    window.createTicket = createTicket;
+    window.revokeTicket = revokeTicket;
+    window.waitForDbReady = window.waitForDbReady || waitForDbReady;
 })();
