@@ -6,6 +6,9 @@
 
     let archiveRefs = [];
     let archiveByKey = {};
+    let revokedTicketsMap = {};
+    let adminTicketsSubtab = 'all';
+    let selectedAdminTicketUserId = null;
 
     function clearArchiveSubscriptions() {
         archiveRefs.forEach(ref => ref.off());
@@ -97,6 +100,11 @@
             updateAllTicketsDataAndRender();
         });
 
+        db.ref('revoked_tickets').on('value', snap => {
+            revokedTicketsMap = snap.val() || {};
+            updateAllTicketsDataAndRender();
+        });
+
         subscribeArchiveTickets();
         db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
             if (currentUserId === ADMIN_ID) return;
@@ -111,6 +119,44 @@
             .filter(t => /^\d+$/.test(t));
     }
 
+    function isTicketRevoked(ticketNum) {
+        return !!revokedTicketsMap[String(ticketNum)];
+    }
+
+    function getTicketSourceLabel(t) {
+        if (t.isEventReward) return '🎨 Событие';
+        if (t.isManualReward) return '🎫 Ручная выдача';
+        if (t.isManualRevoke) return '🧾 Изъят админом';
+        if (Number.isInteger(t.round) && t.round > 0) return `Раунд ${t.round}`;
+        return 'Иной источник';
+    }
+
+    function expandTicketsRows(rows) {
+        const expanded = [];
+        rows.forEach(t => {
+            extractTicketNumbers(t.ticket).forEach(ticketNum => {
+                expanded.push({
+                    ...t,
+                    ticketNum: String(ticketNum),
+                    isRevoked: isTicketRevoked(ticketNum),
+                    sourceLabel: getTicketSourceLabel(t)
+                });
+            });
+        });
+        return expanded;
+    }
+
+    async function toggleTicketRevocation(ticketNum, shouldRevoke) {
+        if (currentUserId !== ADMIN_ID) return;
+        const num = String(ticketNum || '').trim();
+        if (!/^\d+$/.test(num)) return;
+        if (shouldRevoke) {
+            await db.ref(`revoked_tickets/${num}`).set(true);
+            return;
+        }
+        await db.ref(`revoked_tickets/${num}`).remove();
+    }
+
     async function claimSequentialTickets(count = 1) {
         let startFrom = null;
         const tx = await db.ref('ticket_counter').transaction(c => {
@@ -123,35 +169,125 @@
         return Array.from({ length: count }, (_, idx) => String(startFrom + idx));
     }
 
+    function switchAdminTicketsSubtab(tabName) {
+        adminTicketsSubtab = tabName === 'player' ? 'player' : 'all';
+        const allBtn = document.getElementById('admin-tickets-all-btn');
+        const playerBtn = document.getElementById('admin-tickets-player-btn');
+        const allPanel = document.getElementById('admin-tickets-all-panel');
+        const playerPanel = document.getElementById('admin-tickets-player-panel');
+        const isAll = adminTicketsSubtab === 'all';
+
+        allBtn?.classList.toggle('active', isAll);
+        playerBtn?.classList.toggle('active', !isAll);
+        allPanel?.classList.toggle('active', isAll);
+        playerPanel?.classList.toggle('active', !isAll);
+        if (allPanel) allPanel.style.display = isAll ? 'block' : 'none';
+        if (playerPanel) playerPanel.style.display = isAll ? 'none' : 'block';
+    }
+
+    function getAdminPlayersAlphabetically() {
+        const whitelist = window.cachedWhitelistData || {};
+        const users = Object.entries(whitelist)
+            .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
+            .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
+            .map(p => ({ ...p, name: players[p.charIndex].n }));
+
+        users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        return users;
+    }
+
+    function renderAdminPlayerTickets(expandedRows) {
+        const playersListEl = document.getElementById('admin-ticket-players-list');
+        const ticketsListEl = document.getElementById('admin-player-tickets-list');
+        const titleEl = document.getElementById('admin-player-tickets-title');
+        if (!playersListEl || !ticketsListEl || !titleEl) return;
+
+        const users = getAdminPlayersAlphabetically();
+        if (!users.length) {
+            playersListEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+            titleEl.innerText = 'Выбери игрока, чтобы увидеть его билетики';
+            ticketsListEl.innerHTML = '';
+            return;
+        }
+
+        if (!selectedAdminTicketUserId || !users.some(u => u.userId === String(selectedAdminTicketUserId))) {
+            selectedAdminTicketUserId = users[0].userId;
+        }
+
+        playersListEl.innerHTML = users.map(u => {
+            const active = String(selectedAdminTicketUserId) === String(u.userId);
+            return `<button onclick="selectAdminTicketUser('${u.userId}')" style="text-align:left; border:1px solid ${active ? '#f48fb1' : '#eee'}; background:${active ? '#fff0f6' : '#fff'}; border-radius:8px; padding:8px;">${u.name}</button>`;
+        }).join('');
+
+        const selectedUser = users.find(u => String(u.userId) === String(selectedAdminTicketUserId));
+        const filtered = expandedRows
+            .filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex))
+            .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
+
+        titleEl.innerText = selectedUser ? `Билетики игрока: ${selectedUser.name}` : 'Билетики игрока';
+        if (!filtered.length) {
+            ticketsListEl.innerHTML = '<div style="font-size:12px; color:#888;">У игрока пока нет билетиков.</div>';
+            return;
+        }
+
+        ticketsListEl.innerHTML = filtered.map(t => `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #eee;">
+                <div style="text-align:left;">
+                    <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
+                    <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
+                </div>
+                <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
+                    ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
+                </button>
+            </div>
+        `).join('');
+    }
+
+    function selectAdminTicketUser(userId) {
+        selectedAdminTicketUserId = String(userId || '');
+        updateTicketsTable();
+    }
+
     function updateTicketsTable() {
         const body = document.getElementById('tickets-body');
         const isAdmin = (currentUserId === ADMIN_ID);
+        const adminSubtabs = document.getElementById('admin-tickets-subtabs');
 
+        if (adminSubtabs) adminSubtabs.style.display = isAdmin ? 'flex' : 'none';
         if (document.getElementById('th-user-name')) {
             document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
         }
 
-        const sortedData = allTicketsData.sort((a, b) => b.round - a.round || b.ticket - a.ticket);
+        if (isAdmin) {
+            switchAdminTicketsSubtab(adminTicketsSubtab);
+        }
 
-        body.innerHTML = sortedData.map(t => {
-            if (!isAdmin && t.owner !== myIndex && Number(t.userId) !== Number(currentUserId)) return '';
-            const statusClass = t.excluded ? 'row-excluded' : '';
+        const visibleData = isAdmin
+            ? allTicketsData
+            : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
 
+        const expandedRows = expandTicketsRows(visibleData)
+            .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
+
+        body.innerHTML = expandedRows.map(t => {
+            const statusClass = t.excluded || t.isRevoked ? 'row-excluded' : '';
             return `
                 <tr class="${statusClass}">
-                    <td>${t.round}</td>
-                    <td>${t.cell}</td>
-                    ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner].n}</td>` : ''}
-                    <td><b>${t.ticket}</b></td>
+                    <td>${t.round || '—'}</td>
+                    <td>${t.cell || '—'}</td>
+                    ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
+                    <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                     <td>
-                        ${t.isEventReward ? `<span style="font-size:11px; color:#6a1b9a; font-weight:700;">🎨 Билет события</span>` : `
-                        <div style="display:flex; gap:5px; justify-content:center;">
-                            ${(Number.isInteger(t.cellIdx) && t.cellIdx >= 0) ? `<button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell - 1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>` : `<span style="font-size:14px; opacity:0.5;">—</span>`}
-                            ${isAdmin && !t.isArchived ? `<button onclick="db.ref('board/${t.cellIdx}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
-                        </div>`}
+                        <div style="font-size:11px;">${t.sourceLabel}</div>
+                        ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
+                        ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                     </td>
                 </tr>`;
         }).join('');
+
+        if (isAdmin) {
+            renderAdminPlayerTickets(expandedRows);
+        }
     }
 
     function viewTaskDetails(cellIdx) {
@@ -165,6 +301,7 @@
         allTicketsData.forEach(t => {
             if (t.excluded) return;
             extractTicketNumbers(t.ticket).forEach(n => {
+                if (isTicketRevoked(n)) return;
                 tickets.push({ num: String(n), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' });
             });
         });
@@ -177,5 +314,7 @@
     window.updateTicketsTable = updateTicketsTable;
     window.viewTaskDetails = viewTaskDetails;
     window.getActiveTicketsForWheel = getActiveTicketsForWheel;
+    window.toggleTicketRevocation = toggleTicketRevocation;
+    window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
+    window.selectAdminTicketUser = selectAdminTicketUser;
 })();
-
