@@ -284,20 +284,25 @@
   async function rewardAllParticipants() {
     const db = await getDbReady();
     const snapshot = await db.ref('current_event/participants').once('value');
-    const participants = snapshot.val();
-    if (!participants) {
-      console.log('Участников нет, награда не выдана');
-      return;
-    }
+    const participants = snapshot.val() || {};
+    const participantIds = Object.keys(participants);
 
-    for (const userId in participants) {
-      console.log('Выдаю награду участнику:', userId);
-      await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
+    for (const userId of participantIds) {
+      try {
+        console.log('Выдаю награду участнику:', userId);
+        await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
+      } catch (err) {
+        console.error('Не удалось выдать награду участнику:', userId, err);
+      }
     }
 
     await db.ref('current_event').remove();
     clearEventUi();
-    alert('Ивент завершен! Награды отправлены участникам.');
+    if (participantIds.length) {
+      alert('Ивент завершен! Награды отправлены участникам.');
+    } else {
+      alert('Ивент завершен! Участников не было, награда не выдавалась.');
+    }
   }
 
   async function finalizeEventWithRewards() {
