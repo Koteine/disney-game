@@ -41,6 +41,66 @@
     let revokedTicketsMap = {};
     let adminTicketsSubtab = 'all';
     let selectedAdminTicketUserId = null;
+    let personalTicketsRef = null;
+    let personalTicketsWarmupDone = false;
+    const seenPersonalTicketKeys = new Set();
+
+    function showEventTicketRewardToast() {
+        const toast = document.createElement('div');
+        toast.textContent = '✨ +2 билетика за ивент! 🎫';
+        toast.style.position = 'fixed';
+        toast.style.left = '50%';
+        toast.style.bottom = '24px';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.background = '#ff4fa3';
+        toast.style.color = '#fff';
+        toast.style.padding = '12px 16px';
+        toast.style.borderRadius = '12px';
+        toast.style.boxShadow = '0 10px 30px rgba(173,20,87,0.35)';
+        toast.style.zIndex = '9999';
+        toast.style.fontWeight = '700';
+        toast.style.fontSize = '14px';
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 180ms ease';
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+        });
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 220);
+        }, 2600);
+    }
+
+    function subscribePersonalTicketNotifications() {
+        const uid = String(currentUserId || '').trim();
+        if (!/^\d+$/.test(uid)) return;
+        if (personalTicketsRef) personalTicketsRef.off();
+        personalTicketsWarmupDone = false;
+        seenPersonalTicketKeys.clear();
+
+        personalTicketsRef = db.ref(`users/${uid}/tickets`);
+        personalTicketsRef.once('value', snap => {
+            snap.forEach(child => seenPersonalTicketKeys.add(String(child.key)));
+            personalTicketsWarmupDone = true;
+        });
+
+        personalTicketsRef.on('child_added', snap => {
+            const ticketKey = String(snap.key || '');
+            if (!ticketKey) return;
+            if (!personalTicketsWarmupDone || seenPersonalTicketKeys.has(ticketKey)) {
+                seenPersonalTicketKeys.add(ticketKey);
+                return;
+            }
+            seenPersonalTicketKeys.add(ticketKey);
+
+            const payload = snap.val() || {};
+            const reason = String(payload.reason || '').toLowerCase();
+            if (reason.includes('эпичный раскрас') || reason.includes('ивент')) {
+                showEventTicketRewardToast();
+            }
+        });
+    }
 
     function clearArchiveSubscriptions() {
         archiveRefs.forEach(ref => ref.off());
@@ -139,6 +199,7 @@
         });
 
         subscribeArchiveTickets();
+        subscribePersonalTicketNotifications();
         db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
             if (isAdminUser()) return;
             subscribeArchiveTickets();
@@ -208,7 +269,8 @@
     }
 
 
-    async function createTicket(userId, amount, reason) {
+    window.createTicket = async function(userId, amount, reason) {
+        console.log('Попытка выдать билет для:', userId);
         const database = await waitForDbReady();
         const uid = String(userId || '').trim();
         const normalizedAmount = Number(amount);
@@ -281,7 +343,7 @@
             };
             throw error;
         }
-    }
+    };
 
     async function revokeTicket(ticketId, reason) {
         const database = await waitForDbReady();
@@ -590,7 +652,6 @@ ${taskText}`);
     window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
     window.selectAdminTicketUser = selectAdminTicketUser;
     window.openTicketTask = openTicketTask;
-    window.createTicket = createTicket;
     window.revokeTicket = revokeTicket;
     window.waitForDbReady = window.waitForDbReady || waitForDbReady;
 })();
