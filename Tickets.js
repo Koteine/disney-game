@@ -1,5 +1,7 @@
 (function () {
     const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+    let lastTicketCounterRepairAt = 0;
+    let ticketCounterRepairInFlight = null;
 
     function updateAllTicketsDataAndRender() {
         allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
@@ -181,6 +183,8 @@
         const needed = Math.max(1, Math.floor(Number(count) || 1));
         const awarded = [];
 
+        await maybeRepairTicketCounterDrift();
+
         const revokedSnap = await db.ref('revoked_tickets').once('value');
         const revoked = { ...(revokedSnap.val() || {}), ...revokedTicketsMap };
         const revokedSet = new Set(Object.keys(revoked).filter(k => revoked[k]));
@@ -208,6 +212,58 @@
         }
 
         return awarded.length ? awarded : null;
+    }
+
+    async function maybeRepairTicketCounterDrift() {
+        const now = Date.now();
+        if (ticketCounterRepairInFlight) return ticketCounterRepairInFlight;
+        if (now - lastTicketCounterRepairAt < 30000) return;
+
+        ticketCounterRepairInFlight = (async () => {
+            const [counterSnap, boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+                db.ref('ticket_counter').once('value'),
+                db.ref('board').once('value'),
+                db.ref('tickets_archive').once('value'),
+                db.ref('revoked_tickets').once('value')
+            ]);
+
+            const counter = Number(counterSnap.val()) || 0;
+            const revokedMap = revokedSnap.val() || {};
+            let maxActiveTicket = 0;
+
+            const includeTicket = (ticketValue) => {
+                extractTicketNumbers(ticketValue).forEach(num => {
+                    const n = Number(num);
+                    if (!Number.isInteger(n) || n < 1) return;
+                    if (revokedMap[String(n)]) return;
+                    if (n > maxActiveTicket) maxActiveTicket = n;
+                });
+            };
+
+            Object.values(boardSnap.val() || {}).forEach(cell => {
+                if (!cell || cell.excluded) return;
+                includeTicket(cell.ticket);
+            });
+
+            archiveSnap.forEach(item => {
+                const row = item.val() || {};
+                if (row.excluded && !row.isManualRevoke) return;
+                includeTicket(row.ticket);
+            });
+
+            const drift = counter - maxActiveTicket;
+            if (counter < maxActiveTicket || drift > 200) {
+                await db.ref('ticket_counter').set(maxActiveTicket);
+            }
+
+            lastTicketCounterRepairAt = Date.now();
+        })();
+
+        try {
+            await ticketCounterRepairInFlight;
+        } finally {
+            ticketCounterRepairInFlight = null;
+        }
     }
 
     function switchAdminTicketsSubtab(tabName) {
