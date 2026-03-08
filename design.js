@@ -323,9 +323,20 @@
             font-size: 14px;
             font-weight: 700;
         }
+        #paint-progress.paint-progress-win {
+            background: linear-gradient(90deg, #ff4fa3, #ff2f92);
+            color: #fff;
+            border-radius: 8px;
+            padding: 6px 10px;
+            animation: paintWinBlink 0.7s infinite alternate;
+            box-shadow: 0 0 14px rgba(255, 64, 129, 0.7);
+        }
+        @keyframes paintWinBlink {
+            from { opacity: 0.65; transform: scale(1); }
+            to { opacity: 1; transform: scale(1.02); }
+        }
         #event-done-message { color: #9cffb2; margin-top: 4px; }
         .event-overlay[style*="display: flex"] { display:flex !important; }
     `;
   document.head.appendChild(style);
 })();
-

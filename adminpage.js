@@ -315,6 +315,27 @@
     alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
   }
 
+  async function resetAllInventories() {
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+    if (!confirm('Обнулить рюкзаки всех игроков?')) return;
+    const [usersSnap, whitelistSnap] = await Promise.all([
+      db.ref('users').once('value'),
+      db.ref('whitelist').once('value')
+    ]);
+    const updates = {};
+    usersSnap.forEach((userSnap) => {
+      updates[`users/${userSnap.key}/inventory`] = null;
+    });
+    whitelistSnap.forEach((userSnap) => {
+      updates[`whitelist/${userSnap.key}/inventory`] = null;
+    });
+    if (!Object.keys(updates).length) return alert('Список игроков пуст.');
+
+    await db.ref().update(updates);
+    await postNews('🧹 Администратор обнулил(а) рюкзаки всех игроков.');
+    alert('Рюкзаки всех игроков обнулены.');
+  }
+
   let roundSchedules = [];
   let roundSchedulesRef = null;
 
@@ -525,6 +546,7 @@
     window.adminUndoTicketRevoke = adminUndoTicketRevoke;
     window.adminRevokeTicketRange = adminRevokeTicketRange;
     window.adminResetCurrentRound = adminResetCurrentRound;
+    window.resetAllInventories = resetAllInventories;
     window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
     window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
     window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;

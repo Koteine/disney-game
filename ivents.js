@@ -133,6 +133,10 @@
     if (titleEl) titleEl.textContent = 'Эпичный раскрас';
     if (timerEl) timerEl.textContent = state.status === STATUS_ACTIVE ? formatTimer(state.end_timestamp) : '00:00';
     if (progressEl) progressEl.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
+    if (progressEl) {
+      const win = Number(state.progress || 0) >= TARGET_PERCENT;
+      progressEl.classList.toggle('paint-progress-win', win);
+    }
   }
 
   function resizeCanvasToViewport() {
@@ -193,6 +197,10 @@
     registerParticipant().catch(() => {});
     const color = await ensureMyColor();
     pushStroke(p.x, p.y, p.x, p.y, color).catch(() => {});
+    const percent = Number(computeProgressPercent().toFixed(2));
+    state.progress = percent;
+    updateOverlayUi();
+    checkEventStatus(percent).catch(() => {});
   }
 
   async function draw(evt) {
@@ -203,6 +211,10 @@
     lastPoint = p;
     const color = await ensureMyColor();
     pushStroke(from.x, from.y, p.x, p.y, color).catch(() => {});
+    const percent = Number(computeProgressPercent().toFixed(2));
+    state.progress = percent;
+    updateOverlayUi();
+    checkEventStatus(percent).catch(() => {});
   }
 
   function stopDrawing() {
@@ -281,8 +293,27 @@
     return total ? (painted / total) * 100 : 0;
   }
 
+  async function checkEventStatus(progress) {
+    if (state.status !== STATUS_ACTIVE || state.type !== EVENT_TYPE) return;
+    const eventEndTime = Number(state.end_timestamp || 0);
+    const currentProgress = Number.isFinite(Number(progress)) ? Number(progress) : Number(state.progress || 0);
+    if (currentProgress >= TARGET_PERCENT) {
+      await rewardAllParticipants();
+      return;
+    }
+    if (eventEndTime > 0 && Date.now() >= eventEndTime) {
+      await rewardAllParticipants();
+    }
+  }
+
   async function rewardAllParticipants() {
     const db = await getDbReady();
+    const statusTx = await db.ref('current_event/status').transaction((status) => {
+      if (String(status || '') === 'finished') return;
+      return 'finished';
+    });
+    if (!statusTx.committed) return;
+
     const snapshot = await db.ref('current_event/participants').once('value');
     const participants = snapshot.val() || {};
     const participantIds = Object.keys(participants);
@@ -296,13 +327,20 @@
       }
     }
 
-    await db.ref('current_event').remove();
     clearEventUi();
-    if (participantIds.length) {
-      alert('Ивент завершен! Награды отправлены участникам.');
-    } else {
-      alert('Ивент завершен! Участников не было, награда не выдавалась.');
+    const box = $('event-notification');
+    if (box) {
+      box.style.display = 'block';
+      box.classList.add('event-notification-pink');
+      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">🎉 Ивент завершен!</div>`;
     }
+    setTimeout(() => {
+      try {
+        window.location.reload();
+      } catch (e) {
+        closeEventOverlay();
+      }
+    }, 3000);
   }
 
   async function finalizeEventWithRewards() {
@@ -322,14 +360,10 @@
     try {
       const db = await getDbReady();
       const percent = Number(computeProgressPercent().toFixed(2));
-      const visiblePercent = Number(percent.toFixed(1));
       state.progress = percent;
       updateOverlayUi();
       await db.ref(`${EVENT_PATH}/progress`).set({ percent, updated_at: Date.now() });
-
-      if (visiblePercent >= TARGET_PERCENT) {
-        await finalizeEventWithRewards();
-      }
+      await checkEventStatus(percent);
     } catch (err) {
       console.error('Ошибка синхронизации прогресса:', err);
     }
@@ -370,10 +404,7 @@
       if (Number.isFinite(sharedPercent)) {
         state.progress = sharedPercent;
         updateOverlayUi();
-        const visiblePercent = Number(sharedPercent.toFixed(1));
-        if (state.status === STATUS_ACTIVE && state.type === EVENT_TYPE && visiblePercent >= TARGET_PERCENT) {
-          finalizeEventWithRewards();
-        }
+        checkEventStatus(sharedPercent).catch(() => {});
       }
     });
   }
@@ -392,7 +423,10 @@
       }
 
       if (timerHandle) clearInterval(timerHandle);
-      timerHandle = setInterval(updateOverlayUi, 1000);
+      timerHandle = setInterval(() => {
+        updateOverlayUi();
+        checkEventStatus(state.progress).catch(() => {});
+      }, 1000);
 
       if (progressHandle) clearInterval(progressHandle);
       progressHandle = setInterval(syncProgressAndCheckFinish, 5000);
