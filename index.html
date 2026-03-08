@@ -208,11 +208,11 @@
                     <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Отобрать билетики у игрока</div>
+                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Отобрать конкретный билетик у игрока</div>
                     <input type="number" id="admin-revoke-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <input type="number" id="admin-revoke-ticket-count" placeholder="Сколько билетиков отобрать" class="admin-input" min="1" value="1">
+                    <input type="number" id="admin-revoke-ticket-number" placeholder="Номер билетика (например: 78)" class="admin-input" min="1">
                     <input type="text" id="admin-revoke-ticket-note" placeholder="Пометка (почему отобрали)" class="admin-input">
-                    <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
+                    <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетик</button>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <div style="font-size:12px; color:#666; margin:6px 0 4px;">Вычеркнуть диапазон билетиков из игры</div>
@@ -1849,9 +1849,10 @@
         async function adminRevokeTicketsFromPlayer() {
             if (currentUserId !== ADMIN_ID) return;
             const userId = (document.getElementById('admin-revoke-ticket-user-id')?.value || '').trim();
-            const count = Math.max(1, Number(document.getElementById('admin-revoke-ticket-count')?.value || 1));
+            const ticketNum = String(document.getElementById('admin-revoke-ticket-number')?.value || '').trim();
             const note = (document.getElementById('admin-revoke-ticket-note')?.value || '').trim();
             if (!userId) return alert('Укажи Telegram ID игрока.');
+            if (!/^\d+$/.test(ticketNum) || Number(ticketNum) < 1) return alert('Укажи корректный номер билетика для изъятия.');
 
             const userSnap = await db.ref(`whitelist/${userId}`).once('value');
             const user = userSnap.val();
@@ -1859,11 +1860,11 @@
 
             const targetTickets = getActiveTicketsForWheel()
                 .filter(t => Number(t.owner) === Number(user.charIndex))
-                .map(t => String(t.num))
-                .sort((a, b) => Number(b) - Number(a));
+                .map(t => String(t.num));
             if (!targetTickets.length) return alert('У этого игрока нет активных билетиков для изъятия.');
+            if (!targetTickets.includes(ticketNum)) return alert(`У игрока нет активного билетика №${ticketNum}.`);
 
-            const toRevoke = targetTickets.slice(0, count);
+            const toRevoke = [ticketNum];
             const revokeSet = new Set(toRevoke);
             const updates = {};
 
@@ -1885,7 +1886,7 @@
             });
 
             if (!Object.keys(updates).length) return alert('Не удалось найти подходящие билетики для изъятия. Попробуй обновить страницу.');
-            const revokedText = toRevoke.join(' и ');
+            const revokedText = toRevoke[0];
             const archiveKey = db.ref('tickets_archive').push().key;
             updates[`tickets_archive/${archiveKey}`] = {
                 owner: user.charIndex,
@@ -1904,8 +1905,8 @@
 
             await db.ref().update(updates);
             const notePart = note ? ` Причина: ${note}` : '';
-            await postNews(`🧾 Администратор отозвал(а) билет(ы) ${revokedText} у игрока ${players[user.charIndex].n}.${notePart}`);
-            alert(`Готово! Отозвано билетиков: ${toRevoke.length}. Номера: ${revokedText}.${note ? `
+            await postNews(`🧾 Администратор отозвал(а) билетик №${revokedText} у игрока ${players[user.charIndex].n}.${notePart}`);
+            alert(`Готово! Отозван билетик №${revokedText}.${note ? `
 Пометка: ${note}` : ''}`);
         }
 
@@ -2126,4 +2127,5 @@
     <script src="adminpage.js"></script>
 </body>
 </html>
+
 
