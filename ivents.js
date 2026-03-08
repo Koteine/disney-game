@@ -30,6 +30,7 @@
   let drawing = false;
   let lastPoint = { x: 0, y: 0 };
   let myColor = null;
+  let participantMarked = false;
 
   const $ = (id) => document.getElementById(id);
 
@@ -162,7 +163,8 @@
 
   async function registerParticipant() {
     const uid = getUserId();
-    if (!uid) return;
+    if (!uid || participantMarked) return;
+    participantMarked = true;
     const db = await getDbReady();
     await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
   }
@@ -173,18 +175,19 @@
     const p = toWorldPoint(evt);
     drawing = true;
     lastPoint = p;
-    await registerParticipant();
+    registerParticipant().catch(() => {});
     const color = await ensureMyColor();
-    await pushStroke(p.x, p.y, p.x, p.y, color);
+    pushStroke(p.x, p.y, p.x, p.y, color).catch(() => {});
   }
 
   async function draw(evt) {
     if (!drawing || state.status !== STATUS_ACTIVE) return;
     evt.preventDefault();
     const p = toWorldPoint(evt);
-    const color = await ensureMyColor();
-    await pushStroke(lastPoint.x, lastPoint.y, p.x, p.y, color);
+    const from = lastPoint;
     lastPoint = p;
+    const color = await ensureMyColor();
+    pushStroke(from.x, from.y, p.x, p.y, color).catch(() => {});
   }
 
   function stopDrawing() {
@@ -220,12 +223,25 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     Object.values(strokeMap).forEach((s) => {
       ctx.beginPath();
+      const x1 = Number(s.x1) || 0;
+      const y1 = Number(s.y1) || 0;
+      const x2 = Number(s.x2) || 0;
+      const y2 = Number(s.y2) || 0;
+      const size = Number(s.size) || BRUSH_SIZE;
       ctx.lineCap = 'round';
-      ctx.lineWidth = Number(s.size) || BRUSH_SIZE;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = size;
       ctx.strokeStyle = s.color || '#ff4fa3';
-      ctx.moveTo(Number(s.x1) || 0, Number(s.y1) || 0);
-      ctx.lineTo(Number(s.x2) || 0, Number(s.y2) || 0);
-      ctx.stroke();
+      if (Math.abs(x1 - x2) < 0.001 && Math.abs(y1 - y2) < 0.001) {
+        ctx.beginPath();
+        ctx.fillStyle = s.color || '#ff4fa3';
+        ctx.arc(x1, y1, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
     });
   }
 
@@ -257,7 +273,11 @@
       const db = await getDbReady();
       const snap = await db.ref(EVENT_PATH).once('value');
       const eventData = snap.val() || {};
-      const participants = Object.keys(eventData.participants || {});
+      let participants = Object.keys(eventData.participants || {});
+      if (!participants.length) {
+        const strokeUsers = new Set(Object.values(eventData.strokes || {}).map(v => String(v?.uid || '')).filter(Boolean));
+        participants = Array.from(strokeUsers);
+      }
 
       if (participants.length) {
         for (const uid of participants) {
@@ -307,6 +327,7 @@
       state = normalizeEvent(snap.val());
       if (prevStatus !== STATUS_ACTIVE && state.status === STATUS_ACTIVE) {
         myColor = null;
+        participantMarked = false;
       }
       showNotification();
       updateOverlayUi();
