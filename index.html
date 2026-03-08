@@ -59,18 +59,35 @@
 
        <div id="tab-tickets" class="tab-content">
     <h1>🎫 История билетов</h1>
-    <div style="overflow-x: auto;">
-        <table>
-            <thead style="background:var(--p-pink); color:white;">
-                <tr>
-                    <th>Рнд</th>
-                    <th>Клетка</th>
-                    <th id="th-user-name" style="display:none;">Игрок</th>
-                    <th>Билет</th>
-                    <th>Задание</th> </tr>
-            </thead>
-            <tbody id="tickets-body"></tbody>
-        </table>
+    <div id="admin-tickets-subtabs" class="admin-inner-tabs" style="display:none; margin:8px;">
+        <button id="admin-tickets-all-btn" class="admin-inner-tab-btn active" onclick="switchAdminTicketsSubtab('all')">Все билеты в игре</button>
+        <button id="admin-tickets-player-btn" class="admin-inner-tab-btn" onclick="switchAdminTicketsSubtab('player')">Билеты игрока</button>
+    </div>
+    <div id="admin-tickets-all-panel" class="admin-inner-panel active" style="display:block;">
+        <div style="overflow-x: auto;">
+            <table>
+                <thead style="background:var(--p-pink); color:white;">
+                    <tr>
+                        <th>Рнд</th>
+                        <th>Клетка</th>
+                        <th id="th-user-name" style="display:none;">Игрок</th>
+                        <th>Билет</th>
+                        <th>Задание</th>
+                    </tr>
+                </thead>
+                <tbody id="tickets-body"></tbody>
+            </table>
+        </div>
+    </div>
+    <div id="admin-tickets-player-panel" class="admin-inner-panel" style="margin:0 8px;">
+        <div class="works-card" style="margin:0 0 8px 0;">
+            <b>Игроки (по алфавиту)</b>
+            <div id="admin-ticket-players-list" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div>
+        </div>
+        <div class="works-card" style="margin:0;">
+            <b id="admin-player-tickets-title">Выбери игрока, чтобы увидеть его билетики</b>
+            <div id="admin-player-tickets-list" style="margin-top:8px;"></div>
+        </div>
     </div>
 </div>
 
@@ -97,8 +114,8 @@
         </div>
 
         <div id="tab-works" class="tab-content">
-            <h1>📤 Сдача работ</h1>
-            <div class="works-card">
+            <h1 id="works-tab-title">📤 Сдача работ</h1>
+            <div id="works-upload-card" class="works-card">
                 <b>Загрузить новую работу</b>
                 <select id="work-task-select" class="admin-input" style="margin-top:8px;"></select>
                 <label style="font-size:12px; color:#777;">Фото «До» (не раскрашенная)</label>
@@ -169,22 +186,39 @@
                 </div>
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
-                <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin-top:8px;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
             </div>
             <div class="admin-section">
-                <b>Экстренные действия:</b>
-                <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
-                <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                <select id="admin-rename-char-index" class="admin-input"></select>
-                <button onclick="adminForceRenamePlayer()" class="admin-btn" style="background:#5e35b1; width:100%; margin:0;">✏️ Сменить никнейм</button>
-                <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная выдача билетика</div>
-                <input type="number" id="admin-grant-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                <input type="number" id="admin-grant-ticket-count" placeholder="Сколько билетиков" class="admin-input" min="1" value="1">
-                <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <b>Экстренные действия:</b>
+                    <button id="admin-emergency-toggle-btn" class="news-toggle-btn" onclick="toggleAdminEmergencyActions()">Развернуть</button>
+                </div>
+                <div id="admin-emergency-body" class="news-list" style="margin-top:8px;">
+                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная выдача билетиков</div>
+                    <input type="number" id="admin-grant-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                    <input type="number" id="admin-grant-ticket-count" placeholder="Сколько билетиков" class="admin-input" min="1" value="1">
+                    <input type="text" id="admin-grant-ticket-note" placeholder="Пометка (например: компенсация за ...)" class="admin-input">
+                    <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Отобрать билетики у игрока</div>
+                    <input type="number" id="admin-revoke-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                    <input type="number" id="admin-revoke-ticket-count" placeholder="Сколько билетиков отобрать" class="admin-input" min="1" value="1">
+                    <input type="text" id="admin-revoke-ticket-note" placeholder="Пометка (почему отобрали)" class="admin-input">
+                    <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
+                    <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                    <select id="admin-rename-char-index" class="admin-input"></select>
+                    <button onclick="adminForceRenamePlayer()" class="admin-btn" style="background:#5e35b1; width:100%; margin:0;">✏️ Сменить никнейм</button>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
+                    <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
+                    <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ИГРУ</button>
+                    <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px; width:100%; margin-top:8px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
+                </div>
             </div>
-            <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px;">🔄 СБРОСИТЬ ИГРУ</button>
-            <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
         </div>
 
         <div id="tab-rules" class="tab-content">
@@ -708,6 +742,14 @@
             alert('⏰ 24 часа на кляксу истекли. Билетик за это задание не начислен.');
         }
 
+
+        function updateWorksTabForRole(isAdmin) {
+            const uploadCard = document.getElementById('works-upload-card');
+            const title = document.getElementById('works-tab-title');
+            if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+        }
+
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
@@ -718,18 +760,21 @@
                 ensureDateTimeInputDefault('draw-start-at');
                 ensureDateTimeInputDefault('round-start-at');
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                updateWorksTabForRole(true);
                 setAuthorizedView(true);
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
                     document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    updateWorksTabForRole(false);
                     setAuthorizedView(true);
                     return;
                 }
 
                 myIndex = -1;
                 if (currentUserId !== ADMIN_ID) {
+                    updateWorksTabForRole(false);
                     document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
                     setAuthorizedView(false);
                 }
@@ -1289,6 +1334,10 @@
 
         function toggleNewsPanel() {
             toggleExpandablePanel('news-list', 'news-toggle-btn');
+        }
+
+        function toggleAdminEmergencyActions() {
+            toggleExpandablePanel('admin-emergency-body', 'admin-emergency-toggle-btn');
         }
 
         function toggleExpandablePanel(listId, btnId) {
@@ -2550,6 +2599,7 @@
             if (currentUserId !== ADMIN_ID) return;
             const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
             const count = Math.max(1, Number(document.getElementById('admin-grant-ticket-count')?.value || 1));
+            const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
             if (!userId) return alert('Укажи Telegram ID игрока.');
             const userSnap = await db.ref(`whitelist/${userId}`).once('value');
             const user = userSnap.val();
@@ -2568,10 +2618,93 @@
                 cellIdx: -1,
                 isManualReward: true,
                 archivedAt: Date.now(),
-                excluded: false
+                excluded: false,
+                adminNote: note || null
             });
-            await postNews(`🎫 Администратор выдал(а) ${count} билет(ов) игроку ${players[user.charIndex].n}.`);
-            alert(`Готово! Выдано билетиков: ${count}. Номера: ${ticketValue}.`);
+            const notePart = note ? ` Причина: ${note}` : '';
+            await postNews(`🎫 Администратор выдал(а) ${count} билет(ов) игроку ${players[user.charIndex].n}.${notePart}`);
+            alert(`Готово! Выдано билетиков: ${count}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
+        }
+
+
+        async function adminRevokeTicketsFromPlayer() {
+            if (currentUserId !== ADMIN_ID) return;
+            const userId = (document.getElementById('admin-revoke-ticket-user-id')?.value || '').trim();
+            const count = Math.max(1, Number(document.getElementById('admin-revoke-ticket-count')?.value || 1));
+            const note = (document.getElementById('admin-revoke-ticket-note')?.value || '').trim();
+            if (!userId) return alert('Укажи Telegram ID игрока.');
+
+            const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+            const user = userSnap.val();
+            if (!user || !Number.isInteger(user.charIndex) || !players[user.charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+
+            const targetTickets = getActiveTicketsForWheel()
+                .filter(t => Number(t.owner) === Number(user.charIndex))
+                .map(t => String(t.num))
+                .sort((a, b) => Number(b) - Number(a));
+            if (!targetTickets.length) return alert('У этого игрока нет активных билетиков для изъятия.');
+
+            const toRevoke = targetTickets.slice(0, count);
+            const revokeSet = new Set(toRevoke);
+            const updates = {};
+
+            allTicketsData.forEach(t => {
+                if (t.excluded) return;
+                if (Number(t.owner) !== Number(user.charIndex) && Number(t.userId) !== Number(userId)) return;
+                const nums = extractTicketNumbers(t.ticket);
+                if (!nums.length) return;
+                const left = nums.filter(n => !revokeSet.has(String(n)));
+                if (left.length === nums.length) return;
+
+                if (t.isArchived && t.archiveKey) {
+                    updates[`tickets_archive/${t.archiveKey}/ticket`] = left.join(' и ');
+                    updates[`tickets_archive/${t.archiveKey}/excluded`] = left.length === 0;
+                } else if (Number.isInteger(t.cellIdx) && t.cellIdx >= 0) {
+                    updates[`board/${t.cellIdx}/ticket`] = left.join(' и ');
+                    updates[`board/${t.cellIdx}/excluded`] = left.length === 0;
+                }
+            });
+
+            if (!Object.keys(updates).length) return alert('Не удалось найти подходящие билетики для изъятия. Попробуй обновить страницу.');
+            const revokedText = toRevoke.join(' и ');
+            const archiveKey = db.ref('tickets_archive').push().key;
+            updates[`tickets_archive/${archiveKey}`] = {
+                owner: user.charIndex,
+                userId: Number(userId),
+                ticket: revokedText,
+                taskIdx: -1,
+                round: currentRoundNum,
+                cell: 0,
+                cellIdx: -1,
+                isManualRevoke: true,
+                adminNote: note || null,
+                archivedAt: Date.now(),
+                excluded: true
+            };
+
+            await db.ref().update(updates);
+            const notePart = note ? ` Причина: ${note}` : '';
+            await postNews(`🧾 Администратор отозвал(а) билет(ы) ${revokedText} у игрока ${players[user.charIndex].n}.${notePart}`);
+            alert(`Готово! Отозвано билетиков: ${toRevoke.length}. Номера: ${revokedText}.${note ? `
+Пометка: ${note}` : ''}`);
+        }
+
+        async function adminResetCurrentRound() {
+            if (currentUserId !== ADMIN_ID) return;
+            if (!confirm('Сбросить текущий раунд? Поле очистится, прогресс раунда будет остановлен.')) return;
+
+            await db.ref('board').set({});
+            await db.ref('current_round').update({
+                endTime: 0,
+                traps: [],
+                magicCell: null,
+                miniGameCell: null,
+                wordSketchCell: null,
+                magnetCell: null,
+                itemCells: {}
+            });
+            await postNews('🔄 Администратор сбросил(а) текущий раунд.');
+            alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
         }
 
       function syncAdminList() {
@@ -2717,3 +2850,4 @@
     <script src="adminpage.js"></script>
 </body>
 </html>
+
