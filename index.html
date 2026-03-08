@@ -1026,6 +1026,8 @@
         function updateTimerDisplay() {
             if (window.timerInt) clearInterval(window.timerInt);
             const btn = document.getElementById('dice-btn');
+            const isAdminUser = Number(currentUserId) === Number(ADMIN_ID);
+            if (btn) btn.style.display = isAdminUser ? 'none' : 'block';
 
             window.timerInt = setInterval(async () => {
                 await checkInkDeadline();
@@ -1053,6 +1055,12 @@
                 const s = Math.floor((diff % 60000) / 1000);
                 document.getElementById('round-timer').innerText = `${d}д ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
 
+                if (isAdminUser) {
+                    btn.disabled = true;
+                    btn.innerText = '🛡️ Для админа ход отключён';
+                    return;
+                }
+
                 if (myIndex === -1) {
                     btn.disabled = true;
                     btn.innerText = "🔒 Нет доступа";
@@ -1077,6 +1085,7 @@
         }
 
         async function roll() {
+            if (Number(currentUserId) === Number(ADMIN_ID)) return;
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
             if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
@@ -1903,6 +1912,10 @@
                 updates[`revoked_tickets/${n}`] = true;
             }
             await db.ref().update(updates);
+            await db.ref('ticket_counter').transaction(c => {
+                const current = Number(c) || 0;
+                return Math.min(current, Math.max(0, from - 1));
+            });
 
             const notePart = note ? ` Причина: ${note}` : '';
             await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${to}.${notePart}`);
