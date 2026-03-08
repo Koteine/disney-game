@@ -234,18 +234,57 @@
             0% { transform: translate(0,0) scale(1); opacity: 1; }
             100% { transform: translate(var(--dx), var(--dy)) scale(0.5); opacity: 0; }
         }
-        #epic-paint-wrap { display:none; width:95%; max-width:500px; margin:8px auto; }
-        #epic-paint-canvas {
-            width:100%;
-            height:auto;
-            aspect-ratio: 1 / 2;
-            touch-action:none;
-            border:2px dashed #ff80ab;
-            border-radius:12px;
-            background:white;
-            display:block;
+        body.event-mode {
+            padding: 0;
+            overflow: hidden;
         }
-        #epic-paint-progress { font-size:12px; color:#ad1457; margin-top:6px; }
+        .event-screen {
+            position: fixed;
+            inset: 0;
+            background: #111;
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            color: #fff;
+        }
+        .event-screen.tab-active { display: flex; }
+        .event-screen-topbar {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:8px;
+            padding:10px;
+            background: rgba(0, 0, 0, 0.72);
+        }
+        .event-screen-title { font-weight:800; font-size:16px; }
+        .event-screen-timer { font-size:13px; color:#ffd54f; }
+        .event-back-btn {
+            border:none;
+            border-radius:10px;
+            padding:8px 10px;
+            background:#3949ab;
+            color:#fff;
+            font-weight:700;
+        }
+        .event-screen-canvas-wrap {
+            flex: 1;
+            padding: 6px;
+        }
+        #epic-paint-canvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            background: #fff;
+            border-radius: 10px;
+            display: block;
+        }
+        .event-screen-footer {
+            background: rgba(0,0,0,0.72);
+            padding: 10px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        #event-done-message { color: #9cffb2; margin-top: 4px; }
     `;
   document.head.appendChild(style);
 })();
