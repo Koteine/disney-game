@@ -13,6 +13,64 @@
 
   const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
   let isAdminGrantTicketsInFlight = false;
+  const giveTicketLocks = new Set();
+
+  async function giveTicket(targetUserId) {
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+
+    const uid = String(targetUserId || "").trim();
+    if (!/^\d+$/.test(uid)) return alert('Некорректный Telegram ID для выдачи билета.');
+
+    const lockKey = `giveTicket:${uid}`;
+    if (giveTicketLocks.has(lockKey)) return;
+    giveTicketLocks.add(lockKey);
+
+    try {
+      const userSnap = await db.ref(`whitelist/${uid}`).once('value');
+      const user = userSnap.val() || {};
+      const charIndex = Number(user.charIndex);
+      if (!Number.isInteger(charIndex) || !players[charIndex]) {
+        return alert('Игрок не найден или у него не назначен никнейм.');
+      }
+
+      const tx = await db.ref('ticket_counter').transaction(currentValue => {
+        const current = Number(currentValue) || 0;
+        if (current >= MAX_TICKETS) return;
+        return current + 1;
+      });
+
+      if (!tx.committed) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+
+      const ticketNumber = Number(tx.snapshot.val());
+      if (!Number.isInteger(ticketNumber) || ticketNumber < 1) return alert('Не удалось определить номер нового билетика. Попробуй ещё раз.');
+
+      const archiveKey = db.ref('tickets_archive').push().key;
+      const updates = {
+        [`users/${uid}/tickets`]: firebase.database.ServerValue.increment(1),
+        [`whitelist/${uid}/tickets`]: firebase.database.ServerValue.increment(1),
+        [`revoked_tickets/${ticketNumber}`]: null,
+        [`tickets_archive/${archiveKey}`]: {
+          owner: charIndex,
+          userId: Number(uid),
+          ticket: String(ticketNumber),
+          taskIdx: -1,
+          round: currentRoundNum,
+          cell: 0,
+          cellIdx: -1,
+          isManualReward: true,
+          archivedAt: Date.now(),
+          excluded: false,
+          adminNote: 'Быстрая выдача из списка игроков',
+          taskLabel: 'Ручная выдача администратором'
+        }
+      };
+
+      await db.ref().update(updates);
+      await postNews(`🎫 Администратор выдал(а) билет №${ticketNumber} игроку ${players[charIndex].n}.`);
+    } finally {
+      giveTicketLocks.delete(lockKey);
+    }
+  }
 
   function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
     const input = document.getElementById(inputId);
@@ -456,6 +514,7 @@
     window.adminCancelScheduledRound = adminCancelScheduledRound;
     window.adminForceRenamePlayer = adminForceRenamePlayer;
     window.adminGrantTicketsToPlayer = adminGrantTicketsToPlayer;
+    window.giveTicket = giveTicket;
     window.adminRevokeTicketsFromPlayer = adminRevokeTicketsFromPlayer;
     window.adminUndoTicketRevoke = adminUndoTicketRevoke;
     window.adminRevokeTicketRange = adminRevokeTicketRange;
