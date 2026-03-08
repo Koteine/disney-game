@@ -301,11 +301,12 @@
     try {
       const db = await getDbReady();
       const percent = Number(computeProgressPercent().toFixed(2));
+      const visiblePercent = Number(percent.toFixed(1));
       state.progress = percent;
       updateOverlayUi();
       await db.ref(`${EVENT_PATH}/progress`).set({ percent, updated_at: Date.now() });
 
-      if (percent >= TARGET_PERCENT) {
+      if (visiblePercent >= TARGET_PERCENT) {
         await finalizeEventWithRewards();
       }
     } catch (err) {
@@ -344,6 +345,10 @@
       if (Number.isFinite(sharedPercent)) {
         state.progress = sharedPercent;
         updateOverlayUi();
+        const visiblePercent = Number(sharedPercent.toFixed(1));
+        if (state.status === STATUS_ACTIVE && state.type === EVENT_TYPE && visiblePercent >= TARGET_PERCENT) {
+          finalizeEventWithRewards();
+        }
       }
     });
   }
