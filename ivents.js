@@ -393,6 +393,104 @@ function backToGameFromEvent() {
     if (gameBtn) switchTab('tab-game', gameBtn);
 }
 
+
+
+function showEventRewardNotification(text, idSuffix = 'generic') {
+    if (typeof showPlayerNotification === 'function') {
+        showPlayerNotification({ id: `event-reward-${idSuffix}`, text });
+    } else {
+        alert(text);
+    }
+}
+
+async function claimManualEventReward(eventKey) {
+    if (!eventKey || !Number(currentUserId)) return;
+    const eventSnap = await db.ref(`game_events/${eventKey}`).once('value');
+    const eventData = eventSnap.val() || {};
+    if (!eventData || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(eventData.id) || eventData.status !== 'completed') {
+        showEventRewardNotification('Событие уже недоступно для получения награды.', `${eventKey}-unavailable`);
+        return;
+    }
+
+    const uidKey = String(currentUserId);
+    const rewardedRef = db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`);
+    const alreadyRewarded = (await rewardedRef.once('value')).val();
+    if (alreadyRewarded) {
+        showEventRewardNotification('Награда уже была получена ранее.', `${eventKey}-already`);
+        return;
+    }
+
+    const [whitelistSnap, teamsSnap, participantsSnap, strokesSnap] = await Promise.all([
+        db.ref(`whitelist/${uidKey}`).once('value'),
+        db.ref(`game_events/${eventKey}/teams/${uidKey}`).once('value'),
+        db.ref(`epic_paint/participants/${uidKey}`).once('value'),
+        db.ref('epic_paint/strokes').orderByChild('uid').equalTo(Number(currentUserId)).once('value')
+    ]);
+
+    const user = whitelistSnap.val() || {};
+    const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+
+    if (eventData.id === WALL_BATTLE_EVENT_ID) {
+        const myTeam = teamsSnap.val()?.team;
+        if (!myTeam || myTeam !== eventData.winnerTeam) {
+            showEventRewardNotification('Эта награда доступна только игрокам победившей команды.', `${eventKey}-not-winner`);
+            return;
+        }
+        const awarded = await claimSequentialTickets(1);
+        if (!awarded?.length) {
+            showEventRewardNotification(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`, `${eventKey}-no-tickets`);
+            return;
+        }
+        await addInventoryItemForUser(Number(currentUserId), 'magnifier', 1);
+        await db.ref('tickets_archive').push({
+            owner,
+            userId: Number(currentUserId),
+            ticket: awarded[0],
+            taskIdx: -1,
+            round: currentRoundNum,
+            cell: 0,
+            cellIdx: -1,
+            isEventReward: true,
+            eventId: WALL_BATTLE_EVENT_ID,
+            taskLabel: 'Награда за победу команды в событии «Стенка на стенку»',
+            archivedAt: Date.now(),
+            excluded: false
+        });
+        await rewardedRef.set(true);
+        showEventRewardNotification('Награда получена: 1 билет и 1 Лупа зачислены.', `${eventKey}-claimed`);
+        return;
+    }
+
+    const hasParticipation = Boolean(participantsSnap.val()) || strokesSnap.exists();
+    if (!hasParticipation) {
+        showEventRewardNotification('Награда доступна только участникам события.', `${eventKey}-no-participation`);
+        return;
+    }
+
+    const awarded = await claimSequentialTickets(2);
+    if (!awarded?.length || awarded.length < 2) {
+        showEventRewardNotification(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`, `${eventKey}-no-tickets`);
+        return;
+    }
+    await db.ref('tickets_archive').push({
+        owner,
+        userId: Number(currentUserId),
+        ticket: `${awarded[0]} и ${awarded[1]}`,
+        taskIdx: -1,
+        round: currentRoundNum,
+        cell: 0,
+        cellIdx: -1,
+        isEventReward: true,
+        eventId: EPIC_PAINT_EVENT_ID,
+        ticketSourceLabel: 'Билет события',
+        archivedAt: Date.now(),
+        excluded: false
+    });
+    await rewardedRef.set(true);
+    showEventRewardNotification('Награда получена: 2 билета зачислены.', `${eventKey}-claimed`);
+}
+
+window.claimManualEventReward = claimManualEventReward;
 function updateEventUiState() {
     const startAlert = document.getElementById('event-start-alert');
     const successAlert = document.getElementById('event-success-alert');
@@ -473,9 +571,12 @@ function updateEventUiState() {
     const showSuccess = Boolean(!isCelebration && latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
     successAlert.style.display = showSuccess ? 'block' : 'none';
     if (showSuccess) {
+        const rewardBtn = latestCompleted?.key
+            ? `<button class="event-join-btn" style="margin-top:8px; background:linear-gradient(135deg,#2e7d32,#66bb6a);" onclick="claimManualEventReward('${latestCompleted.key}')">🎁 Получить заслуженную награду</button>`
+            : '';
         successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
-            ? '🏁 Командная битва завершена! Победители получили по 1 билету и Лупе.'
-            : '🎆 Событие прошло круто! Все участники получили по 2 билетика.';
+            ? `🏁 Командная битва завершена! Победители получают 1 билет и 1 Лупу.${rewardBtn}`
+            : `🎆 Событие прошло круто! Участники получают по 2 билетика.${rewardBtn}`;
         launchCelebrationFireworks(30000);
         playFireworksSound();
         setTimeout(() => playFireworksSound(), 9000);
