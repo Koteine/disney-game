@@ -217,14 +217,21 @@
         }
         
         #event-notification.event-notification-pink {
-            background: linear-gradient(135deg, #ffe4f2 0%, #ffd7eb 100%);
-            border: 1px solid #f8a4cb;
-            border-radius: 16px;
-            box-shadow: 0 8px 20px rgba(214, 92, 153, 0.25);
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(94vw, 560px);
+            background: #ffebf2;
+            border: 1px solid #ffc1d6;
+            border-radius: 15px;
+            box-shadow: 0 10px 24px rgba(236, 107, 164, 0.24);
             padding: 12px;
+            z-index: 2300;
+            animation: eventNotifIn .28s ease-out;
         }
         .event-notification-text {
-            color: #8e245b;
+            color: #8a2b58;
             font-size: 13px;
             line-height: 1.4;
             font-weight: 700;
@@ -239,6 +246,10 @@
             color: #fff;
             background: linear-gradient(135deg, #ff4fa3 0%, #d81b7c 100%);
             box-shadow: 0 6px 14px rgba(216, 27, 124, 0.35);
+        }
+        @keyframes eventNotifIn {
+            from { opacity: 0; transform: translate(-50%, -8px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
         }
 #event-celebration-overlay {
             position: fixed;
