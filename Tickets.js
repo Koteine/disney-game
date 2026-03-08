@@ -185,10 +185,6 @@
 
         await maybeRepairTicketCounterDrift();
 
-        const revokedSnap = await db.ref('revoked_tickets').once('value');
-        const revoked = { ...(revokedSnap.val() || {}), ...revokedTicketsMap };
-        const revokedSet = new Set(Object.keys(revoked).filter(k => revoked[k]));
-
         while (awarded.length < needed) {
             let rangeStart = null;
             let rangeEnd = null;
@@ -205,7 +201,6 @@
             if (!tx.committed || !Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd)) break;
 
             for (let n = rangeStart; n <= rangeEnd; n += 1) {
-                if (revokedSet.has(String(n))) continue;
                 awarded.push(String(n));
                 if (awarded.length >= needed) break;
             }
