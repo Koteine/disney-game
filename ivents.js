@@ -360,7 +360,6 @@ async function grantWallBattleRewards(winnerTeam, eventKey = currentGameEventKey
         const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
         const awarded = await claimSequentialTickets(1);
         if (!awarded?.length) continue;
-        await addInventoryItemForUser(uid, 'magnifier', 1);
         await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
         await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).set(true);
         rewardedCount += 1;
@@ -381,7 +380,7 @@ function maybeNotifyWallBattleOutcome(eventData) {
             showPlayerNotification({
                 id: `wall-battle-outcome-${eventData.key}`,
                 text: myTeam === eventData.winnerTeam
-                    ? '🏆 Ваша команда победила в событии «Стенка на стенку»! Вы получили 1 билет и 1 Лупу.'
+                    ? '🏆 Ваша команда победила в событии «Стенка на стенку»! Вы получили 1 билет.'
                     : '😿 В этот раз победила другая команда. Спасибо за участие в событии «Стенка на стенку»!'
             });
         }
@@ -444,7 +443,6 @@ async function claimManualEventReward(eventKey) {
             showEventRewardNotification(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`, `${eventKey}-no-tickets`);
             return;
         }
-        await addInventoryItemForUser(Number(currentUserId), 'magnifier', 1);
         await db.ref('tickets_archive').push({
             owner,
             userId: Number(currentUserId),
@@ -460,7 +458,7 @@ async function claimManualEventReward(eventKey) {
             excluded: false
         });
         await rewardedRef.set(true);
-        showEventRewardNotification('Награда получена: 1 билет и 1 Лупа зачислены.', `${eventKey}-claimed`);
+        showEventRewardNotification('Награда получена: 1 билет зачислен.', `${eventKey}-claimed`);
         return;
     }
 
@@ -578,7 +576,7 @@ function updateEventUiState() {
             ? `<button class="event-join-btn" style="margin-top:8px; background:linear-gradient(135deg,#2e7d32,#66bb6a);" onclick="claimManualEventReward('${latestCompleted.key}')">🎁 Получить заслуженную награду</button>`
             : '';
         successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
-            ? `🏁 Командная битва завершена! Победители получают 1 билет и 1 Лупу.${rewardBtn}`
+            ? `🏁 Командная битва завершена! Победители получают 1 билет.${rewardBtn}`
             : `🎆 Событие прошло круто! Участники получают по 2 билетика.${rewardBtn}`;
         launchCelebrationFireworks(30000);
         playFireworksSound();
