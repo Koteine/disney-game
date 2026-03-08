@@ -183,7 +183,7 @@
         const needed = Math.max(1, Math.floor(Number(count) || 1));
         const awarded = [];
 
-        await maybeRepairTicketCounterDrift();
+        await maybeRepairTicketCounterDrift(true);
 
         while (awarded.length < needed) {
             let rangeStart = null;
@@ -218,10 +218,10 @@
         return awarded;
     }
 
-    async function maybeRepairTicketCounterDrift() {
+    async function maybeRepairTicketCounterDrift(force = false) {
         const now = Date.now();
         if (ticketCounterRepairInFlight) return ticketCounterRepairInFlight;
-        if (now - lastTicketCounterRepairAt < 30000) return;
+        if (!force && now - lastTicketCounterRepairAt < 30000) return;
 
         ticketCounterRepairInFlight = (async () => {
             const [counterSnap, boardSnap, archiveSnap] = await Promise.all([
