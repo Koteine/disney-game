@@ -255,13 +255,44 @@ function toggleCollapse(bodyId, headerEl) {
     if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
 }
 
-function closePlayerNotification(notifId) {
+const PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY = 'player_notification_dismissed_ids';
+
+function getDismissedPlayerNotificationIds() {
+    try {
+        const raw = localStorage.getItem(PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function isPlayerNotificationDismissed(notifId) {
+    if (!notifId) return false;
+    return getDismissedPlayerNotificationIds().includes(String(notifId));
+}
+
+function rememberDismissedPlayerNotification(notifId) {
+    if (!notifId) return;
+    const current = getDismissedPlayerNotificationIds();
+    const id = String(notifId);
+    if (current.includes(id)) return;
+    try {
+        localStorage.setItem(PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY, JSON.stringify([...current, id].slice(-300)));
+    } catch (e) {
+        // ignore storage errors
+    }
+}
+
+function closePlayerNotification(notifId, shouldRemember = true) {
     const node = document.getElementById(notifId);
     if (node) node.remove();
+    if (shouldRemember) rememberDismissedPlayerNotification(notifId);
 }
 
 function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
     if (!id || !text) return;
+    if (isPlayerNotificationDismissed(id)) return;
     const wrap = document.getElementById('player-notification-wrap');
     if (!wrap) return;
     if (document.getElementById(id)) return;
@@ -269,7 +300,7 @@ function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
     card.id = id;
     card.className = 'player-notification';
     card.style.borderColor = borderColor;
-    card.innerHTML = `<button class="player-notification-close" onclick="closePlayerNotification('${id}')">✕</button><div style="font-size:13px; line-height:1.4; color:#4a148c;">${text}</div>`;
+    card.innerHTML = `<button class="player-notification-close" onclick="closePlayerNotification('${id}', true)">✕</button><div style="font-size:13px; line-height:1.4; color:#4a148c;">${text}</div>`;
     wrap.appendChild(card);
 }
 
@@ -440,3 +471,5 @@ async function setSubmissionStatus(submissionId, status) {
         updatedAt: Date.now()
     });
 }
+
+window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
