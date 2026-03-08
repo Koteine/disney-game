@@ -242,12 +242,13 @@
             };
 
             Object.values(boardSnap.val() || {}).forEach(cell => {
-                if (!cell) return;
+                if (!cell || cell.excluded) return;
                 includeTicket(cell.ticket);
             });
 
             archiveSnap.forEach(item => {
                 const row = item.val() || {};
+                if (row.excluded) return;
                 includeTicket(row.ticket);
             });
 
