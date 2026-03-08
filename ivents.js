@@ -2,7 +2,20 @@
 let epicPaintStrokeMap = {};
 let epicPaintRenderRaf = null;
 let lastParticipantUpdateByUid = {};
+let isCompletedEventRewardSyncInProgress = false;
 const WALL_BATTLE_COVERAGE_TARGET = 75;
+const MOSCOW_TIME_ZONE = 'Europe/Moscow';
+
+function formatMoscowDateTime(ts) {
+    return new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: MOSCOW_TIME_ZONE });
+}
+
+function parseMoscowDateTimeLocalInput(value) {
+    const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+    if (!m) return NaN;
+    const [, y, mon, d, h, min] = m.map(Number);
+    return Date.UTC(y, mon - 1, d, h - 3, min, 0, 0);
+}
 
 function scheduleEpicPaintRender() {
     if (epicPaintRenderRaf) return;
@@ -211,7 +224,7 @@ async function postEpicEventSummary(eventData, isSuccess, rewardedPlayersCount) 
     const startAt = eventData.activatedAt || eventData.startAt || Date.now();
     const endAt = eventData.completedAt || eventData.failedAt || Date.now();
     const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
-    const startText = new Date(startAt).toLocaleString('ru-RU');
+    const startText = formatMoscowDateTime(startAt);
     const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
     await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
 }
@@ -223,7 +236,7 @@ async function maybeFinalizeEpicPaintSuccess(coverage) {
 
     const eventRef = db.ref(`game_events/${currentGameEventKey}`);
     const tx = await eventRef.transaction(ev => {
-        if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+        if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
         return {
             ...ev,
             status: 'completed',
@@ -240,24 +253,16 @@ async function maybeFinalizeEpicPaintSuccess(coverage) {
 
 async function grantEpicPaintRewards(eventKey = currentGameEventKey) {
     if (!eventKey) return 0;
-    const [participantsSnap, strokesSnap, whitelistSnap, rewardedSnap] = await Promise.all([
-        db.ref('epic_paint/participants').once('value'),
-        db.ref('epic_paint/strokes').once('value'),
+    const [teamsSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+        db.ref(`game_events/${eventKey}/teams`).once('value'),
         db.ref('whitelist').once('value'),
         db.ref(`epic_paint/rewarded/${eventKey}`).once('value')
     ]);
 
+    const teams = teamsSnap.val() || {};
     const whitelist = whitelistSnap.val() || {};
     const alreadyRewarded = rewardedSnap.val() || {};
-    const participantUidSet = new Set();
-
-    participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
-    strokesSnap.forEach(strokeSnap => {
-        const stroke = strokeSnap.val() || {};
-        if (stroke.uid !== undefined && stroke.uid !== null) participantUidSet.add(String(stroke.uid));
-    });
-
-    const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
+    const participantUids = Object.keys(teams).filter(uid => /^\d+$/.test(uid));
     if (!participantUids.length) return 0;
 
     let rewardedCount = 0;
@@ -420,11 +425,9 @@ async function claimManualEventReward(eventKey) {
         return;
     }
 
-    const [whitelistSnap, teamsSnap, participantsSnap, strokesSnap] = await Promise.all([
+    const [whitelistSnap, teamsSnap] = await Promise.all([
         db.ref(`whitelist/${uidKey}`).once('value'),
-        db.ref(`game_events/${eventKey}/teams/${uidKey}`).once('value'),
-        db.ref(`epic_paint/participants/${uidKey}`).once('value'),
-        db.ref('epic_paint/strokes').orderByChild('uid').equalTo(Number(currentUserId)).once('value')
+        db.ref(`game_events/${eventKey}/teams/${uidKey}`).once('value')
     ]);
 
     const user = whitelistSnap.val() || {};
@@ -461,7 +464,7 @@ async function claimManualEventReward(eventKey) {
         return;
     }
 
-    const hasParticipation = Boolean(participantsSnap.val()) || strokesSnap.exists();
+    const hasParticipation = Boolean(teamsSnap.val()?.team);
     if (!hasParticipation) {
         showEventRewardNotification('Награда доступна только участникам события.', `${eventKey}-no-participation`);
         return;
@@ -615,7 +618,7 @@ async function adminScheduleEvent() {
     if (!startAtValue) return alert('Выбери дату и время старта события.');
     if (!durationMins || durationMins < 1) return alert('Укажи длительность события в минутах.');
 
-    const startAt = new Date(startAtValue).getTime();
+    const startAt = parseMoscowDateTimeLocalInput(startAtValue);
     if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
     const endAt = startAt + durationMins * 60000;
 
@@ -680,14 +683,18 @@ async function activateScheduledEventIfNeeded() {
 
 
 async function maybeGrantCompletedEventRewardsIfMissing() {
-    const completedEvents = queuedGameEvents
-        .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && ev.key)
-        .sort((a, b) => (a.completedAt || 0) - (b.completedAt || 0));
+    if (isCompletedEventRewardSyncInProgress) return;
+    isCompletedEventRewardSyncInProgress = true;
 
-    for (const eventData of completedEvents) {
-        const eventRef = db.ref(`game_events/${eventData.key}`);
-        const now = Date.now();
-        const tx = await eventRef.transaction(ev => {
+    try {
+        const completedEvents = queuedGameEvents
+            .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && ev.key)
+            .sort((a, b) => (a.completedAt || 0) - (b.completedAt || 0));
+
+        for (const eventData of completedEvents) {
+            const eventRef = db.ref(`game_events/${eventData.key}`);
+            const now = Date.now();
+            const tx = await eventRef.transaction(ev => {
             if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'completed') return ev;
             const rewardState = ev.rewardState || {};
             if (rewardState.status === 'done') return ev;
@@ -700,11 +707,11 @@ async function maybeGrantCompletedEventRewardsIfMissing() {
                     workerUid: currentUserId || null
                 }
             };
-        });
+            });
 
-        if (!tx.committed) continue;
+            if (!tx.committed) continue;
 
-        try {
+            try {
             let rewardedPlayersCount = 0;
             if (eventData.id === WALL_BATTLE_EVENT_ID) {
                 const latest = (await eventRef.once('value')).val() || {};
@@ -720,14 +727,17 @@ async function maybeGrantCompletedEventRewardsIfMissing() {
                 rewardedPlayersCount,
                 workerUid: currentUserId || null
             });
-        } catch (err) {
-            await eventRef.child('rewardState').set({
-                status: 'failed',
-                failedAt: Date.now(),
-                error: String(err?.message || err || 'unknown'),
-                workerUid: currentUserId || null
-            });
+            } catch (err) {
+                await eventRef.child('rewardState').set({
+                    status: 'failed',
+                    failedAt: Date.now(),
+                    error: String(err?.message || err || 'unknown'),
+                    workerUid: currentUserId || null
+                });
+            }
         }
+    } finally {
+        isCompletedEventRewardSyncInProgress = false;
     }
 }
 
@@ -817,12 +827,12 @@ function updateAdminEventStatus() {
     const scheduled = queuedGameEvents.filter(ev => ev.status === 'scheduled').slice(0, MAX_SCHEDULED_EVENTS);
 
     const activeLine = active
-        ? `Активно: ${active.name || active.id} · до ${new Date(active.endAt || 0).toLocaleString('ru-RU')}`
+        ? `Активно: ${active.name || active.id} · до ${formatMoscowDateTime(active.endAt || 0)}`
         : 'Активного события сейчас нет.';
 
     const scheduledLines = scheduled.length
         ? scheduled.map((ev, idx) => {
-            const start = new Date(ev.startAt || 0).toLocaleString('ru-RU');
+            const start = formatMoscowDateTime(ev.startAt || 0);
             const duration = ev.durationMins || 0;
             return `${idx + 1}) ${ev.name || ev.id} · старт ${start} · ${duration} мин <button onclick="adminCancelScheduledEvent('${ev.key}')" style="margin-left:6px; border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`;
         }).join('<br>')
