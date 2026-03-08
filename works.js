@@ -169,7 +169,12 @@ function fillSubmissionTaskOptions() {
     const select = document.getElementById('work-task-select');
     if (!select) return;
 
-    const myCells = allTicketsData.filter(t => t.userId === currentUserId && !t.excluded);
+    const myCells = allTicketsData.filter(t => {
+        if (Number(t.userId) !== Number(currentUserId)) return false;
+        if (t.excluded) return false;
+        if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
+        return true;
+    });
     if (!myCells.length) {
         select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
         select.disabled = true;
@@ -378,6 +383,9 @@ async function submitWork() {
     const cell = boardCellSnap.val();
     if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
     if (cell.excluded) return alert('По этому заданию ты уже сдался(ась), билетик не начисляется.');
+    if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(cell.ticket)) {
+        return alert('Этот билетик вычеркнут из игры, загрузка работы для него недоступна.');
+    }
 
     const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
     const challenge = challengeSnap.val();
@@ -432,4 +440,3 @@ async function setSubmissionStatus(submissionId, status) {
         updatedAt: Date.now()
     });
 }
-
