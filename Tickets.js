@@ -58,6 +58,7 @@
         }
 
         attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(Number(currentUserId)));
+        attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(String(currentUserId)));
         if (Number.isInteger(myIndex)) {
             attachArchiveRef(db.ref('tickets_archive').orderByChild('owner').equalTo(myIndex));
         }
@@ -175,7 +176,7 @@
     }
 
     async function claimSequentialTickets(count = 1) {
-        const needed = Math.max(1, Number(count) || 1);
+        const needed = Math.max(1, Math.floor(Number(count) || 1));
         const awarded = [];
 
         const revokedSnap = await db.ref('revoked_tickets').once('value');
@@ -202,14 +203,6 @@
                 awarded.push(String(n));
                 if (awarded.length >= needed) break;
             }
-        }
-
-        if (awarded.length) {
-            const cleanup = {};
-            awarded.forEach(num => {
-                cleanup[`revoked_tickets/${num}`] = null;
-            });
-            await db.ref().update(cleanup);
         }
 
         return awarded.length ? awarded : null;
