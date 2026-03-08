@@ -274,6 +274,9 @@
             padding: 0;
             overflow: hidden;
         }
+        body.event-mode #event-notification {
+            display: none !important;
+        }
         .event-overlay {
             position: fixed;
             inset: 0;
