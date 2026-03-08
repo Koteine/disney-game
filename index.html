@@ -1821,13 +1821,14 @@
             if (!userId) return alert('Укажи Telegram ID игрока.');
             const userSnap = await db.ref(`whitelist/${userId}`).once('value');
             const user = userSnap.val();
-            if (!user || !Number.isInteger(user.charIndex) || !players[user.charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+            const charIndex = Number(user?.charIndex);
+            if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
 
             const awarded = await claimSequentialTickets(count);
             if (!awarded?.length) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
             const ticketValue = awarded.join(' и ');
             await db.ref('tickets_archive').push({
-                owner: user.charIndex,
+                owner: charIndex,
                 userId: Number(userId),
                 ticket: ticketValue,
                 taskIdx: -1,
@@ -1841,7 +1842,7 @@
                 taskLabel: note ? `Ручная выдача: ${note}` : 'Ручная выдача администратором'
             });
             const notePart = note ? ` Причина: ${note}` : '';
-            await postNews(`🎫 Администратор выдал(а) ${count} билет(ов) игроку ${players[user.charIndex].n}.${notePart}`);
+            await postNews(`🎫 Администратор выдал(а) ${count} билет(ов) игроку ${players[charIndex].n}.${notePart}`);
             alert(`Готово! Выдано билетиков: ${count}. Номера: ${ticketValue}.${note ? `\nПометка: ${note}` : ''}`);
         }
 
@@ -1856,10 +1857,11 @@
 
             const userSnap = await db.ref(`whitelist/${userId}`).once('value');
             const user = userSnap.val();
-            if (!user || !Number.isInteger(user.charIndex) || !players[user.charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
+            const charIndex = Number(user?.charIndex);
+            if (!user || !Number.isInteger(charIndex) || !players[charIndex]) return alert('Игрок не найден или у него не назначен никнейм.');
 
             const targetTickets = getActiveTicketsForWheel()
-                .filter(t => Number(t.owner) === Number(user.charIndex))
+                .filter(t => Number(t.owner) === Number(charIndex))
                 .map(t => String(t.num));
             if (!targetTickets.length) return alert('У этого игрока нет активных билетиков для изъятия.');
             if (!targetTickets.includes(ticketNum)) return alert(`У игрока нет активного билетика №${ticketNum}.`);
@@ -1870,7 +1872,7 @@
 
             allTicketsData.forEach(t => {
                 if (t.excluded) return;
-                if (Number(t.owner) !== Number(user.charIndex) && Number(t.userId) !== Number(userId)) return;
+                if (Number(t.owner) !== Number(charIndex) && Number(t.userId) !== Number(userId)) return;
                 const nums = extractTicketNumbers(t.ticket);
                 if (!nums.length) return;
                 const left = nums.filter(n => !revokeSet.has(String(n)));
@@ -1889,7 +1891,7 @@
             const revokedText = toRevoke[0];
             const archiveKey = db.ref('tickets_archive').push().key;
             updates[`tickets_archive/${archiveKey}`] = {
-                owner: user.charIndex,
+                owner: charIndex,
                 userId: Number(userId),
                 ticket: revokedText,
                 taskIdx: -1,
@@ -1905,7 +1907,7 @@
 
             await db.ref().update(updates);
             const notePart = note ? ` Причина: ${note}` : '';
-            await postNews(`🧾 Администратор отозвал(а) билетик №${revokedText} у игрока ${players[user.charIndex].n}.${notePart}`);
+            await postNews(`🧾 Администратор отозвал(а) билетик №${revokedText} у игрока ${players[charIndex].n}.${notePart}`);
             alert(`Готово! Отозван билетик №${revokedText}.${note ? `
 Пометка: ${note}` : ''}`);
         }
@@ -2127,5 +2129,6 @@
     <script src="adminpage.js"></script>
 </body>
 </html>
+
 
 
