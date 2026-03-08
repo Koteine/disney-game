@@ -2,6 +2,7 @@
 let epicPaintStrokeMap = {};
 let epicPaintRenderRaf = null;
 let lastParticipantUpdateByUid = {};
+let isCompletedEventRewardSyncInProgress = false;
 const WALL_BATTLE_COVERAGE_TARGET = 75;
 
 function scheduleEpicPaintRender() {
@@ -223,7 +224,7 @@ async function maybeFinalizeEpicPaintSuccess(coverage) {
 
     const eventRef = db.ref(`game_events/${currentGameEventKey}`);
     const tx = await eventRef.transaction(ev => {
-        if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+        if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
         return {
             ...ev,
             status: 'completed',
@@ -420,11 +421,9 @@ async function claimManualEventReward(eventKey) {
         return;
     }
 
-    const [whitelistSnap, teamsSnap, participantsSnap, strokesSnap] = await Promise.all([
+    const [whitelistSnap, teamsSnap] = await Promise.all([
         db.ref(`whitelist/${uidKey}`).once('value'),
-        db.ref(`game_events/${eventKey}/teams/${uidKey}`).once('value'),
-        db.ref(`epic_paint/participants/${uidKey}`).once('value'),
-        db.ref('epic_paint/strokes').orderByChild('uid').equalTo(Number(currentUserId)).once('value')
+        db.ref(`game_events/${eventKey}/teams/${uidKey}`).once('value')
     ]);
 
     const user = whitelistSnap.val() || {};
@@ -461,7 +460,7 @@ async function claimManualEventReward(eventKey) {
         return;
     }
 
-    const hasParticipation = Boolean(participantsSnap.val()) || strokesSnap.exists();
+    const hasParticipation = Boolean(teamsSnap.val()?.team);
     if (!hasParticipation) {
         showEventRewardNotification('Награда доступна только участникам события.', `${eventKey}-no-participation`);
         return;
@@ -680,14 +679,18 @@ async function activateScheduledEventIfNeeded() {
 
 
 async function maybeGrantCompletedEventRewardsIfMissing() {
-    const completedEvents = queuedGameEvents
-        .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && ev.key)
-        .sort((a, b) => (a.completedAt || 0) - (b.completedAt || 0));
+    if (isCompletedEventRewardSyncInProgress) return;
+    isCompletedEventRewardSyncInProgress = true;
 
-    for (const eventData of completedEvents) {
-        const eventRef = db.ref(`game_events/${eventData.key}`);
-        const now = Date.now();
-        const tx = await eventRef.transaction(ev => {
+    try {
+        const completedEvents = queuedGameEvents
+            .filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed' && ev.key)
+            .sort((a, b) => (a.completedAt || 0) - (b.completedAt || 0));
+
+        for (const eventData of completedEvents) {
+            const eventRef = db.ref(`game_events/${eventData.key}`);
+            const now = Date.now();
+            const tx = await eventRef.transaction(ev => {
             if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'completed') return ev;
             const rewardState = ev.rewardState || {};
             if (rewardState.status === 'done') return ev;
@@ -700,11 +703,11 @@ async function maybeGrantCompletedEventRewardsIfMissing() {
                     workerUid: currentUserId || null
                 }
             };
-        });
+            });
 
-        if (!tx.committed) continue;
+            if (!tx.committed) continue;
 
-        try {
+            try {
             let rewardedPlayersCount = 0;
             if (eventData.id === WALL_BATTLE_EVENT_ID) {
                 const latest = (await eventRef.once('value')).val() || {};
@@ -720,14 +723,17 @@ async function maybeGrantCompletedEventRewardsIfMissing() {
                 rewardedPlayersCount,
                 workerUid: currentUserId || null
             });
-        } catch (err) {
-            await eventRef.child('rewardState').set({
-                status: 'failed',
-                failedAt: Date.now(),
-                error: String(err?.message || err || 'unknown'),
-                workerUid: currentUserId || null
-            });
+            } catch (err) {
+                await eventRef.child('rewardState').set({
+                    status: 'failed',
+                    failedAt: Date.now(),
+                    error: String(err?.message || err || 'unknown'),
+                    workerUid: currentUserId || null
+                });
+            }
         }
+    } finally {
+        isCompletedEventRewardSyncInProgress = false;
     }
 }
 
