@@ -68,7 +68,15 @@
             return current + count;
         });
         if (!tx.committed || !Number.isInteger(startFrom)) return null;
-        return Array.from({ length: count }, (_, idx) => String(startFrom + idx));
+        const awarded = Array.from({ length: count }, (_, idx) => String(startFrom + idx));
+
+        const revokeCleanup = {};
+        awarded.forEach(num => {
+            revokeCleanup[`revoked_tickets/${num}`] = null;
+        });
+        await db.ref().update(revokeCleanup);
+
+        return awarded;
     }
 
     function updateTicketsTable() {
