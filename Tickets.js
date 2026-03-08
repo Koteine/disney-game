@@ -258,7 +258,11 @@
             const drift = counter - maxActiveTicket;
             if (force) {
                 if (counter !== maxActiveTicket) {
-                    await db.ref('ticket_counter').set(maxActiveTicket);
+                    await db.ref('ticket_counter').transaction(currentValue => {
+                        const liveCounter = Number(currentValue) || 0;
+                        if (liveCounter !== counter) return;
+                        return maxActiveTicket;
+                    });
                 }
             } else if (counter < maxActiveTicket || drift > 200) {
                 await db.ref('ticket_counter').set(maxActiveTicket);
