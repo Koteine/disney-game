@@ -219,11 +219,11 @@
 
         const now = Date.now();
         const guard = createTicketGuardByUser[uid] || {};
-        if (guard.inFlightPromise && (now - (guard.startedAt || 0)) < 500) {
+        if (guard.inFlightPromise && (now - (guard.startedAt || 0)) < 1000) {
             return guard.inFlightPromise;
         }
-        if (guard.lastIssuedAt && (now - guard.lastIssuedAt) < 500) {
-            return guard.lastPayload || null;
+        if (guard.lastIssuedAt && (now - guard.lastIssuedAt) < 1000) {
+            return null;
         }
 
         const issuePromise = (async () => {
