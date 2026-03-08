@@ -51,7 +51,13 @@
             <div id="event-celebration-overlay"></div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
-            <div id="epic-paint-wrap">
+        </div>
+
+        <div id="tab-event" class="tab-content">
+            <h1>🎨 Событие</h1>
+            <div class="works-card">
+                <div id="event-space-title" style="font-weight:700; color:#6a1b9a; margin-bottom:8px;">Событие не активно</div>
+                <button onclick="backToGameFromEvent()" class="admin-btn" style="margin:0 0 8px 0; background:#607D8B;">⬅️ Назад к полю</button>
                 <canvas id="epic-paint-canvas" width="1000" height="2000"></canvas>
                 <div id="epic-paint-progress">Закрашено: 0%</div>
             </div>
@@ -158,6 +164,7 @@
                     <b>Запуск игровых событий:</b>
                     <select id="event-type" class="admin-input" style="margin-top:8px;">
                         <option value="epic_paint">Эпичный закрас</option>
+                        <option value="wall_battle">Раскрас «Стенка на стенку»</option>
                     </select>
                     <label style="font-size:12px; color:#777;">Когда начнется событие</label>
                     <input type="datetime-local" id="event-start-at" class="admin-input">
@@ -251,6 +258,7 @@
             <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
             <button class="nav-item" onclick="switchTab('tab-works', this)"><span>📤 Работы</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
+            <button id="nav-event-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-event', this)"><span>🎨 Событие</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>
@@ -319,6 +327,7 @@
         let currentDrawSchedule = null;
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
+        const WALL_BATTLE_EVENT_ID = 'wall_battle';
         const EPIC_PAINT_COVERAGE_TARGET = 95;
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
@@ -1345,6 +1354,10 @@
             const btn = document.getElementById(btnId);
             if (!list || !btn) return;
             const isExpanded = list.classList.toggle('expanded');
+            if (listId === 'admin-emergency-body') {
+                list.style.maxHeight = isExpanded ? '72vh' : '0';
+                list.style.overflowY = 'auto';
+            }
             btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
         }
 
@@ -1381,6 +1394,29 @@
             return '#ff007f';
         }
 
+        function getWallBattleTeamColor(team) { return team === 'blue' ? '#1e88e5' : '#e53935'; }
+
+        async function joinCurrentEventTeam() {
+            if (!currentGameEventKey || !currentGameEvent || currentGameEvent.status !== 'active') return null;
+            const existing = (await db.ref(`game_events/${currentGameEventKey}/teams/${currentUserId}`).once('value')).val();
+            if (existing?.team) return existing.team;
+            let assigned = null;
+            await db.ref(`game_events/${currentGameEventKey}`).transaction(ev => {
+                if (!ev || ev.status !== 'active') return ev;
+                const teams = ev.teams || {};
+                if (teams[currentUserId]?.team) { assigned = teams[currentUserId].team; return ev; }
+                const nextTeam = ev.nextTeam === 'blue' ? 'blue' : 'red';
+                assigned = nextTeam;
+                return { ...ev, teams: { ...teams, [currentUserId]: { team: nextTeam, joinedAt: Date.now() } }, nextTeam: nextTeam === 'red' ? 'blue' : 'red' };
+            });
+            return assigned;
+        }
+
+        async function addInventoryItemForUser(uid, itemType, count = 1) {
+            if (!uid || !itemType || !count) return;
+            await db.ref(`whitelist/${uid}/inventory/${itemType}`).transaction(v => (Number(v) || 0) + count);
+        }
+
         function setupEpicPaintCanvas() {
             const canvas = document.getElementById('epic-paint-canvas');
             if (!canvas || canvas.dataset.ready === '1') return;
@@ -1397,9 +1433,11 @@
                 };
             };
 
-            const begin = evt => {
-                if (!currentGameEvent || currentGameEvent.status !== 'active' || currentGameEvent.id !== EPIC_PAINT_EVENT_ID) return;
+            const begin = async evt => {
+                if (!currentGameEvent || currentGameEvent.status !== 'active' || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id)) return;
                 evt.preventDefault();
+                const team = await joinCurrentEventTeam();
+                if (!team) return;
                 const { x, y } = getPos(evt);
                 epicPaintDrawState.drawing = true;
                 epicPaintDrawState.lastX = x;
@@ -1431,9 +1469,11 @@
         async function pushEpicPaintStroke(x1, y1, x2, y2) {
             if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
             const uid = currentUserId;
-            const color = getPlayerColorByUid(uid);
-            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, updatedAt: Date.now() });
-            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, at: Date.now() });
+            const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
+            const team = teamInfo.team || 'red';
+            const color = currentGameEvent?.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
+            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: Date.now() });
+            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, team, at: Date.now() });
         }
 
         function drawEpicPaint() {
@@ -1456,8 +1496,15 @@
             });
 
             const coverage = calculateEpicPaintCoverage(canvas);
-            progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
-            maybeFinalizeEpicPaintSuccess(coverage);
+            const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
+            const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
+            if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
+                progressEl.innerText = `Общий закрас: ${coverage.toFixed(1)}% · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
+                maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
+            } else {
+                progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
+                maybeFinalizeEpicPaintSuccess(coverage);
+            }
         }
 
         function calculateEpicPaintCoverage(canvas) {
@@ -1478,6 +1525,12 @@
         }
 
 
+        function calculateTeamCoverage(strokes, team) {
+            const total = (strokes || []).length || 1;
+            const own = (strokes || []).filter(s => (s.team || 'red') === team).length;
+            return (own / total) * 100;
+        }
+
         function formatDurationMinutesRu(totalMinutes) {
             const mins = Math.max(1, Math.round(Number(totalMinutes) || 0));
             const hours = Math.floor(mins / 60);
@@ -1493,7 +1546,7 @@
             const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
             const startText = new Date(startAt).toLocaleString('ru-RU');
             const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
-            await postNews(`🎨 Прошло событие «Эпичный закрас» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
+            await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
         }
 
         async function maybeFinalizeEpicPaintSuccess(coverage) {
@@ -1503,7 +1556,7 @@
 
             const eventRef = db.ref(`game_events/${currentGameEventKey}`);
             const tx = await eventRef.transaction(ev => {
-                if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
+                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 return {
                     ...ev,
                     status: 'completed',
@@ -1571,51 +1624,101 @@
             return rewardedCount;
         }
 
+        async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage) {
+            if (!currentGameEvent || currentGameEvent.id !== WALL_BATTLE_EVENT_ID || currentGameEvent.status !== 'active') return;
+            if (!currentGameEventKey) return;
+            if (coverage < EPIC_PAINT_COVERAGE_TARGET && redCoverage < 75 && blueCoverage < 75) return;
+
+            const winnerTeam = redCoverage >= blueCoverage ? 'red' : 'blue';
+            const eventRef = db.ref(`game_events/${currentGameEventKey}`);
+            const tx = await eventRef.transaction(ev => {
+                if (!ev || ev.id !== WALL_BATTLE_EVENT_ID || ev.status !== 'active') return ev;
+                return { ...ev, status: 'completed', completedAt: Date.now(), winnerTeam, resultText: `Победила команда ${winnerTeam}` };
+            });
+            if (!tx.committed) return;
+
+            const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
+            await postNews('Кажется, в другой команде перевесил Ван Гог. В следующий раз удача точно будет на твоей стороне!');
+            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
+        }
+
+        async function grantWallBattleRewards(winnerTeam) {
+            if (!currentGameEventKey) return 0;
+            const [teamsSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+                db.ref(`game_events/${currentGameEventKey}/teams`).once('value'),
+                db.ref('whitelist').once('value'),
+                db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+            ]);
+            const teams = teamsSnap.val() || {};
+            const whitelist = whitelistSnap.val() || {};
+            const alreadyRewarded = rewardedSnap.val() || {};
+            let rewardedCount = 0;
+
+            for (const [uidKey, teamInfo] of Object.entries(teams)) {
+                if (teamInfo?.team !== winnerTeam) continue;
+                if (alreadyRewarded[uidKey]) continue;
+                const uid = Number(uidKey);
+                const user = whitelist[uidKey] || whitelist[uid] || {};
+                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                if (!Number.isInteger(owner) || !players[owner]) continue;
+                const awarded = await claimSequentialTickets(1);
+                if (!awarded?.length) continue;
+                await addInventoryItemForUser(uid, 'magnifier', 1);
+                await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
+                await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
+                rewardedCount += 1;
+            }
+            return rewardedCount;
+        }
+
+        function openEventSpace() {
+            const navBtn = document.getElementById('nav-event-btn');
+            if (navBtn) switchTab('tab-event', navBtn);
+        }
+
+        function backToGameFromEvent() {
+            const gameBtn = document.querySelector(".nav-item[onclick*=\"tab-game\"]");
+            if (gameBtn) switchTab('tab-game', gameBtn);
+        }
+
         function updateEventUiState() {
-            const grid = document.getElementById('grid');
-            const wrap = document.getElementById('epic-paint-wrap');
             const startAlert = document.getElementById('event-start-alert');
             const successAlert = document.getElementById('event-success-alert');
             const failAlert = document.getElementById('event-fail-alert');
-            const isEpicActive = currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'active';
+            const eventTitle = document.getElementById('event-space-title');
+            const navEventBtn = document.getElementById('nav-event-btn');
+            const isActive = currentGameEvent && currentGameEvent.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
 
-            if (!isEpicActive) {
-                grid.style.display = 'grid';
-                wrap.style.display = 'none';
-            } else if (epicPaintViewMode === 'game') {
-                grid.style.display = 'grid';
-                wrap.style.display = 'none';
-            } else {
-                grid.style.display = 'none';
-                wrap.style.display = 'block';
-            }
+            if (navEventBtn) navEventBtn.style.display = isActive ? 'flex' : 'none';
+            if (eventTitle) eventTitle.innerText = isActive ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
 
-            if (isEpicActive) {
+            if (isActive) {
                 startAlert.style.display = 'block';
                 startAlert.classList.add('epic');
-                const inEvent = epicPaintViewMode !== 'game';
+                const extra = currentGameEvent.id === WALL_BATTLE_EVENT_ID
+                    ? '<div class="event-sub">Команды распределяются по очереди: красные, затем синие.</div>'
+                    : '';
                 startAlert.innerHTML = `
-                    <div class="event-title">🎨 Эпичный закрас уже в разгаре!</div>
-                    <div class="event-sub">Выбери режим — можно переключаться в любой момент.</div>
-                    <button class="event-join-btn" style="opacity:${inEvent ? '1' : '0.75'};" onclick="dismissEpicPaintStartAlert()">✨ В событие</button>
-                    <button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5); opacity:${inEvent ? '0.75' : '1'};" onclick="chooseRoundInsteadOfEvent()">🎲 В игру</button>
+                    <div class="event-title">🎨 ${currentGameEvent.name || 'Событие'} уже в разгаре!</div>
+                    <div class="event-sub">Перейди в отдельное пространство события.</div>
+                    ${extra}
+                    <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✨ В событие</button>
+                    <button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5);" onclick="chooseRoundInsteadOfEvent()">🎲 Остаться на поле</button>
                 `;
             } else {
                 startAlert.style.display = 'none';
                 startAlert.classList.remove('epic');
             }
 
-            const latestCompleted = queuedGameEvents
-                .filter(ev => ev.id === EPIC_PAINT_EVENT_ID && ev.status === 'completed')
-                .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
-            const latestFailed = queuedGameEvents
-                .filter(ev => ev.id === EPIC_PAINT_EVENT_ID && ev.status === 'failed')
-                .sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
+            const latestCompleted = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
+            const latestFailed = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'failed').sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
 
             const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
             successAlert.style.display = showSuccess ? 'block' : 'none';
             if (showSuccess) {
-                successAlert.innerHTML = '🎆 Событие прошло круто! Вы огромные молодцы!<br>Все участники получили заслуженные награды: по 2 билетика.';
+                successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
+                    ? '🏁 Командная битва завершена! Победители получили по 1 билету и Лупе.'
+                    : '🎆 Событие прошло круто! Все участники получили по 2 билетика.';
                 launchCelebrationFireworks();
                 playFireworksSound();
                 lastCompletedEpicEventKeyShown = latestCompleted.key;
@@ -1625,22 +1728,21 @@
             const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
             failAlert.style.display = showFail ? 'block' : 'none';
             if (showFail) {
-                failAlert.innerText = 'Как же так! Вы ведь в хобби так давно, как вы умудрились не успеть?!';
+                failAlert.innerText = 'Событие завершилось без выполнения цели.';
                 lastFailedEpicEventKeyShown = latestFailed.key;
                 setTimeout(() => { if (failAlert) failAlert.style.display = 'none'; }, 10000);
             }
         }
 
-        function dismissEpicPaintStartAlert() {
+        async function dismissEpicPaintStartAlert() {
             epicPaintHasDismissedStart = true;
-            epicPaintViewMode = 'event';
-            updateEventUiState();
+            await joinCurrentEventTeam();
+            openEventSpace();
         }
 
         function chooseRoundInsteadOfEvent() {
             epicPaintHasDismissedStart = true;
-            epicPaintViewMode = 'game';
-            updateEventUiState();
+            backToGameFromEvent();
         }
 
         async function adminScheduleEvent() {
@@ -1648,7 +1750,7 @@
             const eventType = document.getElementById('event-type').value;
             const startAtValue = document.getElementById('event-start-at').value;
             const durationMins = Number(document.getElementById('event-duration-mins').value || 0);
-            if (eventType !== EPIC_PAINT_EVENT_ID) return alert('Пока доступно только событие «Эпичный закрас».');
+            if (![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(eventType)) return alert('Неизвестный тип события.');
             if (!startAtValue) return alert('Выбери дату и время старта события.');
             if (!durationMins || durationMins < 1) return alert('Укажи длительность события в минутах.');
 
@@ -1667,13 +1769,15 @@
             }
 
             await db.ref('game_events').push({
-                id: EPIC_PAINT_EVENT_ID,
-                name: 'Эпичный закрас',
+                id: eventType,
+                name: eventType === WALL_BATTLE_EVENT_ID ? 'Раскрас «Стенка на стенку»' : 'Эпичный закрас',
                 status: 'scheduled',
                 createdAt: Date.now(),
                 startAt,
                 endAt,
                 durationMins,
+                nextTeam: 'red',
+                teams: null,
                 createdBy: currentUserId
             });
         }
@@ -1701,25 +1805,24 @@
             const tx = await db.ref(`game_events/${due.key}`).transaction(ev => {
                 if (!ev || ev.status !== 'scheduled') return ev;
                 if (Date.now() < (ev.startAt || 0)) return ev;
-                return { ...ev, status: 'active', activatedAt: Date.now() };
+                return { ...ev, status: 'active', activatedAt: Date.now(), nextTeam: 'red', teams: null };
             });
 
             if (tx.committed) {
                 epicPaintHasDismissedStart = false;
-                epicPaintViewMode = 'event';
                 await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
             }
         }
 
         async function failExpiredEventIfNeeded() {
-            const active = queuedGameEvents.find(ev => ev.status === 'active' && ev.id === EPIC_PAINT_EVENT_ID);
+            const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id));
             if (!active?.key) return;
             if (Date.now() < (active.endAt || 0)) return;
 
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
-                if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
+                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 if (Date.now() < (ev.endAt || 0)) return ev;
-                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели закрасить поле вовремя' };
+                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели выполнить цель события' };
             });
             if (tx.committed) {
                 await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
@@ -1740,9 +1843,8 @@
                 const active = queuedGameEvents.find(ev => ev.status === 'active') || null;
                 currentGameEvent = active;
                 currentGameEventKey = active?.key || null;
-                if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') {
+                if (!currentGameEvent || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id) || currentGameEvent.status !== 'active') {
                     epicPaintHasDismissedStart = false;
-                    epicPaintViewMode = 'event';
                 }
 
                 updateEventUiState();
@@ -2025,7 +2127,7 @@
                 if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
             }
 
-            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isWordSketch ? '🧩 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : ('КЛЕТКА №' + (i + 1)))))))));
+            document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isWordSketch ? '🧩 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : (cell.itemType ? '🎁 ПРЕДМЕТНАЯ КЛЕТКА' : ('КЛЕТКА №' + (i + 1))))))))));
             const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
 
             let h = `
@@ -2125,7 +2227,11 @@
                     h += buildWordSketchMarkup(i, cell, isOwner);
                 }
             } else {
-                h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Задание скрыто.<br>Его видит только автор и админ.</p></div>`;
+                if (cell.itemType) {
+                    h += `<div style="padding:12px; border:1px solid #e1bee7; border-radius:10px; background:#faf5ff; text-align:left;"><b>${players[cell.owner]?.n || 'Игрок'}</b> получил(а) предмет: ${itemTypes[cell.itemType]?.emoji || '🎁'} ${itemTypes[cell.itemType]?.name || cell.itemType}.<br><span style="font-size:12px; color:#777;">Задание по этой клетке скрыто для других игроков.</span></div>`;
+                } else {
+                    h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Задание скрыто.<br>Его видит только автор и админ.</p></div>`;
+                }
             }
 
             document.getElementById('mText').innerHTML = h;
@@ -2619,7 +2725,8 @@
                 isManualReward: true,
                 archivedAt: Date.now(),
                 excluded: false,
-                adminNote: note || null
+                adminNote: note || null,
+                taskLabel: note ? `Ручная выдача: ${note}` : 'Ручная выдача администратором'
             });
             const notePart = note ? ` Причина: ${note}` : '';
             await postNews(`🎫 Администратор выдал(а) ${count} билет(ов) игроку ${players[user.charIndex].n}.${notePart}`);
@@ -2678,6 +2785,7 @@
                 cellIdx: -1,
                 isManualRevoke: true,
                 adminNote: note || null,
+                taskLabel: note ? `Ручное изъятие: ${note}` : 'Ручное изъятие администратором',
                 archivedAt: Date.now(),
                 excluded: true
             };
@@ -2837,7 +2945,7 @@
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
             document.getElementById(id).classList.add('tab-active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            el.classList.add('active');
+            if (el) el.classList.add('active');
             if (id === 'tab-wheel') drawWheel();
             if (id === 'tab-works') {
                 fillSubmissionTaskOptions();

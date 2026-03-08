@@ -131,6 +131,17 @@
         return 'Иной источник';
     }
 
+    function getTicketTaskLabel(t) {
+        if (t.isEventReward) return t.eventId === 'wall_battle' ? 'Награда за событие «Стенка на стенку»' : 'Награда за событие «Эпичный закрас»';
+        if (typeof t.taskLabel === 'string' && t.taskLabel.trim()) return t.taskLabel;
+        if (Number.isInteger(t.taskIdx) && t.taskIdx >= 0 && Array.isArray(tasks) && tasks[t.taskIdx]) {
+            return tasks[t.taskIdx].text || 'Обычное задание';
+        }
+        if (t.isManualReward) return t.adminNote ? `Ручная выдача: ${t.adminNote}` : 'Ручная выдача администратором';
+        if (t.isManualRevoke) return t.adminNote ? `Изъятие: ${t.adminNote}` : 'Изъято администратором';
+        return '—';
+    }
+
     function expandTicketsRows(rows) {
         const expanded = [];
         rows.forEach(t => {
@@ -139,7 +150,8 @@
                     ...t,
                     ticketNum: String(ticketNum),
                     isRevoked: isTicketRevoked(ticketNum),
-                    sourceLabel: getTicketSourceLabel(t)
+                    sourceLabel: getTicketSourceLabel(t),
+                    taskLabel: getTicketTaskLabel(t)
                 });
             });
         });
@@ -235,6 +247,7 @@
                 <div style="text-align:left;">
                     <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
                     <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
+                    <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
                 </div>
                 <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
                     ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
@@ -279,6 +292,7 @@
                     <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                     <td>
                         <div style="font-size:11px;">${t.sourceLabel}</div>
+                        <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
                         ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
                         ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                     </td>
