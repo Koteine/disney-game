@@ -80,22 +80,20 @@ function extractTeamFromCurrentEventPlayer(playerData) {
 
 async function grantCurrentEventRewardsByType(eventData) {
     const type = String(eventData?.type || '').trim();
-    if (!type) return { activePaintersCount: 0, message: '' };
+    if (!type) return { winnersCount: 0, message: '' };
 
     if (type === 'Эпичный закрас') {
         const usersSnap = await db.ref('users').once('value');
         const users = usersSnap.val() || {};
-        const activePainters = [];
+        const currentParticipants = [];
 
         for (const [userId, userData] of Object.entries(users)) {
-            if (userData?.hasPainted === true) activePainters.push(String(userId));
+            if (userData?.hasPainted === true) currentParticipants.push(String(userId));
         }
 
-        let count = 0;
-        for (const userId of activePainters) {
+        for (const userId of currentParticipants) {
             if (typeof window.createTicket !== 'function') continue;
-            const ticketResult = await window.createTicket(userId, 2, 'Ивент: Эпичный закрас');
-            if (ticketResult) count += 1;
+            await window.createTicket(userId, 2, 'Ивент: Эпичный закрас');
         }
 
         const resetUpdates = {};
@@ -104,9 +102,11 @@ async function grantCurrentEventRewardsByType(eventData) {
         }
         if (Object.keys(resetUpdates).length) await db.ref().update(resetUpdates);
 
+        const winnersCount = currentParticipants.length;
+
         return {
-            activePaintersCount: count,
-            message: `Ивент завершен! Награду получили ${activePainters.length} участников`
+            winnersCount,
+            message: `Ивент завершен! Награду в 2 билета получили ${winnersCount} участников, которые красили холст В ЭТОТ РАЗ`
         };
     }
 
@@ -135,12 +135,12 @@ async function grantCurrentEventRewardsByType(eventData) {
         }
 
         return {
-            activePaintersCount: 0,
+            winnersCount: 0,
             message: `Ивент '${type}' завершен! Призы разосланы.`
         };
     }
 
-    return { activePaintersCount: 0, message: `Ивент '${type}' завершен! Призы разосланы.` };
+    return { winnersCount: 0, message: `Ивент '${type}' завершен! Призы разосланы.` };
 }
 
 async function finalizeCurrentEventByTimer(eventData) {
