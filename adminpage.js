@@ -371,6 +371,21 @@
     });
   }
 
+
+  async function adminLaunchEpicPaintEvent() {
+    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+    await waitForDbReady();
+    await db.ref('current_event').set({
+      type: 'paint',
+      status: 'active',
+      end_timestamp: Date.now() + (10 * 60 * 1000),
+      participants: {},
+      strokes: {},
+      progress: { percent: 0 }
+    });
+    alert('Эпичный закрас запущен на 10 минут.');
+  }
+
   function exposeAdminActions() {
     window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
     window.switchAdminInnerTab = switchAdminInnerTab;
@@ -382,6 +397,7 @@
     window.adminUndoTicketRevoke = adminUndoTicketRevoke;
     window.adminRevokeTicketRange = adminRevokeTicketRange;
     window.adminResetCurrentRound = adminResetCurrentRound;
+    window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
   }
 
   async function initAdminPage() {

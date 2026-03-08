@@ -61,7 +61,7 @@
                 <div class="inventory-title">🎒 Рюкзачок</div>
                 <div id="inventory-row" class="inventory-row"><span class="inv-chip">Пусто</span></div>
             </div>
-            <div id="event-start-alert" class="event-alert"></div>
+            <div id="event-notification" class="event-alert" style="display:none;"></div>
             <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <div id="event-celebration-overlay"></div>
@@ -69,17 +69,17 @@
             <div class="grid" id="grid"></div>
         </div>
 
-        <div id="tab-event" class="tab-content event-screen">
-            <div class="event-screen-topbar">
-                <div id="event-space-title" class="event-screen-title">Эпичный раскрас</div>
-                <div id="event-space-timer" class="event-screen-timer">До конца: 00:00:00</div>
-                <button onclick="backToGameFromEvent()" class="event-back-btn">Назад в игру</button>
+        <div id="event-overlay" class="event-overlay" style="display:none;">
+            <div class="event-overlay-header">
+                <div id="event-space-title" class="event-screen-title">Эпичный закрас</div>
+                <div class="event-time-wrap">⏱ <span id="event-timer">00:00</span></div>
+                <button id="btn-exit-event" class="event-back-btn">Назад</button>
             </div>
-            <div class="event-screen-canvas-wrap">
-                <canvas id="epic-paint-canvas" width="1200" height="1800"></canvas>
+            <div class="event-overlay-canvas-wrap">
+                <canvas id="event-canvas" width="1200" height="1800"></canvas>
             </div>
-            <div class="event-screen-footer">
-                <div id="epic-paint-progress">Закрашено: 0%</div>
+            <div class="event-overlay-footer">
+                <div id="paint-progress">Закрашено: 0%</div>
                 <div id="event-done-message" style="display:none;"></div>
             </div>
         </div>
@@ -182,19 +182,12 @@
             </div>
             <div id="admin-events-panel" class="admin-inner-panel">
                 <div class="admin-section">
-                    <b>Запуск игровых событий:</b>
-                    <select id="event-type" class="admin-input" style="margin-top:8px;">
-                        <option value="epic_paint">Эпичный закрас</option>
-                        <option value="wall_battle">Раскрас «Стенка на стенку»</option>
-                    </select>
-                    <label style="font-size:12px; color:#777;">Когда начнется событие</label>
-                    <input type="datetime-local" id="event-start-at" class="admin-input">
-                    <label style="font-size:12px; color:#777;">Сколько длится (минут)</label>
-                    <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
-                    <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
-                    <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
+                    <b>🎨 Эпичный закрас</b>
+                    <div style="font-size:12px; color:#666; margin:8px 0;">Единственная кнопка управления ивентом. Запуск на 10 минут.</div>
+                    <button id="btn-launch-epic-paint" onclick="adminLaunchEpicPaintEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить Эпичный закрас</button>
                 </div>
             </div>
+
             <div id="admin-draw-panel" class="admin-inner-panel">
                 <div class="admin-section">
                     <b>Отложенный запуск розыгрыша:</b>
@@ -283,7 +276,7 @@
             <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
             <button class="nav-item" onclick="switchTab('tab-works', this)"><span>📤 Работы</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
-            <button id="nav-event-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-event', this)"><span>🎨 Событие</span></button>
+            <button id="nav-event-btn" class="nav-item" style="display:none;" onclick="openEventOverlay()"><span>🎨 Событие</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
         </nav>
     </div>

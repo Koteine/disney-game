@@ -238,7 +238,7 @@
             padding: 0;
             overflow: hidden;
         }
-        .event-screen {
+        .event-overlay {
             position: fixed;
             inset: 0;
             background: #111;
@@ -247,8 +247,8 @@
             flex-direction: column;
             color: #fff;
         }
-        .event-screen.tab-active { display: flex; }
-        .event-screen-topbar {
+        .event-overlay { display: none; flex-direction: column; }
+        .event-overlay-header {
             display:flex;
             align-items:center;
             justify-content:space-between;
@@ -266,11 +266,11 @@
             color:#fff;
             font-weight:700;
         }
-        .event-screen-canvas-wrap {
+        .event-overlay-canvas-wrap {
             flex: 1;
             padding: 6px;
         }
-        #epic-paint-canvas {
+        #event-canvas {
             width: 100%;
             height: 100%;
             touch-action: none;
@@ -278,13 +278,14 @@
             border-radius: 10px;
             display: block;
         }
-        .event-screen-footer {
+        .event-overlay-footer {
             background: rgba(0,0,0,0.72);
             padding: 10px;
             font-size: 14px;
             font-weight: 700;
         }
         #event-done-message { color: #9cffb2; margin-top: 4px; }
+        .event-overlay[style*="display: flex"] { display:flex !important; }
     `;
   document.head.appendChild(style);
 })();
