@@ -155,7 +155,7 @@
                 });
             });
         });
-        return expanded;
+        return expanded.filter(t => !t.isRevoked && (!t.excluded || t.isManualRevoke));
     }
 
     async function toggleTicketRevocation(ticketNum, shouldRevoke) {
@@ -246,12 +246,11 @@
         ticketsListEl.innerHTML = filtered.map(t => `
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #eee;">
                 <div style="text-align:left;">
-                    <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
+                    <div style="font-weight:700; color:#222;">🎟 ${t.ticketNum}</div>
                     <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:6px;">
                     <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:12px; padding:5px 8px;">👀</button>
-                    ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                 </div>
             </div>
         `).join('');
@@ -284,18 +283,17 @@
             .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
 
         body.innerHTML = expandedRows.map(t => {
-            const statusClass = t.excluded || t.isRevoked ? 'row-excluded' : '';
+            const statusClass = t.excluded ? 'row-excluded' : '';
             return `
                 <tr class="${statusClass}">
                     <td>${t.round || '—'}</td>
                     <td>${t.cell || '—'}</td>
                     ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
-                    <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
+                    <td><b>${t.ticketNum}</b></td>
                     <td>
                         <div style="font-size:11px;">${t.sourceLabel}</div>
                         ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
                         <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="margin-top:4px; background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:10px; padding:3px 6px;">👀</button>
-                        ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; margin-left:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                     </td>
                 </tr>`;
         }).join('');
