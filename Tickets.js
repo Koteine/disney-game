@@ -82,7 +82,7 @@
         const sortedData = allTicketsData.sort((a, b) => b.round - a.round || b.ticket - a.ticket);
 
         body.innerHTML = sortedData.map(t => {
-            if (!isAdmin && t.owner !== myIndex) return '';
+            if (!isAdmin && t.owner !== myIndex && Number(t.userId) !== Number(currentUserId)) return '';
             const statusClass = t.excluded ? 'row-excluded' : '';
 
             return `
@@ -93,7 +93,7 @@
                     <td><b>${t.ticket}</b></td>
                     <td>
                         <div style="display:flex; gap:5px; justify-content:center;">
-                            <button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell - 1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>
+                            ${(Number.isInteger(t.cellIdx) && t.cellIdx >= 0) ? `<button onclick="viewTaskDetails(${t.cellIdx ?? (t.cell - 1)})" style="background:none; border:none; font-size:14px;">${isAdmin ? '👁️' : '📝'}</button>` : `<span style="font-size:14px; opacity:0.5;">—</span>`}
                             ${isAdmin && !t.isArchived ? `<button onclick="db.ref('board/${t.cellIdx}/excluded').set(!${t.excluded})" style="background:none; border:none; font-size:14px;">${t.excluded ? '❌' : '✅'}</button>` : ''}
                         </div>
                     </td>

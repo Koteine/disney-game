@@ -120,8 +120,8 @@
           const cancelBtn = currentUserId === ADMIN_ID
             ? ` <button onclick="adminCancelScheduledRound('${r.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`
             : '';
-          return `${i + 1}) Старт ${start}, длительность ${mins} мин.${cancelBtn}`;
-        }).join('<br>')
+          return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start}, длительность ${mins} мин.${cancelBtn}</div>`;
+        }).join('')
       : 'Запланированных раундов нет.';
 
     if (statusEl) {
