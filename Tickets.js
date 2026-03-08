@@ -224,34 +224,30 @@
         if (now - lastTicketCounterRepairAt < 30000) return;
 
         ticketCounterRepairInFlight = (async () => {
-            const [counterSnap, boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+            const [counterSnap, boardSnap, archiveSnap] = await Promise.all([
                 db.ref('ticket_counter').once('value'),
                 db.ref('board').once('value'),
-                db.ref('tickets_archive').once('value'),
-                db.ref('revoked_tickets').once('value')
+                db.ref('tickets_archive').once('value')
             ]);
 
             const counter = Number(counterSnap.val()) || 0;
-            const revokedMap = revokedSnap.val() || {};
             let maxActiveTicket = 0;
 
             const includeTicket = (ticketValue) => {
                 extractTicketNumbers(ticketValue).forEach(num => {
                     const n = Number(num);
                     if (!Number.isInteger(n) || n < 1) return;
-                    if (revokedMap[String(n)]) return;
                     if (n > maxActiveTicket) maxActiveTicket = n;
                 });
             };
 
             Object.values(boardSnap.val() || {}).forEach(cell => {
-                if (!cell || cell.excluded) return;
+                if (!cell) return;
                 includeTicket(cell.ticket);
             });
 
             archiveSnap.forEach(item => {
                 const row = item.val() || {};
-                if (row.excluded && !row.isManualRevoke) return;
                 includeTicket(row.ticket);
             });
 
