@@ -80,30 +80,33 @@ function extractTeamFromCurrentEventPlayer(playerData) {
 
 async function grantCurrentEventRewardsByType(eventData) {
     const type = String(eventData?.type || '').trim();
-    if (!type) return { winnersCount: 0, message: '' };
+    if (!type) return { activePaintersCount: 0, message: '' };
 
     if (type === 'Эпичный закрас') {
         const usersSnap = await db.ref('users').once('value');
         const users = usersSnap.val() || {};
-        const updates = {};
-        let winnersCount = 0;
+        const activePainters = [];
 
         for (const [userId, userData] of Object.entries(users)) {
-            const wasActive = userData?.last_event_active === true;
-            if (!wasActive) continue;
-            if (typeof window.createTicket !== 'function') continue;
-            const ticketResult = await window.createTicket(userId, 2, 'Награда за Эпичный закрас');
-            if (ticketResult) winnersCount += 1;
+            if (userData?.hasPainted === true) activePainters.push(String(userId));
         }
 
-        for (const userId of Object.keys(users)) {
-            updates[`users/${userId}/last_event_active`] = false;
+        let count = 0;
+        for (const userId of activePainters) {
+            if (typeof window.createTicket !== 'function') continue;
+            const ticketResult = await window.createTicket(userId, 2, 'Ивент: Эпичный закрас');
+            if (ticketResult) count += 1;
         }
-        if (Object.keys(updates).length) await db.ref().update(updates);
+
+        const resetUpdates = {};
+        for (const userId of Object.keys(users)) {
+            resetUpdates[`users/${userId}/hasPainted`] = false;
+        }
+        if (Object.keys(resetUpdates).length) await db.ref().update(resetUpdates);
 
         return {
-            winnersCount,
-            message: `Ивент 'Эпичный закрас' завершен! Награду в 2 билета получили: ${winnersCount} чел.`
+            activePaintersCount: count,
+            message: `Ивент завершен! Награду получили ${activePainters.length} участников`
         };
     }
 
@@ -132,12 +135,12 @@ async function grantCurrentEventRewardsByType(eventData) {
         }
 
         return {
-            winnersCount: Object.values(players).filter(playerData => extractTeamFromCurrentEventPlayer(playerData) === winnerTeam).length,
+            activePaintersCount: 0,
             message: `Ивент '${type}' завершен! Призы разосланы.`
         };
     }
 
-    return { winnersCount: 0, message: `Ивент '${type}' завершен! Призы разосланы.` };
+    return { activePaintersCount: 0, message: `Ивент '${type}' завершен! Призы разосланы.` };
 }
 
 async function finalizeCurrentEventByTimer(eventData) {
