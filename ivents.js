@@ -6,17 +6,30 @@
   const TARGET_PERCENT = 95;
   const BRUSH_SIZE = 20;
 
+  // Общий «канонический» холст одинакового размера для всех клиентов
+  const WORLD_WIDTH = 900;
+  const WORLD_HEIGHT = 1500;
+
   let eventRef = null;
   let strokesRef = null;
+  let progressRef = null;
   let timerHandle = null;
   let progressHandle = null;
-  let isFinishing = false;
-  let firstStrokeSent = false;
+  let finishing = false;
 
-  let state = { status: STATUS_IDLE, type: EVENT_TYPE, end_timestamp: 0, progress: 0, participants: {} };
+  let state = {
+    status: STATUS_IDLE,
+    type: EVENT_TYPE,
+    end_timestamp: 0,
+    progress: 0,
+    participants: {},
+    colors: {}
+  };
+
   let strokeMap = {};
   let drawing = false;
   let lastPoint = { x: 0, y: 0 };
+  let myColor = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -37,16 +50,43 @@
       type: String(e.type || EVENT_TYPE),
       end_timestamp: Number(e.end_timestamp || 0),
       progress: Number(e.progress?.percent ?? e.progress ?? 0),
-      participants: e.participants || {}
+      participants: e.participants || {},
+      colors: e.colors || {}
     };
   }
 
   function formatTimer(ts) {
     const left = Math.max(0, Number(ts || 0) - Date.now());
     const sec = Math.floor(left / 1000);
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+  }
+
+  function randomColorForUser(uid) {
+    const n = (uid || '').split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const hue = (n * 57) % 360;
+    return `hsl(${hue}, 85%, 55%)`;
+  }
+
+  async function ensureMyColor() {
+    const uid = getUserId();
+    if (!uid) return '#ff4fa3';
+    if (myColor) return myColor;
+    if (state.colors && state.colors[uid]) {
+      myColor = state.colors[uid];
+      return myColor;
+    }
+
+    const db = await getDbReady();
+    const colorRef = db.ref(`${EVENT_PATH}/colors/${uid}`);
+    const snap = await colorRef.once('value');
+    if (snap.exists()) {
+      myColor = String(snap.val());
+      return myColor;
+    }
+    const generated = randomColorForUser(uid);
+    await colorRef.set(generated);
+    myColor = generated;
+    return generated;
   }
 
   function showNotification() {
@@ -60,8 +100,8 @@
         <div class="event-notification-text">✨🎨 ✨ Внимание! Начался ивент: Эпичный раскрас! Присоединяйся и получи билетики! 🎫</div>
         <button id="btn-join-event" class="event-notification-join">Присоединиться</button>
       `;
-      const join = $('btn-join-event');
-      if (join) join.onclick = () => openEventOverlay();
+      const joinBtn = $('btn-join-event');
+      if (joinBtn) joinBtn.onclick = () => openEventOverlay();
     } else {
       box.style.display = 'none';
       box.classList.remove('event-notification-pink');
@@ -70,26 +110,27 @@
   }
 
   function updateOverlayUi() {
-    const timer = $('event-timer');
-    const title = $('event-space-title');
-    const progress = $('paint-progress');
+    const timerEl = $('event-timer');
+    const titleEl = $('event-space-title');
+    const progressEl = $('paint-progress');
 
-    if (title) title.textContent = 'Эпичный раскрас';
-    if (timer) timer.textContent = state.status === STATUS_ACTIVE ? formatTimer(state.end_timestamp) : '00:00';
-    if (progress) progress.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
+    if (titleEl) titleEl.textContent = 'Эпичный раскрас';
+    if (timerEl) timerEl.textContent = state.status === STATUS_ACTIVE ? formatTimer(state.end_timestamp) : '00:00';
+    if (progressEl) progressEl.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
   }
 
   function resizeCanvasToViewport() {
     const canvas = getCanvas();
     if (!canvas) return;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
+
     const width = Math.max(320, window.innerWidth);
     const height = Math.max(420, window.innerHeight - 120);
-
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
+
+    // внутренний размер фиксирован для всех клиентов => одинаковая геометрия/прогресс
+    canvas.width = WORLD_WIDTH;
+    canvas.height = WORLD_HEIGHT;
     redrawStrokes();
   }
 
@@ -107,46 +148,42 @@
     document.body.classList.remove('event-mode');
   }
 
-  function getPointerPos(evt) {
+  function toWorldPoint(evt) {
     const canvas = getCanvas();
     const rect = canvas.getBoundingClientRect();
     const touch = evt.touches?.[0] || evt.changedTouches?.[0];
     const cx = touch ? touch.clientX : evt.clientX;
     const cy = touch ? touch.clientY : evt.clientY;
     return {
-      x: ((cx - rect.left) / rect.width) * canvas.width,
-      y: ((cy - rect.top) / rect.height) * canvas.height
+      x: ((cx - rect.left) / rect.width) * WORLD_WIDTH,
+      y: ((cy - rect.top) / rect.height) * WORLD_HEIGHT
     };
   }
 
-  async function registerParticipantOnFirstDraw() {
+  async function registerParticipant() {
     const uid = getUserId();
-    if (!uid || firstStrokeSent) return;
-    firstStrokeSent = true;
-
-    try {
-      const db = await getDbReady();
-      await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
-    } catch (e) {
-      console.error('Не удалось записать участника:', e);
-    }
+    if (!uid) return;
+    const db = await getDbReady();
+    await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
   }
 
   async function startDrawing(evt) {
     if (state.status !== STATUS_ACTIVE) return;
     evt.preventDefault();
-    const p = getPointerPos(evt);
+    const p = toWorldPoint(evt);
     drawing = true;
     lastPoint = p;
-    await registerParticipantOnFirstDraw();
-    await pushStroke(p.x, p.y, p.x, p.y);
+    await registerParticipant();
+    const color = await ensureMyColor();
+    await pushStroke(p.x, p.y, p.x, p.y, color);
   }
 
   async function draw(evt) {
     if (!drawing || state.status !== STATUS_ACTIVE) return;
     evt.preventDefault();
-    const p = getPointerPos(evt);
-    await pushStroke(lastPoint.x, lastPoint.y, p.x, p.y);
+    const p = toWorldPoint(evt);
+    const color = await ensureMyColor();
+    await pushStroke(lastPoint.x, lastPoint.y, p.x, p.y, color);
     lastPoint = p;
   }
 
@@ -170,9 +207,9 @@
     canvas.addEventListener('mouseleave', stopDrawing);
   }
 
-  async function pushStroke(x1, y1, x2, y2) {
+  async function pushStroke(x1, y1, x2, y2, color) {
     if (!strokesRef) return;
-    await strokesRef.push({ x1, y1, x2, y2, size: BRUSH_SIZE, color: '#ff4fa3', at: Date.now(), uid: getUserId() });
+    await strokesRef.push({ x1, y1, x2, y2, size: BRUSH_SIZE, color: color || '#ff4fa3', uid: getUserId(), at: Date.now() });
   }
 
   function redrawStrokes() {
@@ -192,12 +229,12 @@
     });
   }
 
-  function calculateProgressPercent() {
+  function computeProgressPercent() {
     const canvas = getCanvas();
     const ctx = getCtx();
     if (!canvas || !ctx) return 0;
 
-    const step = 5;
+    const step = 4;
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     let total = 0;
     let painted = 0;
@@ -206,68 +243,71 @@
       for (let x = 0; x < canvas.width; x += step) {
         total += 1;
         const i = (y * canvas.width + x) * 4;
-        const alpha = img[i + 3];
-        if (alpha > 0) painted += 1;
+        if (img[i + 3] > 0) painted += 1;
       }
     }
 
     return total ? (painted / total) * 100 : 0;
   }
 
-  async function finalizeRewardsAndCleanup() {
-    if (isFinishing) return;
-    isFinishing = true;
+  async function finalizeEventWithRewards() {
+    if (finishing) return;
+    finishing = true;
     try {
       const db = await getDbReady();
       const snap = await db.ref(EVENT_PATH).once('value');
       const eventData = snap.val() || {};
       const participants = Object.keys(eventData.participants || {});
 
-      for (const uid of participants) {
-        if (typeof window.createTicket === 'function') {
-          await window.createTicket(uid, 2, 'Ивент: Эпичный раскрас');
+      if (participants.length) {
+        for (const uid of participants) {
+          if (typeof window.createTicket === 'function') {
+            await window.createTicket(uid, 2, 'Ивент: Эпичный раскрас');
+          }
         }
+      } else if (typeof window.postNews === 'function') {
+        await window.postNews('Ивент завершен, никто не участвовал');
       }
 
       await db.ref(EVENT_PATH).remove();
-
-      if (!participants.length && typeof window.postNews === 'function') {
-        await window.postNews('Ивент завершен, никто не участвовал');
-      }
-    } catch (e) {
-      console.error('Ошибка завершения ивента:', e);
+    } catch (err) {
+      console.error('Ошибка завершения ивента:', err);
     } finally {
-      isFinishing = false;
+      finishing = false;
     }
   }
 
-  async function syncProgressLoop() {
-    if (state.status !== STATUS_ACTIVE) return;
+  async function syncProgressAndCheckFinish() {
+    if (state.status !== STATUS_ACTIVE || state.type !== EVENT_TYPE) return;
     try {
       const db = await getDbReady();
-      const percent = Number(calculateProgressPercent().toFixed(2));
+      const percent = Number(computeProgressPercent().toFixed(2));
       state.progress = percent;
       updateOverlayUi();
       await db.ref(`${EVENT_PATH}/progress`).set({ percent, updated_at: Date.now() });
+
       if (percent >= TARGET_PERCENT) {
-        await finalizeRewardsAndCleanup();
+        await finalizeEventWithRewards();
       }
-    } catch (e) {
-      console.error('Ошибка синхронизации прогресса:', e);
+    } catch (err) {
+      console.error('Ошибка синхронизации прогресса:', err);
     }
   }
 
-  async function attachRealtimeListeners() {
+  async function attachListeners() {
     const db = await getDbReady();
 
     if (eventRef) eventRef.off();
     if (strokesRef) strokesRef.off();
+    if (progressRef) progressRef.off();
 
     eventRef = db.ref(EVENT_PATH);
     eventRef.on('value', (snap) => {
-      const prev = state.status;
+      const prevStatus = state.status;
       state = normalizeEvent(snap.val());
-      if (prev !== STATUS_ACTIVE && state.status === STATUS_ACTIVE) firstStrokeSent = false;
+      if (prevStatus !== STATUS_ACTIVE && state.status === STATUS_ACTIVE) {
+        myColor = null;
+      }
       showNotification();
       updateOverlayUi();
     });
@@ -277,6 +317,15 @@
       strokeMap = snap.val() || {};
       redrawStrokes();
     });
+
+    progressRef = db.ref(`${EVENT_PATH}/progress/percent`);
+    progressRef.on('value', (snap) => {
+      const sharedPercent = Number(snap.val());
+      if (Number.isFinite(sharedPercent)) {
+        state.progress = sharedPercent;
+        updateOverlayUi();
+      }
+    });
   }
 
   async function initEventSystem() {
@@ -284,26 +333,24 @@
       await getDbReady();
       bindCanvasEvents();
       resizeCanvasToViewport();
-      await attachRealtimeListeners();
+      await attachListeners();
 
-      const exit = $('btn-exit-event');
-      if (exit && exit.dataset.bound !== '1') {
-        exit.dataset.bound = '1';
-        exit.onclick = () => closeEventOverlay();
+      const exitBtn = $('btn-exit-event');
+      if (exitBtn && exitBtn.dataset.bound !== '1') {
+        exitBtn.dataset.bound = '1';
+        exitBtn.onclick = () => closeEventOverlay();
       }
 
       if (timerHandle) clearInterval(timerHandle);
-      timerHandle = setInterval(() => {
-        updateOverlayUi();
-      }, 1000);
+      timerHandle = setInterval(updateOverlayUi, 1000);
 
       if (progressHandle) clearInterval(progressHandle);
-      progressHandle = setInterval(syncProgressLoop, 5000);
+      progressHandle = setInterval(syncProgressAndCheckFinish, 5000);
 
       window.addEventListener('resize', resizeCanvasToViewport);
       window.addEventListener('orientationchange', resizeCanvasToViewport);
-    } catch (e) {
-      console.error('initEventSystem failed:', e);
+    } catch (err) {
+      console.error('initEventSystem failed:', err);
     }
   }
 
@@ -317,11 +364,12 @@
         status: STATUS_ACTIVE,
         end_timestamp: Date.now() + mins * 60000,
         participants: {},
+        colors: {},
         strokes: {},
         progress: { percent: 0 }
       });
-    } catch (e) {
-      console.error('adminLaunchEpicPaintEvent failed:', e);
+    } catch (err) {
+      console.error('adminLaunchEpicPaintEvent failed:', err);
     }
   }
 
@@ -339,6 +387,7 @@
   window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
   window.adminScheduleEvent = adminLaunchEpicPaintEvent;
 
+  // compatibility no-op
   window.activateScheduledEventIfNeeded = async function () {};
   window.maybeFinalizeCompletedEventByEndTime = async function () {};
   window.failExpiredEventIfNeeded = async function () {};
