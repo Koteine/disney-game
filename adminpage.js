@@ -11,6 +11,8 @@
     return date.toISOString().slice(0, 16);
   });
 
+  const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+
   function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
     const input = document.getElementById(inputId);
     if (!input || input.value) return;
@@ -87,7 +89,7 @@
   }
 
   async function adminScheduleRound() {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
     const startRaw = document.getElementById('round-start-at')?.value;
     const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
     const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
@@ -112,7 +114,7 @@
   }
 
   async function adminCancelScheduledRound(scheduleId) {
-    if (!scheduleId || currentUserId !== ADMIN_ID) return;
+    if (!scheduleId || !isAdminUser()) return;
     if (!confirm('Отменить этот запланированный раунд?')) return;
     await db.ref(`round_schedules/${scheduleId}`).transaction(v => {
       if (!v || v.status !== 'scheduled') return v;
@@ -121,7 +123,7 @@
   }
 
   async function adminForceRenamePlayer() {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
     const userId = (document.getElementById('admin-rename-user-id')?.value || '').trim();
     const charIndex = Number(document.getElementById('admin-rename-char-index')?.value);
     if (!userId) return alert('Укажи Telegram ID игрока.');
@@ -134,7 +136,7 @@
   }
 
   async function adminGrantTicketsToPlayer() {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
     const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
     const count = Math.max(1, Math.floor(Number(document.getElementById('admin-grant-ticket-count')?.value || 1) || 1));
     const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
@@ -170,7 +172,7 @@
   }
 
   async function adminRevokeTicketsFromPlayer() {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
     const userId = (document.getElementById('admin-revoke-ticket-user-id')?.value || '').trim();
     const ticketNum = String(document.getElementById('admin-revoke-ticket-number')?.value || '').trim();
     const note = (document.getElementById('admin-revoke-ticket-note')?.value || '').trim();
@@ -249,7 +251,7 @@
   }
 
   async function adminUndoTicketRevoke(archiveKey) {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
     if (!archiveKey) return;
 
     const revokeSnap = await db.ref(`tickets_archive/${archiveKey}`).once('value');
@@ -318,7 +320,7 @@
   }
 
   async function adminRevokeTicketRange() {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
 
     const from = Number(document.getElementById('admin-revoke-ticket-from')?.value || 0);
     const to = Number(document.getElementById('admin-revoke-ticket-to')?.value || 0);
@@ -350,7 +352,7 @@
   }
 
   async function adminResetCurrentRound() {
-    if (currentUserId !== ADMIN_ID) return;
+    if (!isAdminUser()) return;
     if (!confirm('Сбросить текущий раунд? Поле очистится, прогресс раунда будет остановлен.')) return;
 
     await db.ref('board').set({});
@@ -378,7 +380,7 @@
       ? scheduled.map((r, i) => {
           const start = formatMoscowDateTime(r.startAt || 0);
           const mins = Math.max(1, Math.round((r.durationMs || 0) / 60000));
-          const cancelBtn = currentUserId === ADMIN_ID
+          const cancelBtn = isAdminUser()
             ? ` <button onclick="adminCancelScheduledRound('${r.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`
             : '';
           return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start}, длительность ${mins} мин.${cancelBtn}</div>`;
