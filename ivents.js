@@ -325,6 +325,7 @@
       } catch (err) {
         console.error('Не удалось выдать награду участнику:', userId, err);
       }
+
     }
 
     clearEventUi();
@@ -341,6 +342,7 @@
         closeEventOverlay();
       }
     }, 3000);
+
   }
 
   async function finalizeEventWithRewards() {
@@ -360,6 +362,7 @@
     try {
       const db = await getDbReady();
       const percent = Number(computeProgressPercent().toFixed(2));
+      const visiblePercent = Number(percent.toFixed(1));
       state.progress = percent;
       updateOverlayUi();
       await db.ref(`${EVENT_PATH}/progress`).set({ percent, updated_at: Date.now() });
@@ -405,6 +408,7 @@
         state.progress = sharedPercent;
         updateOverlayUi();
         checkEventStatus(sharedPercent).catch(() => {});
+
       }
     });
   }
