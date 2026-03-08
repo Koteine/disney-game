@@ -216,6 +216,9 @@
 
         if (!/^\d+$/.test(uid)) throw new Error('Некорректный userId.');
         if (!Number.isFinite(normalizedAmount)) throw new Error('Некорректный amount.');
+        if (!isAdminUser() && (normalizedAmount < 1 || normalizedAmount > 2)) {
+            throw new Error('Разрешён amount только от 1 до 2 для обычных пользователей.');
+        }
 
         const now = Date.now();
         const guard = createTicketGuardByUser[uid] || {};
