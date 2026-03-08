@@ -343,6 +343,24 @@
         const EPIC_PAINT_COVERAGE_TARGET = 95;
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
+        const GAME_TIME_ZONE = 'Europe/Moscow';
+
+        function formatMoscowDateTime(ts) {
+            return new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: GAME_TIME_ZONE });
+        }
+
+        function parseMoscowDateTimeLocalInput(value) {
+            const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+            if (!m) return NaN;
+            const [, y, mon, d, h, min] = m.map(Number);
+            return Date.UTC(y, mon - 1, d, h - 3, min, 0, 0);
+        }
+
+        function toMoscowDateTimeLocalInput(ts) {
+            const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
+            return date.toISOString().slice(0, 16);
+        }
+
         // Предметы вынесены в items.js (window.itemTypes).
 
         const wandBlessingTasks = [
@@ -952,8 +970,7 @@
         function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
             const input = document.getElementById(inputId);
             if (!input || input.value) return;
-            const dt = new Date(Date.now() + plusMs);
-            input.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            input.value = toMoscowDateTimeLocalInput(Date.now() + plusMs);
         }
 
         function switchAdminInnerTab(tabName) {
@@ -1280,7 +1297,7 @@
                         ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">${[1,2,3,4].map(n => `<button onclick="chooseInkChallengeOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
                         ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmInkChallengeOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
-                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${new Date(challenge.optionDeadline).toLocaleString('ru-RU')}</div>` : ''}
+                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${formatMoscowDateTime(challenge.optionDeadline)}</div>` : ''}
                     </div>`;
                 } else if (cell.isWandBlessing) {
                     const wand = (myWandBlessing && myWandBlessing.round === cell.round) ? myWandBlessing : null;
@@ -1492,8 +1509,8 @@
                 return;
             }
             const latest = winnerHistoryItems[0];
-            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · №${latest.ticket} · ${latest.winnerName}`;
-            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
+            preview.innerText = `${formatMoscowDateTime(latest.createdAt || 0)} · №${latest.ticket} · ${latest.winnerName}`;
+            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${formatMoscowDateTime(item.createdAt || 0)} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
         }
 
         function toggleWinnerHistoryPanel() {
@@ -1554,7 +1571,7 @@
                 el.innerText = 'Розыгрыш не запланирован.';
                 return;
             }
-            const start = currentDrawSchedule.startAt ? new Date(currentDrawSchedule.startAt).toLocaleString('ru-RU') : '—';
+            const start = currentDrawSchedule.startAt ? formatMoscowDateTime(currentDrawSchedule.startAt) : '—';
             const state = currentDrawSchedule.status || '—';
             const mins = Math.round((currentDrawSchedule.durationMs || 0) / 60000);
             el.innerText = `Статус: ${state}. Старт: ${start}. Длительность крутки: ${mins} мин.`;
@@ -1566,7 +1583,7 @@
             const mins = Number(document.getElementById('draw-duration-mins')?.value || 0);
             if (!startRaw) return alert('Выбери дату и время старта розыгрыша.');
             if (!mins || mins < 1) return alert('Укажи длительность крутки в минутах.');
-            const startAt = new Date(startRaw).getTime();
+            const startAt = parseMoscowDateTimeLocalInput(startRaw);
             if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
 
             await db.ref('wheel_draw').set({
@@ -1912,10 +1929,36 @@
                 updates[`revoked_tickets/${n}`] = true;
             }
             await db.ref().update(updates);
-            await db.ref('ticket_counter').transaction(c => {
-                const current = Number(c) || 0;
-                return Math.min(current, Math.max(0, from - 1));
+
+            const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+                db.ref('board').once('value'),
+                db.ref('tickets_archive').once('value'),
+                db.ref('revoked_tickets').once('value')
+            ]);
+            const boardData = boardSnap.val() || {};
+            const archiveData = archiveSnap.val() || {};
+            const revokedMap = revokedSnap.val() || {};
+            let maxActiveTicket = 0;
+
+            const includeTicketNum = num => {
+                const n = Number(num);
+                if (!Number.isInteger(n) || n < 1) return;
+                if (revokedMap[String(n)]) return;
+                if (n > maxActiveTicket) maxActiveTicket = n;
+            };
+
+            Object.values(boardData).forEach(cell => {
+                if (!cell || cell.excluded) return;
+                extractTicketNumbers(cell.ticket).forEach(includeTicketNum);
             });
+
+            Object.values(archiveData).forEach(row => {
+                if (!row) return;
+                if (row.excluded && !row.isManualRevoke) return;
+                extractTicketNumbers(row.ticket).forEach(includeTicketNum);
+            });
+
+            await db.ref('ticket_counter').set(maxActiveTicket);
 
             const notePart = note ? ` Причина: ${note}` : '';
             await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${to}.${notePart}`);
