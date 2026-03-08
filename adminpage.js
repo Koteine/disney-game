@@ -87,13 +87,16 @@
     const startAt = new Date(startRaw).getTime();
     if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
 
-    await db.ref('round_schedules').push({
+    const payload = {
       status: 'scheduled',
       startAt,
       durationMs,
       createdAt: Date.now(),
       createdBy: currentUserId
-    });
+    };
+    const pushedRef = await db.ref('round_schedules').push(payload);
+    roundSchedules = [...roundSchedules, { key: pushedRef.key, ...payload }].sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+    renderRoundSchedules();
     alert('Раунд запланирован.');
   }
 
