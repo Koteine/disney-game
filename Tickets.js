@@ -42,6 +42,9 @@
     let adminTicketsSubtab = 'all';
     let selectedAdminTicketUserId = null;
     let personalTicketsRef = null;
+    let wheelTicketsFromDb = [];
+    let adminPlayersFetchInFlight = null;
+    let adminPlayersFetchedAt = 0;
     let personalTicketsWarmupDone = false;
     const seenPersonalTicketKeys = new Set();
 
@@ -196,6 +199,39 @@
         db.ref('revoked_tickets').on('value', snap => {
             revokedTicketsMap = snap.val() || {};
             updateAllTicketsDataAndRender();
+        });
+
+        db.ref('tickets').on('value', snap => {
+            const raw = snap.val();
+            const list = [];
+            if (Array.isArray(raw)) {
+                raw.forEach((row, idx) => {
+                    const ticketNum = Number(row?.num ?? row?.ticketNum ?? row?.ticket ?? idx);
+                    if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
+                    list.push({
+                        num: String(ticketNum),
+                        owner: Number(row?.owner),
+                        userId: String(row?.userId || ''),
+                        name: String(row?.name || players[Number(row?.owner)]?.n || 'Неизвестный')
+                    });
+                });
+            } else if (raw && typeof raw === 'object') {
+                Object.entries(raw).forEach(([key, row]) => {
+                    const ticketNum = Number(row?.num ?? row?.ticketNum ?? row?.ticket ?? key);
+                    if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
+                    list.push({
+                        num: String(ticketNum),
+                        owner: Number(row?.owner),
+                        userId: String(row?.userId || ''),
+                        name: String(row?.name || players[Number(row?.owner)]?.n || 'Неизвестный')
+                    });
+                });
+            }
+
+            wheelTicketsFromDb = list.sort((a, b) => Number(a.num) - Number(b.num));
+            if (typeof window.drawWheel === 'function') {
+                window.drawWheel();
+            }
         });
 
         subscribeArchiveTickets();
@@ -496,6 +532,28 @@
     }
 
     function getAdminPlayersAlphabetically() {
+        const canLoadFromAdminPage = typeof window.renderPlayerTicketsList === 'function';
+        const cacheReady = Array.isArray(window.adminPlayersCache) && window.adminPlayersCache.length;
+        const cacheFresh = cacheReady && (Date.now() - adminPlayersFetchedAt < 30000);
+
+        if (canLoadFromAdminPage && !cacheFresh && !adminPlayersFetchInFlight) {
+            adminPlayersFetchInFlight = window.renderPlayerTicketsList()
+                .then(users => {
+                    if (!Array.isArray(users)) return;
+                    window.adminPlayersCache = users;
+                    adminPlayersFetchedAt = Date.now();
+                    updateTicketsTable();
+                })
+                .catch(() => {})
+                .finally(() => {
+                    adminPlayersFetchInFlight = null;
+                });
+        }
+
+        if (cacheReady) {
+            return [...window.adminPlayersCache].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+        }
+
         const whitelist = window.cachedWhitelistData || {};
         const users = Object.entries(whitelist)
             .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
@@ -630,6 +688,10 @@ ${taskText}`);
     }
 
     function getActiveTicketsForWheel() {
+        if (Array.isArray(wheelTicketsFromDb) && wheelTicketsFromDb.length) {
+            return wheelTicketsFromDb.filter(t => !isTicketRevoked(t.num));
+        }
+
         const tickets = [];
         allTicketsData.forEach(t => {
             if (t.excluded) return;

@@ -318,30 +318,38 @@
     const participants = snapshot.val() || {};
     const participantIds = Object.keys(participants);
 
+    const rewardResults = [];
     for (const userId of participantIds) {
       try {
         console.log('Выдаю награду участнику:', userId);
-        await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
+        const ticketResult = await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
+        rewardResults.push({ userId, ok: !!ticketResult, result: ticketResult || null });
+        if (!ticketResult) {
+          console.error('Билеты не начислены участнику (createTicket вернул пустой результат):', userId);
+        }
       } catch (err) {
+        rewardResults.push({ userId, ok: false, error: err });
         console.error('Не удалось выдать награду участнику:', userId, err);
       }
 
     }
 
-    clearEventUi();
     const box = $('event-notification');
     if (box) {
       box.style.display = 'block';
       box.classList.add('event-notification-pink');
-      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">🎉 Ивент завершен!</div>`;
+      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">Ивент завершен! Награды выдаются... ✨</div>`;
     }
+
+    const failedRewards = rewardResults.filter((row) => !row.ok);
+    if (failedRewards.length) {
+      console.error('Часть наград не была выдана. Проблемные записи:', failedRewards);
+    }
+
     setTimeout(() => {
-      try {
-        window.location.reload();
-      } catch (e) {
-        closeEventOverlay();
-      }
-    }, 3000);
+      clearEventUi();
+      closeEventOverlay();
+    }, 5000);
 
   }
 

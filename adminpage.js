@@ -534,6 +534,70 @@
     if (tabAdmin) tabAdmin.style.display = adminVisible ? '' : tabAdmin.style.display;
   }
 
+
+
+  async function renderPlayerTicketsList() {
+    const listEl = document.getElementById('admin-ticket-players-list');
+    if (!listEl) return [];
+
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) {
+      listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
+      return [];
+    }
+
+    const [usersSnap, whitelistSnap] = await Promise.all([
+      database.ref('users').once('value'),
+      database.ref('whitelist').once('value')
+    ]);
+
+    const usersMap = usersSnap.val() || {};
+    const whitelistMap = whitelistSnap.val() || {};
+    const merged = new Map();
+
+    Object.keys(usersMap).forEach((uid) => {
+      merged.set(String(uid), {
+        userId: String(uid),
+        userName: String(usersMap[uid]?.name || usersMap[uid]?.username || ''),
+        charIndex: Number(whitelistMap?.[uid]?.charIndex)
+      });
+    });
+
+    Object.keys(whitelistMap).forEach((uid) => {
+      const key = String(uid);
+      const prev = merged.get(key) || { userId: key };
+      const charIndex = Number(whitelistMap?.[uid]?.charIndex);
+      merged.set(key, {
+        ...prev,
+        userId: key,
+        charIndex,
+        userName: prev.userName || String(whitelistMap?.[uid]?.name || whitelistMap?.[uid]?.username || '')
+      });
+    });
+
+    const users = Array.from(merged.values())
+      .map((row) => {
+        const idx = Number(row.charIndex);
+        const fallbackName = Number.isInteger(idx) && window.players?.[idx]?.n ? window.players[idx].n : '';
+        return {
+          userId: String(row.userId),
+          charIndex: idx,
+          name: row.userName || fallbackName || `ID ${row.userId}`
+        };
+      })
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+
+    window.cachedWhitelistData = whitelistMap;
+    window.cachedUsersData = usersMap;
+
+    if (!users.length) {
+      listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+      return [];
+    }
+
+    return users;
+  }
+
   function exposeAdminActions() {
 
     window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
@@ -550,6 +614,7 @@
     window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
     window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
     window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;
+    window.renderPlayerTicketsList = renderPlayerTicketsList;
   }
 
   async function initAdminPage() {
