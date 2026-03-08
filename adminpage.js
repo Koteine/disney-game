@@ -329,48 +329,24 @@
     if (from > to) return alert('Начальный номер не может быть больше конечного.');
     if (to > MAX_TICKETS) return alert(`Конечный номер не может быть больше лимита (${MAX_TICKETS}).`);
 
-    const amount = to - from + 1;
-    if (!confirm(`Вычеркнуть из игры билетики №${from}...№${to} (всего ${amount})?`)) return;
+    const counterSnap = await db.ref('ticket_counter').once('value');
+    const currentCounter = Number(counterSnap.val()) || 0;
+    if (from > currentCounter) return alert(`Нельзя вычеркнуть невыданные билеты. Сейчас выдано до №${currentCounter}.`);
+
+    const effectiveTo = Math.min(to, currentCounter);
+    const amount = effectiveTo - from + 1;
+    const suffix = effectiveTo !== to ? `\nБудут затронуты только выданные билеты до №${effectiveTo}.` : '';
+    if (!confirm(`Вычеркнуть из игры билетики №${from}...№${effectiveTo} (всего ${amount})?${suffix}`)) return;
 
     const updates = {};
-    for (let n = from; n <= to; n += 1) {
+    for (let n = from; n <= effectiveTo; n += 1) {
       updates[`revoked_tickets/${n}`] = true;
     }
     await db.ref().update(updates);
 
-    const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
-      db.ref('board').once('value'),
-      db.ref('tickets_archive').once('value'),
-      db.ref('revoked_tickets').once('value')
-    ]);
-    const boardData = boardSnap.val() || {};
-    const archiveData = archiveSnap.val() || {};
-    const revokedMap = revokedSnap.val() || {};
-    let maxActiveTicket = 0;
-
-    const includeTicketNum = num => {
-      const n = Number(num);
-      if (!Number.isInteger(n) || n < 1) return;
-      if (revokedMap[String(n)]) return;
-      if (n > maxActiveTicket) maxActiveTicket = n;
-    };
-
-    Object.values(boardData).forEach(cell => {
-      if (!cell || cell.excluded) return;
-      extractTicketNumbers(cell.ticket).forEach(includeTicketNum);
-    });
-
-    Object.values(archiveData).forEach(row => {
-      if (!row) return;
-      if (row.excluded && !row.isManualRevoke) return;
-      extractTicketNumbers(row.ticket).forEach(includeTicketNum);
-    });
-
-    await db.ref('ticket_counter').set(maxActiveTicket);
-
     const notePart = note ? ` Причина: ${note}` : '';
-    await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${to}.${notePart}`);
-    alert(`Готово! Вычеркнуто билетиков: ${amount} (№${from}...№${to}).`);
+    await postNews(`✂️ Администратор вычеркнул(а) из игры билетики №${from}...№${effectiveTo}.${notePart}`);
+    alert(`Готово! Вычеркнуто билетиков: ${amount} (№${from}...№${effectiveTo}).`);
   }
 
   async function adminResetCurrentRound() {
