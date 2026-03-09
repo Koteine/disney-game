@@ -921,7 +921,15 @@
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
-            const myCells = allTicketsData.filter(t => t.userId === currentUserId && !t.excluded);
+            const myCells = allTicketsData.filter(t => {
+                const sameUserId = Number(t.userId) === Number(currentUserId);
+                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
+                if (!sameUserId && !sameOwner) return false;
+                if (!Number.isInteger(t.cellIdx) || t.cellIdx < 0) return false;
+                if (t.excluded) return false;
+                if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
+                return true;
+            });
             if (!myCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
@@ -932,7 +940,7 @@
             select.disabled = false;
             select.innerHTML = myCells.map(cell => {
                 const shortTask = getTaskLabelByCell(cell).slice(0, 90);
-                return `<option value="${cell.cell - 1}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
             }).join('');
         }
 
@@ -3261,25 +3269,17 @@
                 archivedTicketsData = [];
                 updateAllTicketsDataAndRender();
 
-                if (currentUserId === ADMIN_ID) {
-                    const adminRef = db.ref('tickets_archive');
-                    archiveRefs.push(adminRef);
-                    adminRef.on('value', snap => {
-                        const archived = [];
-                        snap.forEach(item => {
-                            const v = item.val() || {};
-                            archived.push({ ...v, isArchived: true, archiveKey: item.key });
-                        });
-                        archivedTicketsData = archived;
-                        updateAllTicketsDataAndRender();
+                const archiveRef = db.ref('tickets_archive');
+                archiveRefs.push(archiveRef);
+                archiveRef.on('value', snap => {
+                    const archived = [];
+                    snap.forEach(item => {
+                        const v = item.val() || {};
+                        archived.push({ ...v, isArchived: true, archiveKey: item.key });
                     });
-                    return;
-                }
-
-                attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(Number(currentUserId)));
-                if (Number.isInteger(myIndex)) {
-                    attachArchiveRef(db.ref('tickets_archive').orderByChild('owner').equalTo(myIndex));
-                }
+                    archivedTicketsData = archived;
+                    updateAllTicketsDataAndRender();
+                });
             }
 
             function syncTicketData() {
@@ -4799,7 +4799,10 @@
             if (!select) return;
 
             const myCells = allTicketsData.filter(t => {
-                if (Number(t.userId) !== Number(currentUserId)) return false;
+                const sameUserId = Number(t.userId) === Number(currentUserId);
+                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
+                if (!sameUserId && !sameOwner) return false;
+                if (!Number.isInteger(t.cellIdx) || t.cellIdx < 0) return false;
                 if (t.excluded) return false;
                 if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
                 return true;
@@ -4814,7 +4817,7 @@
             select.disabled = false;
             select.innerHTML = myCells.map(cell => {
                 const shortTask = getTaskLabelByCell(cell).slice(0, 90);
-                return `<option value="${cell.cell - 1}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
             }).join('');
         }
 
