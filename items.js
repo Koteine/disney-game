@@ -29,6 +29,15 @@
         '24 часа: работа должна быть сдана в течение 24 часов'
     ];
 
+    function normalizeInventory(raw = {}) {
+        return {
+            goldenPollen: Number(raw.goldenPollen || 0),
+            inkSaboteur: Number(raw.inkSaboteur || 0),
+            magicWand: Number(raw.magicWand || 0),
+            magnifier: Number(raw.magnifier || 0)
+        };
+    }
+
     function inventoryCount(itemKey) {
         return Number(myInventory?.[itemKey] || 0);
     }
@@ -65,11 +74,7 @@
         const ref = db.ref(`whitelist/${currentUserId}/inventory`);
         const snap = await ref.once('value');
         const current = snap.val() || {};
-        const next = {
-            goldenPollen: Number(current.goldenPollen || 0),
-            inkSaboteur: Number(current.inkSaboteur || 0),
-            magnifier: Number(current.magnifier || 0)
-        };
+        const next = normalizeInventory(current);
         next[itemKey] = Math.max(0, next[itemKey] + addAmount);
         await ref.set(next);
     }
@@ -82,11 +87,7 @@
         const ref = db.ref(`whitelist/${currentUserId}/inventory`);
         const snap = await ref.once('value');
         const current = snap.val() || {};
-        const next = {
-            goldenPollen: Number(current.goldenPollen || 0),
-            inkSaboteur: Number(current.inkSaboteur || 0),
-            magnifier: Number(current.magnifier || 0)
-        };
+        const next = normalizeInventory(current);
         if (next[itemKey] < minusAmount) return false;
         next[itemKey] -= minusAmount;
         await ref.set(next);
