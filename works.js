@@ -71,7 +71,13 @@ function syncData() {
     if (inventoryRef) inventoryRef.off();
     inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
     inventoryRef.on('value', snap => {
-        myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0 };
+        const inv = snap.val() || {};
+        myInventory = {
+            goldenPollen: Number(inv.goldenPollen || 0),
+            inkSaboteur: Number(inv.inkSaboteur || 0),
+            magicWand: Number(inv.magicWand || 0),
+            magnifier: Number(inv.magnifier || 0)
+        };
         renderInventory();
     });
 
