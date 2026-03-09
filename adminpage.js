@@ -179,7 +179,10 @@
 
     try {
       if (action === 'issue') {
-        const ticketNumber = Number(amountOrTicket);
+        const ticketNumber = Number.parseInt(amountOrTicket, 10);
+        if (!Number.isInteger(ticketNumber) || ticketNumber < 1) {
+          throw new Error('Номер билетика должен быть целым положительным числом.');
+        }
         const [ticketSnap, userSnap, whiteSnap] = await Promise.all([
           database.ref(`tickets/${ticketNumber}`).once('value'),
           database.ref(`users/${userId}`).once('value'),
@@ -641,9 +644,11 @@
 
     const launchEventBtn = document.getElementById('btn-launch-epic-paint');
     if (launchEventBtn) {
-      launchEventBtn.disabled = !isAdminUser();
+      launchEventBtn.disabled = false;
+      launchEventBtn.removeAttribute('disabled');
       launchEventBtn.onclick = null;
       launchEventBtn.addEventListener('click', () => {
+        if (!isAdminUser()) return;
         window.startEpicEvent?.().catch((err) => console.error('startEpicEvent failed:', err));
       });
     }
