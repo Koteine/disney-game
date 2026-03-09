@@ -336,7 +336,8 @@
     if (box) {
       box.style.display = 'block';
       box.classList.add('event-notification-pink');
-      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">✨ Успех! Начисляем награды...</div>`;
+
+      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">✨ Ивент завершен! Начисляем 2 билета участникам...</div>`;
     }
 
     const snapshot = await db.ref('current_event/participants').once('value');
@@ -347,7 +348,8 @@
     for (const userId of participantIds) {
       try {
 
-        const ticketResult = await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
+        const ticketResult = await window.createTicket(userId, 2, 'Ивент');
+
         const ok = !!ticketResult;
         rewardResults.push({ userId, ok, result: ticketResult || null });
         if (!ok) {
@@ -356,7 +358,7 @@
       } catch (err) {
         rewardResults.push({ userId, ok: false, error: err });
         console.error('Не удалось выдать награду участнику ивента:', userId, err);
-main
+
       }
     }
 
@@ -365,7 +367,8 @@ main
     if (failedRewards.length) {
       console.error('Выдача наград завершилась с ошибками:', failedRewards);
     }
- main
+
+
 
     setTimeout(() => {
       clearEventUi();

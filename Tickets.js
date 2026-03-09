@@ -157,6 +157,17 @@
         }
     }
 
+    function normalizeWheelTicketRow(rawRow, fallbackKey) {
+        const ticketNum = Number(rawRow?.num ?? rawRow?.ticketNum ?? rawRow?.ticket ?? fallbackKey);
+        if (!Number.isInteger(ticketNum) || ticketNum < 1) return null;
+        return {
+            num: String(ticketNum),
+            owner: Number(rawRow?.owner),
+            userId: String(rawRow?.userId || ''),
+            name: String(rawRow?.name || players[Number(rawRow?.owner)]?.n || 'Неизвестный')
+        };
+    }
+
     function syncTicketData() {
         db.ref('board').on('value', snap => {
             const data = snap.val() || {};
@@ -204,25 +215,13 @@
             const list = [];
             if (Array.isArray(raw)) {
                 raw.forEach((row, idx) => {
-                    const ticketNum = Number(row?.num ?? row?.ticketNum ?? row?.ticket ?? idx);
-                    if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
-                    list.push({
-                        num: String(ticketNum),
-                        owner: Number(row?.owner),
-                        userId: String(row?.userId || ''),
-                        name: String(row?.name || players[Number(row?.owner)]?.n || 'Неизвестный')
-                    });
+                    const normalized = normalizeWheelTicketRow(row, idx);
+                    if (normalized) list.push(normalized);
                 });
             } else if (raw && typeof raw === 'object') {
                 Object.entries(raw).forEach(([key, row]) => {
-                    const ticketNum = Number(row?.num ?? row?.ticketNum ?? row?.ticket ?? key);
-                    if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
-                    list.push({
-                        num: String(ticketNum),
-                        owner: Number(row?.owner),
-                        userId: String(row?.userId || ''),
-                        name: String(row?.name || players[Number(row?.owner)]?.n || 'Неизвестный')
-                    });
+                    const normalized = normalizeWheelTicketRow(row, key);
+                    if (normalized) list.push(normalized);
                 });
             }
 
