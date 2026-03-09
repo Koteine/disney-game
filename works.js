@@ -7,7 +7,7 @@ function updateWorksTabForRole(isAdmin) {
 }
 
 function checkAccess() {
-    if (currentUserId === ADMIN_ID) {
+    if (Number(currentUserId) === Number(ADMIN_ID)) {
         document.getElementById('nav-admin-btn').style.display='flex';
         document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
         syncAdminList();
@@ -192,8 +192,8 @@ function fillSubmissionTaskOptions() {
 function renderSubmissions() {
     const list = document.getElementById('works-list');
     if (!list) return;
-    const isAdmin = (currentUserId === ADMIN_ID);
-    const visible = allSubmissions.filter(item => isAdmin || item.userId === currentUserId);
+    const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+    const visible = allSubmissions.filter(item => isAdmin || String(item.userId) === String(currentUserId));
 
     if (!visible.length) {
         list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
@@ -305,7 +305,7 @@ function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
 }
 
 function hasFullSubmissionForRound(roundNum, userId = currentUserId) {
-    return allSubmissions.some(s => s.userId === userId && s.round === roundNum && s.beforeImageData && s.afterImageData);
+    return allSubmissions.some(s => String(s.userId) === String(userId) && Number(s.round) === Number(roundNum) && s.beforeImageData && s.afterImageData);
 }
 
 async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
@@ -337,7 +337,7 @@ async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
 }
 
 async function checkSubmissionRoundDeadlines() {
-    if (!currentUserId || currentUserId === ADMIN_ID || myIndex === -1) return;
+    if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID) || myIndex === -1) return;
     if (!currentRoundNum || !roundEndTime) return;
 
     const boardSnap = await db.ref('board').once('value');
