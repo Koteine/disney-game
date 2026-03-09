@@ -534,6 +534,62 @@
     if (tabAdmin) tabAdmin.style.display = adminVisible ? '' : tabAdmin.style.display;
   }
 
+
+
+  async function renderPlayerTicketsList() {
+    const listEl = document.getElementById('admin-ticket-players-list');
+    const database = await waitForDbReady().catch(() => null);
+    if (!database) {
+      if (listEl) listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
+      return [];
+    }
+
+    const [usersSnap, whitelistSnap] = await Promise.all([
+      database.ref('users').once('value'),
+      database.ref('whitelist').once('value')
+    ]);
+
+    const usersMap = usersSnap.val() || {};
+    const whitelistMap = whitelistSnap.val() || {};
+    const merged = new Map();
+
+    Object.entries(usersMap).forEach(([uid, row]) => {
+      merged.set(String(uid), {
+        userId: String(uid),
+        name: String(row?.name || row?.username || row?.displayName || ''),
+        charIndex: Number(whitelistMap?.[uid]?.charIndex)
+      });
+    });
+
+    Object.entries(whitelistMap).forEach(([uid, row]) => {
+      const key = String(uid);
+      const prev = merged.get(key) || { userId: key, name: '' };
+      merged.set(key, {
+        userId: key,
+        name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
+        charIndex: Number(row?.charIndex)
+      });
+    });
+
+    const users = Array.from(merged.values())
+      .map((row) => ({
+        userId: String(row.userId),
+        charIndex: Number.isFinite(Number(row.charIndex)) ? Number(row.charIndex) : null,
+        name: String(row.name || `ID ${row.userId}`)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+    window.cachedUsersData = usersMap;
+    window.cachedWhitelistData = whitelistMap;
+    window.adminPlayersCache = users;
+
+    if (listEl && !users.length) {
+      listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+    }
+
+    return users;
+  }
+
   function exposeAdminActions() {
 
     window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
@@ -550,6 +606,7 @@
     window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
     window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
     window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;
+    window.renderPlayerTicketsList = renderPlayerTicketsList;
   }
 
   async function initAdminPage() {
@@ -575,6 +632,18 @@
     ensureDateTimeInputDefault('event-start-at');
     syncRoundSchedules();
     syncEventSchedules();
+
+    database.ref('users').on('value', (snap) => {
+      window.cachedUsersData = snap.val() || {};
+      if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
+    });
+
+    database.ref('whitelist').on('value', (snap) => {
+      window.cachedWhitelistData = snap.val() || {};
+      if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
+    });
+
+    renderPlayerTicketsList().catch(() => {});
 
     database.ref('.info/serverTimeOffset').on('value', snap => {
       adminServerOffsetMs = Number(snap.val()) || 0;

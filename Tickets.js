@@ -42,6 +42,7 @@
     let adminTicketsSubtab = 'all';
     let selectedAdminTicketUserId = null;
     let personalTicketsRef = null;
+    let wheelTicketsFromDb = [];
     let personalTicketsWarmupDone = false;
     const seenPersonalTicketKeys = new Set();
 
@@ -196,6 +197,39 @@
         db.ref('revoked_tickets').on('value', snap => {
             revokedTicketsMap = snap.val() || {};
             updateAllTicketsDataAndRender();
+        });
+
+        db.ref('tickets').on('value', snap => {
+            const raw = snap.val();
+            const list = [];
+            if (Array.isArray(raw)) {
+                raw.forEach((row, idx) => {
+                    const ticketNum = Number(row?.num ?? row?.ticketNum ?? row?.ticket ?? idx);
+                    if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
+                    list.push({
+                        num: String(ticketNum),
+                        owner: Number(row?.owner),
+                        userId: String(row?.userId || ''),
+                        name: String(row?.name || players[Number(row?.owner)]?.n || 'Неизвестный')
+                    });
+                });
+            } else if (raw && typeof raw === 'object') {
+                Object.entries(raw).forEach(([key, row]) => {
+                    const ticketNum = Number(row?.num ?? row?.ticketNum ?? row?.ticket ?? key);
+                    if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
+                    list.push({
+                        num: String(ticketNum),
+                        owner: Number(row?.owner),
+                        userId: String(row?.userId || ''),
+                        name: String(row?.name || players[Number(row?.owner)]?.n || 'Неизвестный')
+                    });
+                });
+            }
+
+            wheelTicketsFromDb = list.sort((a, b) => Number(a.num) - Number(b.num));
+            if (typeof window.drawWheel === 'function') {
+                window.drawWheel();
+            }
         });
 
         subscribeArchiveTickets();
@@ -497,10 +531,36 @@
 
     function getAdminPlayersAlphabetically() {
         const whitelist = window.cachedWhitelistData || {};
-        const users = Object.entries(whitelist)
-            .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
-            .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
-            .map(p => ({ ...p, name: players[p.charIndex].n }));
+        const usersMap = window.cachedUsersData || {};
+        const merged = new Map();
+
+        Object.entries(usersMap).forEach(([uid, row]) => {
+            merged.set(String(uid), {
+                userId: String(uid),
+                name: String(row?.name || row?.username || row?.displayName || ''),
+                charIndex: Number(whitelist?.[uid]?.charIndex)
+            });
+        });
+
+        Object.entries(whitelist).forEach(([uid, row]) => {
+            const key = String(uid);
+            const prev = merged.get(key) || { userId: key, name: '' };
+            merged.set(key, {
+                userId: key,
+                name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
+                charIndex: Number(row?.charIndex)
+            });
+        });
+
+        const users = Array.from(merged.values()).map((row) => {
+            const idx = Number(row.charIndex);
+            const fallbackName = Number.isInteger(idx) && players[idx] ? players[idx].n : '';
+            return {
+                userId: String(row.userId),
+                charIndex: Number.isInteger(idx) ? idx : null,
+                name: String(row.name || fallbackName || `ID ${row.userId}`)
+            };
+        });
 
         users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
         return users;
@@ -630,6 +690,10 @@ ${taskText}`);
     }
 
     function getActiveTicketsForWheel() {
+        if (Array.isArray(wheelTicketsFromDb) && wheelTicketsFromDb.length) {
+            return wheelTicketsFromDb.filter(t => !isTicketRevoked(t.num));
+        }
+
         const tickets = [];
         allTicketsData.forEach(t => {
             if (t.excluded) return;
