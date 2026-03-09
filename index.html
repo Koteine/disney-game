@@ -671,13 +671,17 @@
                     serverTimeOffsetMs = Number(snap.val()) || 0;
                     window.serverTimeOffsetMs = serverTimeOffsetMs;
                 });
-                setupEpicPaintCanvas();
-                checkAccess();
-                syncData();
-                syncGameEvents();
-                observeEvents();
-                syncWheelSystems();
-            } catch(e) { console.error(e); }
+            } catch (e) {
+                console.error('init bootstrap failed:', e);
+            }
+
+            try { setupEpicPaintCanvas(); } catch (e) { console.error('setupEpicPaintCanvas failed:', e); }
+            try { observeEvents(); } catch (e) { console.error('observeEvents failed:', e); }
+            try { checkAccess(); } catch (e) { console.error('checkAccess failed:', e); }
+            try { syncData(); } catch (e) { console.error('syncData failed:', e); }
+            try { syncGameEvents(); } catch (e) { console.error('syncGameEvents failed:', e); }
+            try { syncWheelSystems(); } catch (e) { console.error('syncWheelSystems failed:', e); }
+
         }
 
         function playExplosion() {
@@ -956,8 +960,6 @@
             });
         }
 
-
-
         function observeEvents() {
             const previewEl = document.getElementById('news-preview');
             const listEl = document.getElementById('news-list');
@@ -983,7 +985,6 @@
                 }).join('');
             });
         }
-
 
         function postNews(text) {
             if (!text) return;

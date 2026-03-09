@@ -32,7 +32,29 @@
     const createTicketGuardByUser = {};
 
     function updateAllTicketsDataAndRender() {
-        allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
+        const base = [...archivedTicketsData, ...liveBoardTicketsData];
+        const seenNums = new Set();
+        base.forEach((row) => {
+            extractTicketNumbers(row.ticket).forEach((n) => seenNums.add(String(n)));
+        });
+
+        const fromTicketsNode = liveTicketsFromDb
+            .filter((row) => !seenNums.has(String(row.ticket)))
+            .map((row) => ({
+                ticket: String(row.ticket),
+                ticketNum: String(row.ticket),
+                userId: row.userId,
+                owner: row.owner,
+                round: row.round || 0,
+                cell: row.cell || 0,
+                cellIdx: -1,
+                excluded: false,
+                isArchived: false,
+                isManualReward: !!row.isManualReward,
+                adminNote: row.reason || ''
+            }));
+
+        allTicketsData = [...base, ...fromTicketsNode];
         updateTicketsTable();
     }
 
@@ -164,7 +186,12 @@
             num: String(ticketNum),
             owner: Number(rawRow?.owner),
             userId: String(rawRow?.userId || ''),
-            name: String(rawRow?.name || players[Number(rawRow?.owner)]?.n || 'Неизвестный')
+
+            name: String(rawRow?.name || players[Number(rawRow?.owner)]?.n || 'Неизвестный'),
+            reason: String(rawRow?.reason || ''),
+            round: Number(rawRow?.round) || 0,
+            cell: Number(rawRow?.cell) || 0,
+            isManualReward: !!rawRow?.isManualReward
         };
     }
 
@@ -226,6 +253,17 @@
             }
 
             wheelTicketsFromDb = list.sort((a, b) => Number(a.num) - Number(b.num));
+            liveTicketsFromDb = wheelTicketsFromDb.map((row) => ({
+                ticket: String(row.num),
+                userId: String(row.userId || ''),
+                owner: Number(row.owner),
+                reason: String(row.reason || ''),
+                round: Number(row.round) || 0,
+                cell: Number(row.cell) || 0,
+                isManualReward: !!row.isManualReward
+            }));
+            updateAllTicketsDataAndRender();
+
             if (typeof window.drawWheel === 'function') {
                 window.drawWheel();
             }
