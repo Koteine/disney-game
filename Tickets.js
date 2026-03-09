@@ -284,7 +284,7 @@
 
         subscribeArchiveTickets();
         subscribePersonalTicketNotifications();
-        db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
+        db.ref(`users/${currentUserId}/charIndex`).on('value', () => {
             if (isAdminUser()) return;
             subscribeArchiveTickets();
         });
@@ -395,15 +395,15 @@
                 timestamp: Date.now()
             };
 
-            const whitelistSnap = await database.ref(`whitelist/${uid}`).once('value');
-            const ownerIdx = Number(whitelistSnap.val()?.charIndex);
+            const userSnap = await database.ref(`users/${uid}`).once('value');
+            const ownerIdx = Number(userSnap.val()?.charIndex);
             const wheelPayload = {
                 num: ticketId,
                 ticketNum: ticketId,
                 ticket: String(ticketId),
                 userId: uid,
                 owner: Number.isInteger(ownerIdx) ? ownerIdx : -1,
-                name: String(players?.[ownerIdx]?.n || whitelistSnap.val()?.name || `ID ${uid}`),
+                name: String(players?.[ownerIdx]?.n || userSnap.val()?.name || `ID ${uid}`),
                 reason: normalizedReason || 'Выдача билета',
                 createdAt: Date.now(),
                 timestamp: Date.now(),
@@ -534,7 +534,6 @@
             const updates = {};
             const ticketDelta = Number(awarded.length) || 0;
             updates[`users/${normalizedUserId}/tickets`] = firebase.database.ServerValue.increment(ticketDelta);
-            updates[`whitelist/${normalizedUserId}/tickets`] = firebase.database.ServerValue.increment(ticketDelta);
             await db.ref().update(updates);
         }
 

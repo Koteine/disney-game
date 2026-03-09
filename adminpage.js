@@ -155,9 +155,9 @@
     if (!userId) return alert('Укажи Telegram ID игрока.');
     if (!Number.isInteger(charIndex) || !players[charIndex]) return alert('Выбери корректный никнейм.');
 
-    const userSnap = await db.ref(`whitelist/${userId}`).once('value');
-    if (!userSnap.exists()) return alert('Игрок с таким ID не найден в whitelist.');
-    await db.ref(`whitelist/${userId}/charIndex`).set(charIndex);
+    const userSnap = await db.ref(`users/${userId}`).once('value');
+    if (!userSnap.exists()) return alert('Игрок с таким ID не найден в users.');
+    await db.ref(`users/${userId}/charIndex`).set(charIndex);
     alert('Никнейм обновлён. Изменение сразу видно всем игрокам.');
   }
 
@@ -183,17 +183,16 @@
         if (!Number.isInteger(ticketNumber) || ticketNumber < 1) {
           throw new Error('Номер билетика должен быть целым положительным числом.');
         }
-        const [ticketSnap, userSnap, whiteSnap] = await Promise.all([
+        const [ticketSnap, userSnap] = await Promise.all([
           database.ref(`tickets/${ticketNumber}`).once('value'),
-          database.ref(`users/${userId}`).once('value'),
-          database.ref(`whitelist/${userId}`).once('value')
+          database.ref(`users/${userId}`).once('value')
         ]);
 
         if (ticketSnap.exists()) {
           throw new Error(`Билетик №${ticketNumber} уже существует в tickets.`);
         }
 
-        const charIndex = Number(whiteSnap.val()?.charIndex);
+        const charIndex = Number(userSnap.val()?.charIndex);
         const payload = {
           num: ticketNumber,
           ticketNum: ticketNumber,
@@ -411,24 +410,17 @@
     return 10;
   }
 
-  async function adminLaunchEpicPaintEvent(durationMins) {
-    if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-    const database = await waitForDbReady().catch(() => null);
-    if (!database) return alert('База данных недоступна.');
-    const mins = resolveEpicPaintDurationMins(durationMins);
+  async function adminLaunchEpicPaintEvent() {
+    const database = await waitForDbReady();
     await database.ref('current_event').set({
-      type: 'paint',
       status: 'active',
-      end_timestamp: Date.now() + (mins * 60 * 1000),
-      participants: {},
-      strokes: {},
-      progress: { percent: 0 }
+      type: 'paint',
+      endTime: Date.now() + 600000
     });
-    alert('Эпичный раскрас запущен.');
   }
 
-  async function startEpicEvent(durationMins) {
-    return adminLaunchEpicPaintEvent(durationMins);
+  async function startEpicEvent() {
+    return adminLaunchEpicPaintEvent();
   }
 
   const EVENT_SCHEDULES_PATH = 'event_schedule';
@@ -515,7 +507,7 @@
     await database.ref('current_event').set({
       type: 'paint',
       status: 'active',
-      end_timestamp: getAdminNow() + (mins * 60 * 1000),
+      endTime: Date.now() + (mins * 60 * 1000),
       participants: {},
       strokes: {},
       progress: { percent: 0 }
@@ -558,47 +550,36 @@
       return [];
     }
 
-    const [usersSnap, whitelistSnap] = await Promise.all([
-      database.ref('users').once('value'),
-      database.ref('whitelist').once('value')
-    ]);
-
+    const usersSnap = await database.ref('users').once('value');
     const usersMap = usersSnap.val() || {};
-    const whitelistMap = whitelistSnap.val() || {};
-    const merged = new Map();
 
-    Object.entries(usersMap).forEach(([uid, row]) => {
-      merged.set(String(uid), {
-        userId: String(uid),
-        name: String(row?.name || row?.username || row?.displayName || ''),
-        charIndex: Number(whitelistMap?.[uid]?.charIndex)
-      });
-    });
-
-    Object.entries(whitelistMap).forEach(([uid, row]) => {
-      const key = String(uid);
-      const prev = merged.get(key) || { userId: key, name: '' };
-      merged.set(key, {
-        userId: key,
-        name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
-        charIndex: Number(row?.charIndex)
-      });
-    });
-
-    const users = Array.from(merged.values())
-      .map((row) => ({
-        userId: String(row.userId),
-        charIndex: Number.isFinite(Number(row.charIndex)) ? Number(row.charIndex) : null,
-        name: String(row.name || `ID ${row.userId}`)
-      }))
+    const users = Object.entries(usersMap)
+      .map(([uid, row]) => {
+        const ticketsMap = row?.tickets && typeof row.tickets === 'object' ? row.tickets : {};
+        const ticketNums = Object.keys(ticketsMap)
+          .filter((n) => /^\d+$/.test(String(n || '').trim()))
+          .map((n) => Number(n))
+          .sort((a, b) => a - b);
+        return {
+          userId: String(uid),
+          name: String(row?.name || row?.username || row?.displayName || `ID ${uid}`),
+          tickets: ticketNums
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
     window.cachedUsersData = usersMap;
-    window.cachedWhitelistData = whitelistMap;
     window.adminPlayersCache = users;
 
-    if (listEl && !users.length) {
-      listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+    if (listEl) {
+      if (!users.length) {
+        listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+      } else {
+        listEl.innerHTML = users.map((u, idx) => {
+          const nums = u.tickets.length ? u.tickets.join(', ') : 'нет билетов';
+          return `<div style="padding:8px; border:1px solid #f0d3e7; border-radius:8px; margin-bottom:6px; background:#fff;">${idx + 1}. <b>${u.name}</b> · ID: ${u.userId}<br><span style="font-size:12px; color:#555;">Билеты: ${nums}</span></div>`;
+        }).join('');
+      }
     }
 
     return users;
@@ -662,12 +643,6 @@
       window.cachedUsersData = snap.val() || {};
       if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
     });
-
-    database.ref('whitelist').on('value', (snap) => {
-      window.cachedWhitelistData = snap.val() || {};
-      if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
-    });
-
     renderPlayerTicketsList().catch(() => {});
 
     database.ref('.info/serverTimeOffset').on('value', snap => {

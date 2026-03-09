@@ -113,17 +113,36 @@ function syncData() {
     });
 
     const submissionsById = {};
+    const extractSubmissionEntries = (parentKey, value) => {
+        if (!value || typeof value !== 'object') return [];
+        const hasDirectFields = value.beforeImageData || value.afterImageData || value.imageData || value.userId || value.owner !== undefined;
+        if (hasDirectFields) return [{ key: parentKey, payload: value, dbPath: parentKey }];
+
+        const nestedEntries = [];
+        Object.entries(value).forEach(([childKey, childValue]) => {
+            if (!childValue || typeof childValue !== 'object') return;
+            const hasSubmissionFields = childValue.beforeImageData || childValue.afterImageData || childValue.imageData || childValue.userId || childValue.owner !== undefined;
+            if (!hasSubmissionFields) return;
+            nestedEntries.push({ key: `${parentKey}_${childKey}`, payload: childValue, dbPath: `${parentKey}/${childKey}` });
+        });
+        return nestedEntries;
+    };
+
     const applySubmissionSnapshot = (snap, sourcePrefix) => {
         if (!snap) return;
         snap.forEach(s => {
             const value = s.val() || {};
-            submissionsById[`${sourcePrefix}:${s.key}`] = {
-                id: s.key,
-                sourcePrefix,
-                ...value
-            };
+            const entries = extractSubmissionEntries(s.key, value);
+            entries.forEach(({ key, payload, dbPath }) => {
+                submissionsById[`${sourcePrefix}:${key}`] = {
+                    id: key,
+                    sourcePrefix,
+                    dbPath: dbPath || key,
+                    ...payload
+                };
+            });
         });
-        allSubmissions = Object.values(submissionsById).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        allSubmissions = Object.values(submissionsById).sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
         renderSubmissions();
         fillSubmissionTaskOptions();
     };
@@ -231,8 +250,8 @@ function renderSubmissions() {
         const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${players[item.owner]?.n || 'Неизвестный'}</b> · TG ID: ${item.userId || '—'}</div>` : '';
         const reviewControls = isAdmin ? `
             <div style="display:flex; gap:6px; margin-top:8px;">
-                <button onclick="setSubmissionStatus('${item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
-                <button onclick="setSubmissionStatus('${item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
+                <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
+                <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
             </div>` : '';
         const beforeBodyId = `sub-before-${item.id}`;
         const afterBodyId = `sub-after-${item.id}`;
@@ -488,10 +507,12 @@ async function submitWork() {
     alert('Работа загружена! Статус: На проверке.');
 }
 
-async function setSubmissionStatus(submissionId, status) {
+async function setSubmissionStatus(submissionId, sourcePrefix, dbPath, status) {
+
     if (Number(currentUserId) !== Number(ADMIN_ID)) return;
     if (!['accepted', 'rejected'].includes(status)) return;
-    await db.ref(`submissions/${submissionId}`).update({
+    const refPath = sourcePrefix === 'works' ? `works/${dbPath || submissionId}` : `submissions/${dbPath || submissionId}`;
+    await db.ref(refPath).update({
         status,
         reviewedBy: currentUserId,
         updatedAt: Date.now()
