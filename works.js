@@ -112,17 +112,38 @@ function syncData() {
         list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
     });
 
+    const submissionsById = {};
+    const applySubmissionSnapshot = (snap, sourcePrefix) => {
+        if (!snap) return;
+        snap.forEach(s => {
+            const value = s.val() || {};
+            submissionsById[`${sourcePrefix}:${s.key}`] = {
+                id: s.key,
+                sourcePrefix,
+                ...value
+            };
+        });
+        allSubmissions = Object.values(submissionsById).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        renderSubmissions();
+        fillSubmissionTaskOptions();
+    };
+
     if (submissionsRef) submissionsRef.off();
     submissionsRef = db.ref('submissions');
     submissionsRef.on('value', snap => {
-        const items = [];
-        snap.forEach(s => {
-            const value = s.val() || {};
-            items.push({ id: s.key, ...value });
+        Object.keys(submissionsById).forEach(key => {
+            if (key.startsWith('submissions:')) delete submissionsById[key];
         });
-        allSubmissions = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        renderSubmissions();
-        fillSubmissionTaskOptions();
+        applySubmissionSnapshot(snap, 'submissions');
+    });
+
+    if (legacyWorksRef) legacyWorksRef.off();
+    legacyWorksRef = db.ref('works');
+    legacyWorksRef.on('value', snap => {
+        Object.keys(submissionsById).forEach(key => {
+            if (key.startsWith('works:')) delete submissionsById[key];
+        });
+        applySubmissionSnapshot(snap, 'works');
     });
 }
 
@@ -193,7 +214,12 @@ function renderSubmissions() {
     const list = document.getElementById('works-list');
     if (!list) return;
     const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
-    const visible = allSubmissions.filter(item => isAdmin || String(item.userId) === String(currentUserId));
+    const visible = allSubmissions.filter(item => {
+        if (isAdmin) return true;
+        const sameUserId = String(item.userId || '') === String(currentUserId || '');
+        const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(item.owner) === Number(myIndex);
+        return sameUserId || sameOwner;
+    });
 
     if (!visible.length) {
         list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
@@ -463,7 +489,7 @@ async function submitWork() {
 }
 
 async function setSubmissionStatus(submissionId, status) {
-    if (currentUserId !== ADMIN_ID) return;
+    if (Number(currentUserId) !== Number(ADMIN_ID)) return;
     if (!['accepted', 'rejected'].includes(status)) return;
     await db.ref(`submissions/${submissionId}`).update({
         status,
