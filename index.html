@@ -267,8 +267,6 @@
     <div id="modal"><h2 id="mTitle" style="font-size:1.1rem;"></h2><div id="mText" style="font-size:0.9rem;"></div><button onclick="closeModal()" class="admin-btn">Закрыть</button></div>
     <div id="player-notification-wrap"></div>
 
-    <script src="items.js"></script>
-    <script src="Tickets.js"></script>
     <script>
        const JSON_URL = 'tasks.json';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
@@ -299,6 +297,7 @@
         let magicLinksRef = null;
         let newsFeedRef = null;
         let submissionsRef = null;
+        let legacyWorksRef = null;
         let inventoryRef = null;
         let challengeRef = null;
         let wandBlessingRef = null;
@@ -2953,9 +2952,2139 @@
             }
         }
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+
+
+        /* Inlined modules: items, tickets, events, admin, works */
+
+        // BEGIN items.js
+        (function () {
+            const itemTypes = {
+                goldenPollen: {
+                    emoji: '🎇',
+                    name: 'Золотая пыльца',
+                    description: 'Даёт +1 билет к следующему получению билетов (одноразово).'
+                },
+                inkSaboteur: {
+                    emoji: '🫧',
+                    name: 'Клякса-саботаж',
+                    description: 'Позволяет выбрать игроку усложнение для следующей работы.'
+                },
+                magicWand: {
+                    emoji: '🎆',
+                    name: 'Волшебная палочка',
+                    description: 'Даёт упрощение задания на текущий раунд.'
+                },
+                magnifier: {
+                    emoji: '🔎',
+                    name: 'Лупа',
+                    description: 'Помогает в игровых механиках, где разрешено её использование.'
+                }
+            };
+
+            const inkChallengeOptions = [
+                'Отжимание: 10 приседаний + 10 прыжков',
+                'Смена руки: рисуй нерабочей рукой',
+                'Без контура: запрещено использовать чёрный/контур',
+                '24 часа: работа должна быть сдана в течение 24 часов'
+            ];
+
+            function inventoryCount(itemKey) {
+                return Number(myInventory?.[itemKey] || 0);
+            }
+
+            function isOwnRegularCell(cell) {
+                return !!cell
+                    && Number(cell.userId) === Number(currentUserId)
+                    && !cell.excluded
+                    && !cell.isTrap
+                    && !cell.isMagic
+                    && !cell.isMiniGame
+                    && !cell.isWordSketch
+                    && !cell.isGold
+                    && !cell.isInkChallenge
+                    && !cell.isWandBlessing
+                    && !cell.isMagnet;
+            }
+
+            function pickRandomTaskIndex(excluded = []) {
+                const blocked = new Set((excluded || []).filter(Number.isInteger));
+                const pool = tasks
+                    .map((_, i) => i)
+                    .filter(i => !blocked.has(i));
+                if (!pool.length) return -1;
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
+
+            async function addInventoryItem(itemKey, amount = 1) {
+                if (!currentUserId || !itemTypes[itemKey]) return;
+                const addAmount = Math.max(0, Number(amount) || 0);
+                if (!addAmount) return;
+
+                await waitForDbReady();
+                const ref = db.ref(`whitelist/${currentUserId}/inventory`);
+                const snap = await ref.once('value');
+                const current = snap.val() || {};
+                const next = {
+                    goldenPollen: Number(current.goldenPollen || 0),
+                    inkSaboteur: Number(current.inkSaboteur || 0),
+                    magnifier: Number(current.magnifier || 0)
+                };
+                next[itemKey] = Math.max(0, next[itemKey] + addAmount);
+                await ref.set(next);
+            }
+
+            async function consumeInventoryItem(itemKey, amount = 1) {
+                if (!currentUserId || !itemTypes[itemKey]) return false;
+                const minusAmount = Math.max(1, Number(amount) || 1);
+
+                await waitForDbReady();
+                const ref = db.ref(`whitelist/${currentUserId}/inventory`);
+                const snap = await ref.once('value');
+                const current = snap.val() || {};
+                const next = {
+                    goldenPollen: Number(current.goldenPollen || 0),
+                    inkSaboteur: Number(current.inkSaboteur || 0),
+                    magnifier: Number(current.magnifier || 0)
+                };
+                if (next[itemKey] < minusAmount) return false;
+                next[itemKey] -= minusAmount;
+                await ref.set(next);
+                return true;
+            }
+
+            function renderInventory() {
+                const row = document.getElementById('inventory-row');
+                if (!row) return;
+
+                const chips = Object.entries(itemTypes)
+                    .map(([key, meta]) => ({ key, meta, count: inventoryCount(key) }))
+                    .filter(x => x.count > 0)
+                    .map(x => `<span class="inv-chip" title="${x.meta.description}">${x.meta.emoji} ${x.meta.name} ×${x.count}</span>`);
+
+                row.innerHTML = chips.length ? chips.join('') : '<span class="inv-chip">Пусто</span>';
+            }
+
+            async function activateGoldenPollen(cellIdx) {
+                const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
+                const cell = cellSnap.val();
+                if (!isOwnRegularCell(cell) || cell.itemType) return alert('Золотую пыльцу можно использовать только на своей обычной клетке без предмета.');
+                if (inventoryCount('goldenPollen') <= 0) return alert('В рюкзаке нет Золотой пыльцы.');
+
+                const usedSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
+                const used = Array.isArray(usedSnap.val()) ? usedSnap.val() : [];
+                const nextTask = pickRandomTaskIndex([cell.taskIdx, ...used]);
+                if (nextTask < 0) return alert('Не нашлось свободных заданий для переброса.');
+
+                const consumed = await consumeInventoryItem('goldenPollen', 1);
+                if (!consumed) return alert('Золотая пыльца уже закончилась.');
+
+                const nextUsed = [...used, nextTask];
+                await db.ref(`whitelist/${currentUserId}/used_tasks`).set(nextUsed);
+                await db.ref(`board/${cellIdx}`).update({ taskIdx: nextTask, pollenUsedAt: Date.now() });
+                await postNews(`🎇 ${players[myIndex].n} использовал(а) Золотую пыльцу и перебросил(а) задание в клетке №${Number(cellIdx) + 1}.`);
+                const updated = await db.ref(`board/${cellIdx}`).once('value');
+                showCell(cellIdx, updated.val());
+            }
+
+            async function activateMagnifier(cellIdx) {
+                const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
+                const cell = cellSnap.val();
+                if (!isOwnRegularCell(cell) || cell.itemType) return alert('Лупу можно применить только к своей обычной клетке без предмета.');
+                if (inventoryCount('magnifier') <= 0) return alert('В рюкзаке нет Лупы.');
+
+                const usedRoundSnap = await db.ref(`whitelist/${currentUserId}/magnifier_used_round`).once('value');
+                if (Number(usedRoundSnap.val() || 0) === Number(currentRoundNum)) {
+                    return alert('Лупа уже использована в этом раунде.');
+                }
+
+                const usedSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
+                const used = Array.isArray(usedSnap.val()) ? usedSnap.val() : [];
+                const nextTask = pickRandomTaskIndex([cell.taskIdx, ...used]);
+                if (nextTask < 0) return alert('Не нашлось свободных заданий для Лупы.');
+
+                const consumed = await consumeInventoryItem('magnifier', 1);
+                if (!consumed) return alert('Лупа уже закончилась.');
+
+                await db.ref(`whitelist/${currentUserId}/used_tasks`).set([...used, nextTask]);
+                await db.ref(`whitelist/${currentUserId}/magnifier_used_round`).set(currentRoundNum);
+                await db.ref(`board/${cellIdx}`).update({ taskIdx: nextTask, magnifierUsedAt: Date.now() });
+                await postNews(`🔎 ${players[myIndex].n} использовал(а) Лупу и обновил(а) задание в клетке №${Number(cellIdx) + 1}.`);
+                const updated = await db.ref(`board/${cellIdx}`).once('value');
+                showCell(cellIdx, updated.val());
+            }
+
+            async function activateInkSaboteur(cellIdx) {
+                const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
+                const cell = cellSnap.val();
+                if (!cell || Number(cell.userId) !== Number(currentUserId) || cell.itemType !== 'inkSaboteur') {
+                    return alert('Кляксу можно запускать только из своей предметной клетки 🫧.');
+                }
+                if (cell.inkUsed || cell.isInkChallenge) return alert('Клякса для этой клетки уже использована.');
+
+                const boardSnap = await db.ref('board').once('value');
+                const board = boardSnap.val() || {};
+                const targets = [];
+
+                Object.entries(board).forEach(([idx, c]) => {
+                    if (!c || Number(c.userId) === Number(currentUserId)) return;
+                    if (c.excluded || c.round !== currentRoundNum) return;
+                    if (c.isTrap || c.isMagic || c.isGold || c.isMiniGame || c.isWordSketch || c.isMagnet || c.isInkChallenge || c.isWandBlessing) return;
+                    targets.push({ cellIdx: Number(idx), cell: c, name: players[c.owner]?.n || `Игрок ${c.userId}` });
+                });
+
+                if (!targets.length) return alert('Нет подходящих игроков для кляксы в текущем раунде.');
+
+                const optionsText = targets.map((t, i) => `${i + 1} — ${t.name} (клетка №${t.cellIdx + 1})`).join('\n');
+                const rawChoice = prompt(`Выбери цель для кляксы:\n${optionsText}\n\nВведи номер:`, '1');
+                if (rawChoice === null) return;
+                const pick = Number(rawChoice);
+                if (!Number.isInteger(pick) || pick < 1 || pick > targets.length) return alert('Некорректный номер цели.');
+                const target = targets[pick - 1];
+
+                const targetPendingTicket = target.cell.ticket || '';
+                const updates = {};
+                updates[`board/${target.cellIdx}/isInkChallenge`] = true;
+                updates[`board/${target.cellIdx}/inkOption`] = null;
+                updates[`board/${target.cellIdx}/inkOptionLabel`] = '';
+                updates[`board/${target.cellIdx}/ticket`] = '';
+
+                updates[`whitelist/${target.cell.userId}/ink_challenge`] = {
+                    fromUserId: currentUserId,
+                    fromCellIdx: Number(cellIdx),
+                    round: currentRoundNum,
+                    cellIdx: target.cellIdx,
+                    pendingTicket: targetPendingTicket,
+                    selectedOption: null,
+                    selectedOptionLabel: '',
+                    draftOption: null,
+                    draftOptionLabel: '',
+                    isResolved: false,
+                    createdAt: Date.now()
+                };
+
+                updates[`board/${cellIdx}/isInkChallenge`] = true;
+                updates[`board/${cellIdx}/inkUsed`] = true;
+                updates[`board/${cellIdx}/ticket`] = cell.inkPendingTicket || '';
+                updates[`board/${cellIdx}/inkPendingTicket`] = '';
+
+                await db.ref().update(updates);
+                await postNews(`🫧 ${players[myIndex].n} запустил(а) кляксу: игрок ${target.name} получил(а) усложнение на клетке №${target.cellIdx + 1}.`);
+                alert(`Клякса отправлена игроку ${target.name}. Теперь он(а) должен(на) выбрать усложнение.`);
+                const updated = await db.ref(`board/${cellIdx}`).once('value');
+                showCell(cellIdx, updated.val());
+            }
+
+            window.itemTypes = itemTypes;
+            window.inkChallengeOptions = inkChallengeOptions;
+            window.addInventoryItem = addInventoryItem;
+            window.renderInventory = renderInventory;
+            window.activateGoldenPollen = activateGoldenPollen;
+            window.activateMagnifier = activateMagnifier;
+            window.activateInkSaboteur = activateInkSaboteur;
+        })();
+        // END items.js
+
+        // BEGIN Tickets.js
+        (function () {
+            function updateAllTicketsDataAndRender() {
+                allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
+                updateTicketsTable();
+            }
+
+            let archiveRefs = [];
+            let archiveByKey = {};
+            let revokedTicketsMap = {};
+            let adminTicketsSubtab = 'all';
+            let selectedAdminTicketUserId = null;
+
+            function clearArchiveSubscriptions() {
+                archiveRefs.forEach(ref => ref.off());
+                archiveRefs = [];
+            }
+
+            function syncArchiveMapToList() {
+                archivedTicketsData = Object.values(archiveByKey);
+                updateAllTicketsDataAndRender();
+            }
+
+            function attachArchiveRef(ref) {
+                archiveRefs.push(ref);
+                ref.on('child_added', snap => {
+                    archiveByKey[snap.key] = { ...(snap.val() || {}), isArchived: true, archiveKey: snap.key };
+                    syncArchiveMapToList();
+                });
+                ref.on('child_changed', snap => {
+                    archiveByKey[snap.key] = { ...(snap.val() || {}), isArchived: true, archiveKey: snap.key };
+                    syncArchiveMapToList();
+                });
+                ref.on('child_removed', snap => {
+                    delete archiveByKey[snap.key];
+                    syncArchiveMapToList();
+                });
+            }
+
+            function subscribeArchiveTickets() {
+                clearArchiveSubscriptions();
+                archiveByKey = {};
+                archivedTicketsData = [];
+                updateAllTicketsDataAndRender();
+
+                if (currentUserId === ADMIN_ID) {
+                    const adminRef = db.ref('tickets_archive');
+                    archiveRefs.push(adminRef);
+                    adminRef.on('value', snap => {
+                        const archived = [];
+                        snap.forEach(item => {
+                            const v = item.val() || {};
+                            archived.push({ ...v, isArchived: true, archiveKey: item.key });
+                        });
+                        archivedTicketsData = archived;
+                        updateAllTicketsDataAndRender();
+                    });
+                    return;
+                }
+
+                attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(Number(currentUserId)));
+                if (Number.isInteger(myIndex)) {
+                    attachArchiveRef(db.ref('tickets_archive').orderByChild('owner').equalTo(myIndex));
+                }
+            }
+
+            function syncTicketData() {
+                db.ref('board').on('value', snap => {
+                    const data = snap.val() || {};
+                    const grid = document.getElementById('grid');
+                    if (grid) grid.innerHTML = "";
+                    liveBoardTicketsData = [];
+
+                    for (let i = 0; i < 50; i++) {
+                        const cell = data[i];
+                        const d = document.createElement('div');
+                        d.className = 'cell'
+                            + (cell?.isGold ? ' gold' : '')
+                            + (cell?.isMagic ? ' magic' : '')
+                            + (cell?.isMiniGame ? ' minigame' : '')
+                            + (cell?.isWordSketch ? ' minigame' : '')
+                            + (cell?.isMagnet ? ' magnet' : '')
+                            + (cell?.itemType ? ' item' : '')
+                            + (cell?.isWandBlessing ? ' item' : '')
+                            + (cell && cell.excluded ? ' excluded' : '');
+
+                        if (cell) {
+                            const c = charColors[cell.owner];
+                            d.style.background = c + "22";
+                            d.style.borderColor = c;
+                            d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isWordSketch ? '🧩' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (cell.itemType === 'magnifier' ? '🔎' : (i + 1)))) ))))))) + `<span>🎟${cell.ticket}</span>`;
+                            liveBoardTicketsData.push({ ...cell, cell: i + 1, cellIdx: i, isArchived: false });
+                        } else {
+                            d.innerHTML = (i + 1);
+                        }
+
+                        d.onclick = () => showCell(i, cell);
+                        if (grid) grid.appendChild(d);
+                    }
+
+                    updateAllTicketsDataAndRender();
+                });
+
+                db.ref('revoked_tickets').on('value', snap => {
+                    revokedTicketsMap = snap.val() || {};
+                    updateAllTicketsDataAndRender();
+                });
+
+                subscribeArchiveTickets();
+                db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
+                    if (currentUserId === ADMIN_ID) return;
+                    subscribeArchiveTickets();
+                });
+            }
+
+            function extractTicketNumbers(ticketValue) {
+                return String(ticketValue || '')
+                    .split(' и ')
+                    .map(t => t.trim())
+                    .filter(t => /^\d+$/.test(t));
+            }
+
+            function isTicketRevoked(ticketNum) {
+                return !!revokedTicketsMap[String(ticketNum)];
+            }
+
+            function getTicketSourceLabel(t) {
+                if (t.isEventReward) return '🎨 Событие';
+                if (t.isManualReward) return '🎫 Ручная выдача';
+                if (t.isManualRevoke) return '🧾 Изъят админом';
+                if (Number.isInteger(t.round) && t.round > 0) return `Раунд ${t.round}`;
+                return 'Иной источник';
+            }
+
+            function getTicketTaskLabel(t) {
+                if (t.isEventReward) return t.eventId === 'wall_battle' ? 'Награда за событие «Стенка на стенку»' : 'Награда за событие «Эпичный закрас»';
+                if (typeof t.taskLabel === 'string' && t.taskLabel.trim()) return t.taskLabel;
+                if (Number.isInteger(t.taskIdx) && t.taskIdx >= 0 && Array.isArray(tasks) && tasks[t.taskIdx]) {
+                    return tasks[t.taskIdx].text || 'Обычное задание';
+                }
+                if (t.isManualReward) return t.adminNote ? `Ручная выдача: ${t.adminNote}` : 'Ручная выдача администратором';
+                if (t.isManualRevoke) return t.adminNote ? `Изъятие: ${t.adminNote}` : 'Изъято администратором';
+                return '—';
+            }
+
+            function expandTicketsRows(rows) {
+                const expanded = [];
+                rows.forEach(t => {
+                    extractTicketNumbers(t.ticket).forEach(ticketNum => {
+                        expanded.push({
+                            ...t,
+                            ticketNum: String(ticketNum),
+                            isRevoked: isTicketRevoked(ticketNum),
+                            sourceLabel: getTicketSourceLabel(t),
+                            taskLabel: getTicketTaskLabel(t)
+                        });
+                    });
+                });
+                return expanded;
+            }
+
+            async function toggleTicketRevocation(ticketNum, shouldRevoke) {
+                if (currentUserId !== ADMIN_ID) return;
+                const num = String(ticketNum || '').trim();
+                if (!/^\d+$/.test(num)) return;
+                if (shouldRevoke) {
+                    await db.ref(`revoked_tickets/${num}`).set(true);
+                    return;
+                }
+                await db.ref(`revoked_tickets/${num}`).remove();
+            }
+
+            async function claimSequentialTickets(count = 1) {
+                let startFrom = null;
+                const tx = await db.ref('ticket_counter').transaction(c => {
+                    const current = Number(c) || 0;
+                    if (current + count > MAX_TICKETS) return;
+                    startFrom = current + 1;
+                    return current + count;
+                });
+                if (!tx.committed || !Number.isInteger(startFrom)) return null;
+                return Array.from({ length: count }, (_, idx) => String(startFrom + idx));
+            }
+
+            function switchAdminTicketsSubtab(tabName) {
+                adminTicketsSubtab = tabName === 'player' ? 'player' : 'all';
+                const allBtn = document.getElementById('admin-tickets-all-btn');
+                const playerBtn = document.getElementById('admin-tickets-player-btn');
+                const allPanel = document.getElementById('admin-tickets-all-panel');
+                const playerPanel = document.getElementById('admin-tickets-player-panel');
+                const isAll = adminTicketsSubtab === 'all';
+
+                allBtn?.classList.toggle('active', isAll);
+                playerBtn?.classList.toggle('active', !isAll);
+                allPanel?.classList.toggle('active', isAll);
+                playerPanel?.classList.toggle('active', !isAll);
+                if (allPanel) allPanel.style.display = isAll ? 'block' : 'none';
+                if (playerPanel) playerPanel.style.display = isAll ? 'none' : 'block';
+            }
+
+            function getAdminPlayersAlphabetically() {
+                const whitelist = window.cachedWhitelistData || {};
+                const users = Object.entries(whitelist)
+                    .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
+                    .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
+                    .map(p => ({ ...p, name: players[p.charIndex].n }));
+
+                users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                return users;
+            }
+
+            function renderAdminPlayerTickets(expandedRows) {
+                const playersListEl = document.getElementById('admin-ticket-players-list');
+                const ticketsListEl = document.getElementById('admin-player-tickets-list');
+                const titleEl = document.getElementById('admin-player-tickets-title');
+                if (!playersListEl || !ticketsListEl || !titleEl) return;
+
+                const users = getAdminPlayersAlphabetically();
+                if (!users.length) {
+                    playersListEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+                    titleEl.innerText = 'Выбери игрока, чтобы увидеть его билетики';
+                    ticketsListEl.innerHTML = '';
+                    return;
+                }
+
+                if (!selectedAdminTicketUserId || !users.some(u => u.userId === String(selectedAdminTicketUserId))) {
+                    selectedAdminTicketUserId = users[0].userId;
+                }
+
+                playersListEl.innerHTML = users.map(u => {
+                    const active = String(selectedAdminTicketUserId) === String(u.userId);
+                    return `<button onclick="selectAdminTicketUser('${u.userId}')" style="text-align:left; border:1px solid ${active ? '#f48fb1' : '#eee'}; background:${active ? '#fff0f6' : '#fff'}; border-radius:8px; padding:8px;">${u.name}</button>`;
+                }).join('');
+
+                const selectedUser = users.find(u => String(u.userId) === String(selectedAdminTicketUserId));
+                const filtered = expandedRows
+                    .filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex))
+                    .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
+
+                titleEl.innerText = selectedUser ? `Билетики игрока: ${selectedUser.name}` : 'Билетики игрока';
+                if (!filtered.length) {
+                    ticketsListEl.innerHTML = '<div style="font-size:12px; color:#888;">У игрока пока нет билетиков.</div>';
+                    return;
+                }
+
+                ticketsListEl.innerHTML = filtered.map(t => `
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #eee;">
+                        <div style="text-align:left;">
+                            <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
+                            <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
+                            <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
+                        </div>
+                        <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
+                            ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            function selectAdminTicketUser(userId) {
+                selectedAdminTicketUserId = String(userId || '');
+                updateTicketsTable();
+            }
+
+            function updateTicketsTable() {
+                const body = document.getElementById('tickets-body');
+                const isAdmin = (currentUserId === ADMIN_ID);
+                const adminSubtabs = document.getElementById('admin-tickets-subtabs');
+
+                if (adminSubtabs) adminSubtabs.style.display = isAdmin ? 'flex' : 'none';
+                if (document.getElementById('th-user-name')) {
+                    document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
+                }
+
+                if (isAdmin) {
+                    switchAdminTicketsSubtab(adminTicketsSubtab);
+                }
+
+                const visibleData = isAdmin
+                    ? allTicketsData
+                    : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
+
+                const expandedRows = expandTicketsRows(visibleData)
+                    .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
+
+                body.innerHTML = expandedRows.map(t => {
+                    const statusClass = t.excluded || t.isRevoked ? 'row-excluded' : '';
+                    return `
+                        <tr class="${statusClass}">
+                            <td>${t.round || '—'}</td>
+                            <td>${t.cell || '—'}</td>
+                            ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
+                            <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
+                            <td>
+                                <div style="font-size:11px;">${t.sourceLabel}</div>
+                                <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
+                                ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
+                                ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
+                            </td>
+                        </tr>`;
+                }).join('');
+
+                if (isAdmin) {
+                    renderAdminPlayerTickets(expandedRows);
+                }
+            }
+
+            function viewTaskDetails(cellIdx) {
+                db.ref('board/' + cellIdx).once('value', s => {
+                    if (s.exists()) showCell(cellIdx, s.val());
+                });
+            }
+
+            function getActiveTicketsForWheel() {
+                const tickets = [];
+                allTicketsData.forEach(t => {
+                    if (t.excluded) return;
+                    extractTicketNumbers(t.ticket).forEach(n => {
+                        if (isTicketRevoked(n)) return;
+                        tickets.push({ num: String(n), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' });
+                    });
+                });
+                return tickets.sort((a, b) => Number(a.num) - Number(b.num));
+            }
+
+            window.syncTicketData = syncTicketData;
+            window.extractTicketNumbers = extractTicketNumbers;
+            window.claimSequentialTickets = claimSequentialTickets;
+            window.updateTicketsTable = updateTicketsTable;
+            window.viewTaskDetails = viewTaskDetails;
+            window.getActiveTicketsForWheel = getActiveTicketsForWheel;
+            window.toggleTicketRevocation = toggleTicketRevocation;
+            window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
+            window.selectAdminTicketUser = selectAdminTicketUser;
+        })();
+        // END Tickets.js
+
+        // BEGIN ivents.js
+        (function () {
+          const EVENT_PATH = 'current_event';
+          const EVENT_TYPE = 'paint';
+          const ACTIVE_STATUS = 'active';
+          const FINISHED_STATUS = 'finished';
+          const BRUSH_SIZE = 20;
+          const TARGET_PERCENT = 95;
+
+          const WORLD_WIDTH = 900;
+          const WORLD_HEIGHT = 1500;
+
+          let eventRef = null;
+          let timerHandle = null;
+          let state = { status: 'idle', type: EVENT_TYPE, endTime: 0, progress: 0, participants: {} };
+          let drawing = false;
+          let lastPoint = { x: 0, y: 0 };
+          let finishing = false;
+          let myColor = null;
+
+          const $ = (id) => document.getElementById(id);
+
+          async function getDbReady() {
+            if (window.db && typeof window.db.ref === 'function') return window.db;
+            if (typeof window.waitForDbReady === 'function') return window.waitForDbReady();
+            throw new Error('Firebase db not ready');
+          }
+
+          function getCanvas() { return $('event-canvas'); }
+          function getCtx() { return getCanvas()?.getContext('2d'); }
+          function getUserId() { return String(window.currentUserId || '').trim(); }
+
+          function normalizeEvent(raw) {
+            const e = raw || {};
+            return {
+              status: String(e.status || 'idle'),
+              type: String(e.type || EVENT_TYPE),
+              endTime: Number(e.endTime || 0),
+              progress: Number(e.progress || 0),
+              participants: e.participants || {},
+              canvas_data: e.canvas_data || ''
+            };
+          }
+
+          function formatLeft(ms) {
+            const left = Math.max(0, Math.floor(ms / 1000));
+            const mm = String(Math.floor(left / 60)).padStart(2, '0');
+            const ss = String(left % 60).padStart(2, '0');
+            return `${mm}:${ss}`;
+          }
+
+          function updateTimer() {
+            const timerEl = $('event-timer');
+            if (!timerEl) return;
+            if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE || !state.endTime) {
+              timerEl.textContent = '00:00';
+              return;
+            }
+            const leftMs = Number(state.endTime) - Date.now();
+            timerEl.textContent = formatLeft(leftMs);
+            if (leftMs <= 0) finalizeEventWithRewards().catch(() => {});
+          }
+
+          function updateOverlayUi() {
+            const titleEl = $('event-space-title');
+            const progressEl = $('paint-progress');
+            if (titleEl) titleEl.textContent = 'Эпичный раскрас';
+            updateTimer();
+            if (progressEl) {
+              progressEl.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
+              progressEl.classList.toggle('paint-progress-win', Number(state.progress || 0) >= TARGET_PERCENT);
+            }
+          }
+
+          function resizeCanvasToViewport() {
+            const canvas = getCanvas();
+            if (!canvas) return;
+            canvas.style.width = `${Math.max(320, window.innerWidth)}px`;
+            canvas.style.height = `${Math.max(420, window.innerHeight - 120)}px`;
+            canvas.width = WORLD_WIDTH;
+            canvas.height = WORLD_HEIGHT;
+          }
+
+          function openEventOverlay() {
+            const overlay = $('event-overlay');
+            if (overlay) overlay.style.display = 'flex';
+            document.body.classList.add('event-mode');
+            resizeCanvasToViewport();
+          }
+
+          function closeEventOverlay() {
+            const overlay = $('event-overlay');
+            if (overlay) overlay.style.display = 'none';
+            document.body.classList.remove('event-mode');
+          }
+
+          function randomColorForUser(uid) {
+            const n = (uid || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+            return `hsl(${(n * 57) % 360}, 85%, 55%)`;
+          }
+
+          async function ensureMyColor() {
+            if (myColor) return myColor;
+            const uid = getUserId();
+            if (!uid) return '#ff4fa3';
+            const db = await getDbReady();
+            const ref = db.ref(`${EVENT_PATH}/colors/${uid}`);
+            const snap = await ref.once('value');
+            if (snap.exists()) {
+              myColor = String(snap.val());
+              return myColor;
+            }
+            const c = randomColorForUser(uid);
+            await ref.set(c);
+            myColor = c;
+            return c;
+          }
+
+          function toWorldPoint(evt) {
+            const canvas = getCanvas();
+            const rect = canvas.getBoundingClientRect();
+            const touch = evt.touches?.[0] || evt.changedTouches?.[0];
+            const cx = touch ? touch.clientX : evt.clientX;
+            const cy = touch ? touch.clientY : evt.clientY;
+            return {
+              x: ((cx - rect.left) / rect.width) * WORLD_WIDTH,
+              y: ((cy - rect.top) / rect.height) * WORLD_HEIGHT
+            };
+          }
+
+          async function registerParticipant() {
+            const uid = getUserId();
+            if (!uid) return;
+            const db = await getDbReady();
+            await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
+          }
+
+          async function persistCanvasState() {
+            const canvas = getCanvas();
+            if (!canvas) return;
+            const db = await getDbReady();
+            const data = canvas.toDataURL('image/png');
+            await db.ref(`${EVENT_PATH}/canvas_data`).set(data);
+          }
+
+          function drawLine(x1, y1, x2, y2, color) {
+            const ctx = getCtx();
+            if (!ctx) return;
+            ctx.beginPath();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = BRUSH_SIZE;
+            ctx.strokeStyle = color || '#ff4fa3';
+            if (Math.abs(x1 - x2) < 0.001 && Math.abs(y1 - y2) < 0.001) {
+              ctx.fillStyle = color || '#ff4fa3';
+              ctx.arc(x1, y1, BRUSH_SIZE / 2, 0, Math.PI * 2);
+              ctx.fill();
+              return;
+            }
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+          }
+
+          function computeProgressPercent() {
+            const canvas = getCanvas();
+            const ctx = getCtx();
+            if (!canvas || !ctx) return 0;
+            const step = 4;
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let total = 0;
+            let painted = 0;
+            for (let y = 0; y < canvas.height; y += step) {
+              for (let x = 0; x < canvas.width; x += step) {
+                total += 1;
+                const i = (y * canvas.width + x) * 4;
+                if (img[i + 3] > 0) painted += 1;
+              }
+            }
+            return total ? (painted / total) * 100 : 0;
+          }
+
+          async function syncProgressAndMaybeFinish() {
+            if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
+            const db = await getDbReady();
+            const percent = Number(computeProgressPercent().toFixed(2));
+            state.progress = percent;
+            updateOverlayUi();
+            await db.ref(`${EVENT_PATH}/progress`).set(percent);
+            if (percent >= TARGET_PERCENT) await finalizeEventWithRewards();
+          }
+
+          async function startDrawing(evt) {
+            if (state.status !== ACTIVE_STATUS || finishing) return;
+            evt.preventDefault();
+            drawing = true;
+            lastPoint = toWorldPoint(evt);
+            await registerParticipant();
+            const color = await ensureMyColor();
+            drawLine(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y, color);
+            await persistCanvasState();
+            await syncProgressAndMaybeFinish();
+          }
+
+          async function draw(evt) {
+            if (!drawing || state.status !== ACTIVE_STATUS || finishing) return;
+            evt.preventDefault();
+            const p = toWorldPoint(evt);
+            const from = lastPoint;
+            lastPoint = p;
+            const color = await ensureMyColor();
+            drawLine(from.x, from.y, p.x, p.y, color);
+            await persistCanvasState();
+            await syncProgressAndMaybeFinish();
+          }
+
+          function stopDrawing() { drawing = false; }
+
+          function bindCanvasEvents() {
+            const canvas = getCanvas();
+            if (!canvas || canvas.dataset.bound === '1') return;
+            canvas.dataset.bound = '1';
+            canvas.addEventListener('touchstart', startDrawing, { passive: false });
+            canvas.addEventListener('touchmove', draw, { passive: false });
+            canvas.addEventListener('touchend', stopDrawing);
+            canvas.addEventListener('touchcancel', stopDrawing);
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
+          }
+
+          function showNotification() {
+            const box = $('event-notification');
+            if (!box) return;
+            if (state.status === ACTIVE_STATUS && state.type === EVENT_TYPE) {
+              box.style.display = 'block';
+              box.classList.add('event-notification-pink');
+              box.innerHTML = '<div class="event-notification-text">✨🎨 Начался ивент: Эпичный раскрас!</div><button id="btn-join-event" class="event-notification-join">Присоединиться</button>';
+              const btn = $('btn-join-event');
+              if (btn) btn.onclick = () => openEventOverlay();
+              return;
+            }
+            box.style.display = 'none';
+            box.classList.remove('event-notification-pink');
+            box.innerHTML = '';
+          }
+
+          async function rewardAllParticipants() {
+            const db = await getDbReady();
+            const tx = await db.ref(`${EVENT_PATH}/status`).transaction((v) => {
+              if (String(v || '') === FINISHED_STATUS) return;
+              return FINISHED_STATUS;
+            });
+            if (!tx.committed) return;
+
+            const participantsSnap = await db.ref(`${EVENT_PATH}/participants`).once('value');
+            const participants = participantsSnap.val() || {};
+            for (const uid of Object.keys(participants)) {
+              try {
+                await window.createTicket(uid, 2, 'Ивент');
+              } catch (e) {
+                console.error('Ticket reward failed for user:', uid, e);
+              }
+            }
+          }
+
+          async function finalizeEventWithRewards() {
+            if (finishing) return;
+            finishing = true;
+            try {
+              await rewardAllParticipants();
+            } finally {
+              finishing = false;
+            }
+          }
+
+          function applyCanvasData(dataUrl) {
+            const canvas = getCanvas();
+            const ctx = getCtx();
+            if (!canvas || !ctx) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!dataUrl) return;
+            const img = new Image();
+            img.onload = () => {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            img.src = dataUrl;
+          }
+
+          async function attachListeners() {
+            const db = await getDbReady();
+            if (eventRef) eventRef.off();
+
+            eventRef = db.ref(EVENT_PATH);
+            eventRef.on('value', (snap) => {
+              state = normalizeEvent(snap.val());
+              showNotification();
+              updateOverlayUi();
+            });
+
+            db.ref(`${EVENT_PATH}/canvas_data`).on('value', (snap) => {
+              applyCanvasData(snap.val() || '');
+            });
+          }
+
+          async function initEventSystem() {
+            try {
+              await getDbReady();
+              bindCanvasEvents();
+              resizeCanvasToViewport();
+              await attachListeners();
+
+              const exitBtn = $('btn-exit-event');
+              if (exitBtn && exitBtn.dataset.bound !== '1') {
+                exitBtn.dataset.bound = '1';
+                exitBtn.onclick = () => closeEventOverlay();
+              }
+
+              if (timerHandle) clearInterval(timerHandle);
+              timerHandle = setInterval(() => {
+                updateTimer();
+              }, 1000);
+
+              window.addEventListener('resize', resizeCanvasToViewport);
+              window.addEventListener('orientationchange', resizeCanvasToViewport);
+            } catch (err) {
+              console.error('initEventSystem failed:', err);
+            }
+          }
+
+          async function adminLaunchEpicPaintEvent() {
+            try {
+              const db = await getDbReady();
+              if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+              await db.ref(EVENT_PATH).set({
+                status: ACTIVE_STATUS,
+                type: EVENT_TYPE,
+                endTime: Date.now() + 600000
+              });
+            } catch (err) {
+              console.error('adminLaunchEpicPaintEvent failed:', err);
+            }
+          }
+
+          window.initEventSystem = initEventSystem;
+          window.syncGameEvents = initEventSystem;
+          window.initEvents = initEventSystem;
+          window.setupEpicPaintCanvas = bindCanvasEvents;
+          window.openEventOverlay = openEventOverlay;
+          window.closeEventOverlay = closeEventOverlay;
+          window.openEventSpace = openEventOverlay;
+          window.backToGameFromEvent = closeEventOverlay;
+          window.startDrawing = startDrawing;
+          window.draw = draw;
+          window.stopDrawing = stopDrawing;
+          window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
+          window.adminScheduleEvent = adminLaunchEpicPaintEvent;
+        })();
+        // END ivents.js
+
+        // BEGIN adminpage.js
+        (function () {
+          function getDbInstance() {
+            if (typeof db !== 'undefined' && db && typeof db.ref === 'function') return db;
+            if (window.db && typeof window.db.ref === 'function') return window.db;
+            return null;
+          }
+
+          async function waitForDbReady(timeoutMs = 10000) {
+            const readyDb = getDbInstance();
+            if (readyDb) return readyDb;
+
+            return new Promise((resolve, reject) => {
+              const startedAt = Date.now();
+              const timer = setInterval(() => {
+                const instance = getDbInstance();
+                if (instance) {
+                  clearInterval(timer);
+                  resolve(instance);
+                  return;
+                }
+                if (Date.now() - startedAt >= timeoutMs) {
+                  clearInterval(timer);
+                  reject(new Error('Firebase db не инициализирован.'));
+                }
+              }, 100);
+            });
+          }
+
+          const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
+          const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
+            const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+            if (!m) return NaN;
+            const [, y, mon, d, h, min] = m.map(Number);
+            return Date.UTC(y, mon - 1, d, h - 3, min, 0, 0);
+          });
+          const toMoscowDateTimeLocalInput = window.toMoscowDateTimeLocalInput || ((ts) => {
+            const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
+            return date.toISOString().slice(0, 16);
+          });
+
+          const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+          function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
+            const input = document.getElementById(inputId);
+            if (!input || input.value) return;
+            input.value = toMoscowDateTimeLocalInput(Date.now() + plusMs);
+          }
+
+          function switchAdminInnerTab(tabName) {
+            const roundsBtn = document.getElementById('admin-inner-rounds-btn');
+            const eventsBtn = document.getElementById('admin-inner-events-btn');
+            const drawBtn = document.getElementById('admin-inner-draw-btn');
+            const roundsPanel = document.getElementById('admin-rounds-panel');
+            const eventsPanel = document.getElementById('admin-events-panel');
+            const drawPanel = document.getElementById('admin-draw-panel');
+            const isRounds = tabName === 'rounds';
+            const isEvents = tabName === 'events';
+            const isDraw = tabName === 'draw';
+            roundsBtn?.classList.toggle('active', isRounds);
+            eventsBtn?.classList.toggle('active', isEvents);
+            drawBtn?.classList.toggle('active', isDraw);
+            roundsPanel?.classList.toggle('active', isRounds);
+            eventsPanel?.classList.toggle('active', isEvents);
+            drawPanel?.classList.toggle('active', isDraw);
+          }
+
+          async function runRoundStart(durationMs) {
+            if (!durationMs || durationMs <= 0) return alert('Укажите время раунда!');
+            await archiveAndClearBoard();
+            let free = [];
+            for (let i = 0; i < 50; i++) free.push(i);
+
+            const magicCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
+            const miniGameCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
+            const wordSketchCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
+            const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
+
+            const itemCells = {};
+            const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier'];
+            for (const itemType of itemPool) {
+              if (!free.length) break;
+              const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
+              itemCells[idx] = itemType;
+            }
+
+            const traps = [];
+            for (let j = 0; j < 2; j++) {
+              if (free.length) traps.push(free.splice(Math.floor(Math.random() * free.length), 1)[0]);
+            }
+
+            const s = await db.ref('current_round/number').once('value');
+            const newRoundNum = (s.val() || 0) + 1;
+
+            await db.ref('current_round').set({
+              number: newRoundNum,
+              endTime: Date.now() + durationMs,
+              traps,
+              magicCell,
+              miniGameCell,
+              wordSketchCell,
+              magnetCell,
+              itemCells
+            });
+
+            await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 4 клетки с предметами.`);
+            return newRoundNum;
+          }
+
+          async function adminStartNewRound() {
+            const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
+            const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
+            const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
+            const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+            const roundNum = await runRoundStart(durationMs);
+            if (roundNum) alert(`Раунд №${roundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
+          }
+
+          async function adminScheduleRound() {
+            if (!isAdminUser()) return;
+            const startRaw = document.getElementById('round-start-at')?.value;
+            const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
+            const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
+            const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
+            const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+            if (!startRaw) return alert('Выбери дату и время старта раунда.');
+            if (!durationMs || durationMs < 60000) return alert('Минимальная длительность раунда — 1 минута.');
+            const startAt = parseMoscowDateTimeLocalInput(startRaw);
+            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
+
+            const payload = {
+              status: 'scheduled',
+              startAt,
+              durationMs,
+              createdAt: Date.now(),
+              createdBy: currentUserId
+            };
+            const pushedRef = await db.ref('round_schedules').push(payload);
+            roundSchedules = [...roundSchedules, { key: pushedRef.key, ...payload }].sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+            renderRoundSchedules();
+            alert('Раунд запланирован.');
+          }
+
+          async function adminCancelScheduledRound(scheduleId) {
+            if (!scheduleId || !isAdminUser()) return;
+            if (!confirm('Отменить этот запланированный раунд?')) return;
+            await db.ref(`round_schedules/${scheduleId}`).transaction(v => {
+              if (!v || v.status !== 'scheduled') return v;
+              return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
+            });
+          }
+
+          async function adminForceRenamePlayer() {
+            if (!isAdminUser()) return;
+            const userId = (document.getElementById('admin-rename-user-id')?.value || '').trim();
+            const charIndex = Number(document.getElementById('admin-rename-char-index')?.value);
+            if (!userId) return alert('Укажи Telegram ID игрока.');
+            if (!Number.isInteger(charIndex) || !players[charIndex]) return alert('Выбери корректный никнейм.');
+
+            const userSnap = await db.ref(`users/${userId}`).once('value');
+            if (!userSnap.exists()) return alert('Игрок с таким ID не найден в users.');
+            await db.ref(`users/${userId}/charIndex`).set(charIndex);
+            alert('Никнейм обновлён. Изменение сразу видно всем игрокам.');
+          }
+
+          async function executeEmergencyAction() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return alert('База данных недоступна.');
+
+            const action = String(document.getElementById('emergency-action-type')?.value || '').trim();
+            const userId = String(document.getElementById('emergency-user-id')?.value || '').trim();
+            const amountOrTicket = String(document.getElementById('emergency-amount-or-ticket')?.value || '').trim();
+            const reason = String(document.getElementById('emergency-reason')?.value || '').trim();
+
+            if (!/^\d+$/.test(userId)) return alert('Укажи корректный ID игрока.');
+            if (!/^\d+$/.test(amountOrTicket)) return alert('Укажи корректный номер билетика.');
+
+            const executeBtn = document.getElementById('btn-execute-emergency');
+            if (executeBtn) executeBtn.disabled = true;
+
+            try {
+              if (action === 'issue') {
+                const ticketNumber = Number.parseInt(amountOrTicket, 10);
+                if (!Number.isInteger(ticketNumber) || ticketNumber < 1) {
+                  throw new Error('Номер билетика должен быть целым положительным числом.');
+                }
+                const [ticketSnap, userSnap] = await Promise.all([
+                  database.ref(`tickets/${ticketNumber}`).once('value'),
+                  database.ref(`users/${userId}`).once('value')
+                ]);
+
+                if (ticketSnap.exists()) {
+                  throw new Error(`Билетик №${ticketNumber} уже существует в tickets.`);
+                }
+
+                const charIndex = Number(userSnap.val()?.charIndex);
+                const payload = {
+                  num: ticketNumber,
+                  ticketNum: ticketNumber,
+                  ticket: String(ticketNumber),
+                  userId: String(userId),
+                  owner: Number.isInteger(charIndex) ? charIndex : -1,
+                  name: String(userSnap.val()?.name || userSnap.val()?.username || whiteSnap.val()?.name || `ID ${userId}`),
+                  reason: reason || 'Ручная выдача администратором',
+                  isManualReward: true,
+                  issuedByAdmin: true,
+                  createdAt: Date.now(),
+                  timestamp: Date.now()
+                };
+
+                const archiveKey = database.ref('tickets_archive').push().key;
+                const updates = {};
+                updates[`tickets/${ticketNumber}`] = payload;
+                updates[`users/${userId}/tickets/${ticketNumber}`] = payload;
+                updates[`tickets_archive/${archiveKey}`] = {
+                  ...payload,
+                  ticket: String(ticketNumber),
+                  round: currentRoundNum || 0,
+                  cell: 0,
+                  cellIdx: -1,
+                  archivedAt: Date.now(),
+                  excluded: false,
+                  adminNote: reason || null
+                };
+                updates[`revoked_tickets/${ticketNumber}`] = null;
+                await database.ref().update(updates);
+                alert(`Готово: выдан билетик №${ticketNumber}.`);
+              } else if (action === 'revoke') {
+                const ticketId = Number(amountOrTicket);
+                await window.revokeTicket(ticketId, reason);
+                await database.ref(`tickets/${ticketId}`).remove();
+                alert(`Готово: билет #${ticketId} вычеркнут.`);
+              } else {
+                alert('Неизвестный тип экстренного действия.');
+              }
+            } catch (error) {
+              console.error(error);
+              alert(error?.message || 'Не удалось выполнить экстренное действие.');
+            } finally {
+              if (executeBtn) executeBtn.disabled = !isAdminUser();
+            }
+          }
+
+          async function adminUndoTicketRevoke(archiveKey) {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+            if (!archiveKey) return;
+
+            const revokeSnap = await db.ref(`tickets_archive/${archiveKey}`).once('value');
+            const revokeRow = revokeSnap.val() || {};
+            if (!revokeSnap.exists() || !revokeRow.isManualRevoke) return alert('Запись об изъятии не найдена.');
+            if (revokeRow.revokeCancelledAt) return alert('Это изъятие уже отменено ранее.');
+
+            const ticketNum = extractTicketNumbers(revokeRow.ticket)[0];
+            if (!ticketNum) return alert('Не удалось определить номер билетика для восстановления.');
+            const owner = Number(revokeRow.owner);
+            const ownerName = players[owner]?.n || 'игрока';
+
+            const [boardSnap, archiveSnap, revokedSnap] = await Promise.all([
+              db.ref('board').once('value'),
+              db.ref('tickets_archive').once('value'),
+              db.ref('revoked_tickets').once('value')
+            ]);
+
+            const revokedMap = revokedSnap.val() || {};
+            let alreadyActive = false;
+
+            Object.values(boardSnap.val() || {}).forEach(cell => {
+              if (alreadyActive || !cell || cell.excluded) return;
+              const nums = extractTicketNumbers(cell.ticket);
+              if (nums.some(n => String(n) === String(ticketNum) && !revokedMap[String(n)])) alreadyActive = true;
+            });
+
+            if (!alreadyActive) {
+              archiveSnap.forEach(item => {
+                if (alreadyActive) return;
+                const row = item.val() || {};
+                if (row.excluded) return;
+                const nums = extractTicketNumbers(row.ticket);
+                if (nums.some(n => String(n) === String(ticketNum) && !revokedMap[String(n)])) alreadyActive = true;
+              });
+            }
+
+            if (alreadyActive) return alert(`Билетик №${ticketNum} уже участвует в игре. Отмена изъятия не требуется.`);
+            if (!confirm(`Отменить изъятие билетика №${ticketNum} и вернуть его ${ownerName}?`)) return;
+
+            const restoreKey = db.ref('tickets_archive').push().key;
+            const note = revokeRow.adminNote ? `Возврат после изъятия: ${revokeRow.adminNote}` : 'Возврат после ручного изъятия администратором';
+            const updates = {
+              [`tickets_archive/${restoreKey}`]: {
+                owner,
+                userId: String(revokeRow.userId || ''),
+                ticket: String(ticketNum),
+                taskIdx: -1,
+                round: currentRoundNum,
+                cell: 0,
+                cellIdx: -1,
+                isManualReward: true,
+                archivedAt: Date.now(),
+                excluded: false,
+                adminNote: note,
+                taskLabel: note,
+                restoredFromRevokeKey: archiveKey
+              },
+              [`tickets_archive/${archiveKey}/revokeCancelledAt`]: Date.now(),
+              [`tickets_archive/${archiveKey}/revokeCancelledBy`]: currentUserId
+            };
+
+            await db.ref().update(updates);
+            await postNews(`↩️ Администратор отменил(а) изъятие билетика №${ticketNum} для игрока ${ownerName}.`);
+            alert(`Готово! Билетик №${ticketNum} снова участвует в игре.`);
+          }
+
+
+          async function adminResetCurrentRound() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+            if (!confirm('Сбросить текущий раунд? Поле очистится, прогресс раунда будет остановлен.')) return;
+
+            await db.ref('board').set({});
+            await db.ref('current_round').update({
+              endTime: 0,
+              traps: [],
+              magicCell: null,
+              miniGameCell: null,
+              wordSketchCell: null,
+              magnetCell: null,
+              itemCells: {}
+            });
+            await postNews('🔄 Администратор сбросил(а) текущий раунд.');
+            alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
+          }
+
+          async function resetAllInventories() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+            if (!confirm('Обнулить рюкзаки всех игроков?')) return;
+
+            const usersSnap = await db.ref('users').once('value');
+            const removes = [];
+            usersSnap.forEach((userSnap) => {
+              removes.push(db.ref(`users/${userSnap.key}/inventory`).remove());
+            });
+
+            if (!removes.length) return alert('Список игроков пуст.');
+
+            await Promise.all(removes);
+            await postNews('🧹 Администратор обнулил(а) рюкзаки всех игроков.');
+            alert('Рюкзаки всех игроков обнулены.');
+          }
+
+          let roundSchedules = [];
+          let roundSchedulesRef = null;
+
+          function renderRoundSchedules() {
+            const statusEl = document.getElementById('admin-round-status');
+            const scheduled = roundSchedules.filter(r => r.status === 'scheduled');
+
+            const content = scheduled.length
+              ? scheduled.map((r, i) => {
+                  const start = formatMoscowDateTime(r.startAt || 0);
+                  const mins = Math.max(1, Math.round((r.durationMs || 0) / 60000));
+                  const cancelBtn = isAdminUser()
+                    ? ` <button onclick="adminCancelScheduledRound('${r.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`
+                    : '';
+                  return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start}, длительность ${mins} мин.${cancelBtn}</div>`;
+                }).join('')
+              : 'Запланированных раундов нет.';
+
+            if (statusEl) {
+              statusEl.innerHTML = `Запланировано (${scheduled.length}):<br>${content}`;
+            }
+          }
+
+
+          async function maybeActivateScheduledRound() {
+            const due = roundSchedules
+              .filter(r => r.status === 'scheduled' && (r.startAt || 0) <= Date.now())
+              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+            if (!due?.key) return;
+
+            const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
+              if (!v || v.status !== 'scheduled') return v;
+              if (Date.now() < (v.startAt || 0)) return v;
+              return { ...v, status: 'starting', startedAt: Date.now() };
+            });
+            if (!tx.committed) return;
+
+            const roundNum = await runRoundStart(due.durationMs || 0);
+            await db.ref(`round_schedules/${due.key}`).update({
+              status: 'completed',
+              completedAt: Date.now(),
+              launchedRound: roundNum || null
+            });
+          }
+
+          function syncRoundSchedules() {
+            if (roundSchedulesRef) roundSchedulesRef.off();
+            roundSchedulesRef = db.ref('round_schedules');
+            roundSchedulesRef.on('value', snap => {
+              const items = [];
+              snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
+              roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+              renderRoundSchedules();
+            });
+          }
+
+
+          function resolveEpicPaintDurationMins(durationMins) {
+            const fromArg = Number(durationMins);
+            if (Number.isFinite(fromArg) && fromArg >= 1) return Math.max(1, Math.round(fromArg));
+            const fromInput = Number(document.getElementById('event-duration-mins')?.value || 0);
+            if (Number.isFinite(fromInput) && fromInput >= 1) return Math.max(1, Math.round(fromInput));
+            return 10;
+          }
+
+          async function adminLaunchEpicPaintEvent() {
+            const database = await waitForDbReady();
+            await database.ref('current_event').set({
+              status: 'active',
+              type: 'paint',
+              endTime: Date.now() + 600000
+            });
+          }
+
+          async function startEpicEvent() {
+            return adminLaunchEpicPaintEvent();
+          }
+
+          const EVENT_SCHEDULES_PATH = 'event_schedule';
+          let eventSchedules = [];
+          let eventSchedulesRef = null;
+          let adminServerOffsetMs = 0;
+
+          function getAdminNow() {
+            return Date.now() + (Number(adminServerOffsetMs) || 0);
+          }
+
+          function renderEventSchedules() {
+            const listEl = document.getElementById('admin-event-queue-list');
+            if (!listEl) return;
+            const scheduled = eventSchedules.filter(ev => ev.status === 'scheduled');
+            if (!scheduled.length) {
+              listEl.innerHTML = 'Нет запланированных ивентов.';
+              return;
+            }
+
+            listEl.innerHTML = scheduled.map((ev, idx) => {
+              const start = formatMoscowDateTime(ev.startAt || 0);
+              const mins = Number(ev.durationMins) || 10;
+              return `<div style="padding:6px; border:1px solid #f2d3e4; border-radius:8px; margin-bottom:6px; background:#fff;">${idx + 1}) ${start} · ${mins} мин <button onclick="adminDeleteScheduledEvent('${ev.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Удалить из очереди</button></div>`;
+            }).join('');
+          }
+
+          async function adminScheduleEpicPaintEvent() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return;
+
+            const startRaw = String(document.getElementById('event-start-at')?.value || '').trim();
+            const durationMins = Number(document.getElementById('event-duration-mins')?.value || 0);
+            if (!startRaw) return alert('Укажи дату и время старта ивента.');
+            if (!Number.isFinite(durationMins) || durationMins < 1) return alert('Укажи длительность (минуты).');
+
+            const startAt = parseMoscowDateTimeLocalInput(startRaw);
+            if (!Number.isFinite(startAt)) return alert('Некорректная дата/время.');
+            if (startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
+
+            await database.ref(EVENT_SCHEDULES_PATH).push({
+              type: 'paint',
+              status: 'scheduled',
+              startAt,
+              durationMins,
+              createdAt: Date.now(),
+              createdBy: currentUserId
+            });
+
+            alert('Событие добавлено в расписание.');
+          }
+
+          async function adminDeleteScheduledEvent(key) {
+            if (!isAdminUser() || !key) return;
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return;
+            await database.ref(`${EVENT_SCHEDULES_PATH}/${key}`).transaction(v => {
+              if (!v || v.status !== 'scheduled') return v;
+              return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
+            });
+          }
+
+          async function maybeActivateScheduledEvent() {
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return;
+
+            const due = eventSchedules
+              .filter(ev => ev.status === 'scheduled' && Number(ev.startAt || 0) <= getAdminNow())
+              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+            if (!due?.key) return;
+
+            const currentStatusSnap = await database.ref('current_event/status').once('value').catch(() => null);
+            if (String(currentStatusSnap?.val() || '') === 'active') return;
+
+            const tx = await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).transaction(v => {
+              if (!v || v.status !== 'scheduled') return v;
+              if (Number(v.startAt || 0) > getAdminNow()) return v;
+              return { ...v, status: 'starting', startedAt: Date.now() };
+            });
+            if (!tx.committed) return;
+
+            const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
+            await database.ref('current_event').set({
+              type: 'paint',
+              status: 'active',
+              endTime: Date.now() + (mins * 60 * 1000),
+              participants: {},
+              strokes: {},
+              progress: { percent: 0 }
+            });
+
+            await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
+              status: 'completed',
+              completedAt: Date.now()
+            });
+          }
+
+          async function syncEventSchedules() {
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return;
+            if (eventSchedulesRef) eventSchedulesRef.off();
+            eventSchedulesRef = database.ref(EVENT_SCHEDULES_PATH);
+            eventSchedulesRef.on('value', snap => {
+              const list = [];
+              snap.forEach(item => list.push({ key: item.key, ...(item.val() || {}) }));
+              eventSchedules = list.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+              renderEventSchedules();
+            });
+          }
+
+          function ensureAdminTabVisibility() {
+            const navAdminBtn = document.getElementById('nav-admin-btn');
+            const tabAdmin = document.getElementById('tab-admin');
+            const adminVisible = Number(currentUserId) === Number(ADMIN_ID);
+            if (navAdminBtn) navAdminBtn.style.display = adminVisible ? 'flex' : 'none';
+            if (tabAdmin) tabAdmin.style.display = adminVisible ? '' : tabAdmin.style.display;
+          }
+
+
+
+          async function renderPlayerTicketsList() {
+            const listEl = document.getElementById('admin-ticket-players-list');
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) {
+              if (listEl) listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
+              return [];
+            }
+
+            const usersSnap = await database.ref('users').once('value');
+            const usersMap = usersSnap.val() || {};
+
+            const users = Object.entries(usersMap)
+              .map(([uid, row]) => {
+                const ticketsMap = row?.tickets && typeof row.tickets === 'object' ? row.tickets : {};
+                const ticketNums = Object.keys(ticketsMap)
+                  .filter((n) => /^\d+$/.test(String(n || '').trim()))
+                  .map((n) => Number(n))
+                  .sort((a, b) => a - b);
+                return {
+                  userId: String(uid),
+                  name: String(row?.name || row?.username || row?.displayName || `ID ${uid}`),
+                  tickets: ticketNums
+                };
+              })
+              .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+            window.cachedUsersData = usersMap;
+            window.adminPlayersCache = users;
+
+            if (listEl) {
+              if (!users.length) {
+                listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+              } else {
+                listEl.innerHTML = users.map((u, idx) => {
+                  const nums = u.tickets.length ? u.tickets.join(', ') : 'нет билетов';
+                  return `<div style="padding:8px; border:1px solid #f0d3e7; border-radius:8px; margin-bottom:6px; background:#fff;">${idx + 1}. <b>${u.name}</b> · ID: ${u.userId}<br><span style="font-size:12px; color:#555;">Билеты: ${nums}</span></div>`;
+                }).join('');
+              }
+            }
+
+            return users;
+          }
+
+          function exposeAdminActions() {
+
+            window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
+            window.switchAdminInnerTab = switchAdminInnerTab;
+            window.adminStartNewRound = adminStartNewRound;
+            window.adminScheduleRound = adminScheduleRound;
+            window.adminCancelScheduledRound = adminCancelScheduledRound;
+            window.adminForceRenamePlayer = adminForceRenamePlayer;
+            window.executeEmergencyAction = executeEmergencyAction;
+            window.adminUndoTicketRevoke = adminUndoTicketRevoke;
+            window.adminResetCurrentRound = adminResetCurrentRound;
+            window.resetAllInventories = resetAllInventories;
+            window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
+            window.startEpicEvent = startEpicEvent;
+            window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
+            window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;
+            window.renderPlayerTicketsList = renderPlayerTicketsList;
+          }
+
+          async function initAdminPage() {
+            window.waitForDbReady = window.waitForDbReady || waitForDbReady;
+            exposeAdminActions();
+            ensureAdminTabVisibility();
+
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return;
+
+            const emergencyBody = document.getElementById('admin-emergency-body');
+            if (emergencyBody) {
+              const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
+              controls.forEach(el => {
+                el.disabled = !isAdminUser();
+              });
+            }
+
+            const executeBtn = document.getElementById('btn-execute-emergency');
+            if (executeBtn) executeBtn.onclick = executeEmergencyAction;
+
+            const launchEventBtn = document.getElementById('btn-launch-epic-paint');
+            if (launchEventBtn) {
+              launchEventBtn.disabled = false;
+              launchEventBtn.removeAttribute('disabled');
+              launchEventBtn.onclick = null;
+              launchEventBtn.addEventListener('click', () => {
+                if (!isAdminUser()) return;
+                window.startEpicEvent?.().catch((err) => console.error('startEpicEvent failed:', err));
+              });
+            }
+
+            ensureDateTimeInputDefault('round-start-at');
+            ensureDateTimeInputDefault('event-start-at');
+            syncRoundSchedules();
+            syncEventSchedules();
+
+            database.ref('users').on('value', (snap) => {
+              window.cachedUsersData = snap.val() || {};
+              if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
+            });
+            renderPlayerTicketsList().catch(() => {});
+
+            database.ref('.info/serverTimeOffset').on('value', snap => {
+              adminServerOffsetMs = Number(snap.val()) || 0;
+            });
+
+            if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
+            window.adminRoundInterval = setInterval(async () => {
+              ensureAdminTabVisibility();
+              await maybeActivateScheduledRound();
+            }, 1000);
+
+            if (window.adminEventScheduleInterval) clearInterval(window.adminEventScheduleInterval);
+            window.adminEventScheduleInterval = setInterval(async () => {
+              await maybeActivateScheduledEvent();
+            }, 60000);
+          }
+
+          exposeAdminActions();
+
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAdminPage);
+          } else {
+            initAdminPage();
+          }
+        })();
+        // END adminpage.js
+
+        // BEGIN works.js
+        // Логика вкладки «Работы», вынесенная из index.html
+        function updateWorksTabForRole(isAdmin) {
+            const uploadCard = document.getElementById('works-upload-card');
+            const title = document.getElementById('works-tab-title');
+            if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+        }
+
+        function checkAccess() {
+            if (Number(currentUserId) === Number(ADMIN_ID)) {
+                document.getElementById('nav-admin-btn').style.display='flex';
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
+                syncAdminList();
+                fillAdminNickOptions();
+                ensureDateTimeInputDefault('event-start-at');
+                ensureDateTimeInputDefault('draw-start-at');
+                ensureDateTimeInputDefault('round-start-at');
+                document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                updateWorksTabForRole(true);
+                setAuthorizedView(true);
+            }
+            db.ref('whitelist/' + currentUserId).on('value', s => {
+                if (s.exists()) {
+                    myIndex = s.val().charIndex;
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    updateWorksTabForRole(false);
+                    setAuthorizedView(true);
+                    return;
+                }
+
+                myIndex = -1;
+                if (currentUserId !== ADMIN_ID) {
+                    updateWorksTabForRole(false);
+                    document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
+                    setAuthorizedView(false);
+                }
+            });
+        }
+
+        function syncData() {
+            db.ref('current_round').on('value', snap => {
+                if (!snap.exists()) return;
+
+                currentRoundNum = snap.val().number;
+                roundEndTime = snap.val().endTime;
+                document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
+                updateTimerDisplay();
+
+                if (magicLinksRef) magicLinksRef.off();
+                shownMagicLinks = {};
+                magicLinksRef = db.ref(`magic_links/${currentRoundNum}`);
+                magicLinksRef.on('value', linksSnap => {
+                    if (!linksSnap.exists()) return;
+
+                    linksSnap.forEach(linkSnap => {
+                        const link = linkSnap.val();
+                        if (!link || shownMagicLinks[linkSnap.key]) return;
+
+                        const related = link.playerA?.userId === currentUserId || link.playerB?.userId === currentUserId;
+                        if (!related) return;
+
+                        shownMagicLinks[linkSnap.key] = true;
+                        const partner = (link.playerA?.userId === currentUserId) ? link.playerB : link.playerA;
+                        alert(`✨ Магическая связь активна!\nТвой напарник: ${partner?.name || 'Неизвестный'}\nВыберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                    });
+                });
+            });
+
+            syncTicketData();
+
+            if (inventoryRef) inventoryRef.off();
+            inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
+            inventoryRef.on('value', snap => {
+                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0 };
+                renderInventory();
+            });
+
+            if (challengeRef) challengeRef.off();
+            challengeRef = db.ref(`whitelist/${currentUserId}/ink_challenge`);
+            challengeRef.on('value', snap => {
+                myInkChallenge = snap.val() || null;
+                updateInkDeadlineHint();
+                if (!myInkChallenge || myInkChallenge.round !== currentRoundNum || myInkChallenge.isResolved) return;
+                if (window.lastShownInkChallengeRound === currentRoundNum) return;
+                window.lastShownInkChallengeRound = currentRoundNum;
+                alert('Хах! Кому-то ты не угодил! Твою работу покрыли кляксами! Открой свою клетку, чтобы выбрать усложнение.');
+            });
+
+            if (wandBlessingRef) wandBlessingRef.off();
+            wandBlessingRef = db.ref(`whitelist/${currentUserId}/wand_blessing`);
+            wandBlessingRef.on('value', snap => {
+                myWandBlessing = snap.val() || null;
+                if (!myWandBlessing || myWandBlessing.round !== currentRoundNum || myWandBlessing.isResolved) return;
+                if (window.lastShownWandBlessingRound === currentRoundNum) return;
+                window.lastShownWandBlessingRound = currentRoundNum;
+                alert('Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай.');
+            });
+
+            if (newsFeedRef) newsFeedRef.off();
+            newsFeedRef = db.ref('news_feed').limitToLast(30);
+            newsFeedRef.on('value', snap => {
+                const items = [];
+                snap.forEach(item => {
+                    const v = item.val();
+                    if (v?.text) items.push(v.text);
+                });
+                const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
+
+                const preview = document.getElementById('news-preview');
+                const list = document.getElementById('news-list');
+                preview.innerText = ordered[0] || 'Пока новостей нет — откройте первую клетку! ✨';
+                list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
+            });
+
+            const submissionsById = {};
+            const extractSubmissionEntries = (parentKey, value) => {
+                if (!value || typeof value !== 'object') return [];
+                const hasDirectFields = value.beforeImageData || value.afterImageData || value.imageData || value.userId || value.owner !== undefined;
+                if (hasDirectFields) return [{ key: parentKey, payload: value, dbPath: parentKey }];
+
+                const nestedEntries = [];
+                Object.entries(value).forEach(([childKey, childValue]) => {
+                    if (!childValue || typeof childValue !== 'object') return;
+                    const hasSubmissionFields = childValue.beforeImageData || childValue.afterImageData || childValue.imageData || childValue.userId || childValue.owner !== undefined;
+                    if (!hasSubmissionFields) return;
+                    nestedEntries.push({ key: `${parentKey}_${childKey}`, payload: childValue, dbPath: `${parentKey}/${childKey}` });
+                });
+                return nestedEntries;
+            };
+
+            const applySubmissionSnapshot = (snap, sourcePrefix) => {
+                if (!snap) return;
+                snap.forEach(s => {
+                    const value = s.val() || {};
+                    const entries = extractSubmissionEntries(s.key, value);
+                    entries.forEach(({ key, payload, dbPath }) => {
+                        submissionsById[`${sourcePrefix}:${key}`] = {
+                            id: key,
+                            sourcePrefix,
+                            dbPath: dbPath || key,
+                            ...payload
+                        };
+                    });
+                });
+                allSubmissions = Object.values(submissionsById).sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
+                renderSubmissions();
+                fillSubmissionTaskOptions();
+            };
+
+            if (submissionsRef) submissionsRef.off();
+            submissionsRef = db.ref('submissions');
+            submissionsRef.on('value', snap => {
+                Object.keys(submissionsById).forEach(key => {
+                    if (key.startsWith('submissions:')) delete submissionsById[key];
+                });
+                applySubmissionSnapshot(snap, 'submissions');
+            });
+
+            if (legacyWorksRef) legacyWorksRef.off();
+            legacyWorksRef = db.ref('works');
+            legacyWorksRef.on('value', snap => {
+                Object.keys(submissionsById).forEach(key => {
+                    if (key.startsWith('works:')) delete submissionsById[key];
+                });
+                applySubmissionSnapshot(snap, 'works');
+            });
+        }
+
+        function getTaskLabelByCell(cell) {
+            if (!cell) return 'Неизвестное задание';
+            if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
+            if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
+            if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
+            if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
+            if (cell.isWordSketch) return '🧩 Словесный скетч: мини-игра без дополнительного задания';
+            if (cell.isMagnet) return `👯 Тянет к тебе как магнитом: ${cell.magnetTaskLabel || 'повтори задание выбранного игрока'}`;
+            if (cell.isInkChallenge) return `🫧 Клякса-диверсант: ${cell.inkOptionLabel || 'усложнение выбирается в карточке клетки'}`;
+            if (cell.isWandBlessing) return `🎆 Волшебная палочка: ${cell.wandOptionLabel || 'выбери упрощение в карточке клетки'}`;
+            if (cell.isGold) return '👑 Золотая клетка: свободная тема';
+            const t = tasks[cell.taskIdx];
+            return t?.text || 'Обычное задание';
+        }
+
+        function getSubmissionStatusInfo(status) {
+            if (status === 'accepted') return { text: 'Принято', className: 'status-accepted' };
+            if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
+            return { text: 'На проверке', className: 'status-pending' };
+        }
+
+
+        function updateInkDeadlineHint() {
+            const el = document.getElementById('ink-deadline-hint');
+            if (!el) return;
+            if (!myInkChallenge || myInkChallenge.selectedOption !== 4 || myInkChallenge.isResolved) {
+                el.innerText = '';
+                return;
+            }
+            const ms = (myInkChallenge.optionDeadline || 0) - Date.now();
+            if (ms <= 0) {
+                el.innerText = '⏰ Дедлайн по кляксе истёк.';
+                return;
+            }
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            el.innerText = `⏳ Клякса: до конца дедлайна ${h}ч ${m}м.`;
+        }
+
+        function fillSubmissionTaskOptions() {
+            const select = document.getElementById('work-task-select');
+            if (!select) return;
+
+            const myCells = allTicketsData.filter(t => {
+                if (Number(t.userId) !== Number(currentUserId)) return false;
+                if (t.excluded) return false;
+                if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
+                return true;
+            });
+            if (!myCells.length) {
+                select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
+                select.disabled = true;
+                return;
+            }
+
+            updateInkDeadlineHint();
+            select.disabled = false;
+            select.innerHTML = myCells.map(cell => {
+                const shortTask = getTaskLabelByCell(cell).slice(0, 90);
+                return `<option value="${cell.cell - 1}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+            }).join('');
+        }
+
+        function renderSubmissions() {
+            const list = document.getElementById('works-list');
+            if (!list) return;
+            const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+            const visible = allSubmissions.filter(item => {
+                if (isAdmin) return true;
+                const sameUserId = String(item.userId || '') === String(currentUserId || '');
+                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(item.owner) === Number(myIndex);
+                return sameUserId || sameOwner;
+            });
+
+            if (!visible.length) {
+                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
+                return;
+            }
+
+            list.innerHTML = visible.map(item => {
+                const status = getSubmissionStatusInfo(item.status);
+                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${players[item.owner]?.n || 'Неизвестный'}</b> · TG ID: ${item.userId || '—'}</div>` : '';
+                const reviewControls = isAdmin ? `
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
+                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
+                    </div>` : '';
+                const beforeBodyId = `sub-before-${item.id}`;
+                const afterBodyId = `sub-after-${item.id}`;
+
+                return `
+                    <div class="works-card">
+                        ${playerLine}
+                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                            <div><b>Раунд ${item.round || '—'}, клетка №${(item.cellIdx ?? -1) + 1}</b></div>
+                            <span class="status-chip ${status.className}">${status.text}</span>
+                        </div>
+                        <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
+
+                        <div class="work-stage-block">
+                            <div class="collapse-head" onclick="toggleCollapse('${beforeBodyId}', this)">
+                                <span>🖼️ Фото «До»</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${beforeBodyId}" class="collapse-body">
+                                ${item.beforeImageData ? `<img src="${item.beforeImageData}" alt="Работа до" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «До» не загружено.</div>'}
+                            </div>
+                        </div>
+
+                        <div class="work-stage-block">
+                            <div class="collapse-head" onclick="toggleCollapse('${afterBodyId}', this)">
+                                <span>🎨 Фото «После»</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${afterBodyId}" class="collapse-body">
+                                ${(item.afterImageData || item.imageData) ? `<img src="${item.afterImageData || item.imageData}" alt="Работа после" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «После» не загружено.</div>'}
+                            </div>
+                        </div>
+                        ${reviewControls}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleCollapse(bodyId, headerEl) {
+            const body = document.getElementById(bodyId);
+            if (!body) return;
+            const willExpand = !body.classList.contains('expanded');
+            body.classList.toggle('expanded', willExpand);
+            const btn = headerEl?.querySelector('.collapse-toggle');
+            if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
+        }
+
+        const PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY = 'player_notification_dismissed_ids';
+
+        function getDismissedPlayerNotificationIds() {
+            try {
+                const raw = localStorage.getItem(PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function isPlayerNotificationDismissed(notifId) {
+            if (!notifId) return false;
+            return getDismissedPlayerNotificationIds().includes(String(notifId));
+        }
+
+        function rememberDismissedPlayerNotification(notifId) {
+            if (!notifId) return;
+            const current = getDismissedPlayerNotificationIds();
+            const id = String(notifId);
+            if (current.includes(id)) return;
+            try {
+                localStorage.setItem(PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY, JSON.stringify([...current, id].slice(-300)));
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
+        function closePlayerNotification(notifId, shouldRemember = true) {
+            const node = document.getElementById(notifId);
+            if (node) node.remove();
+            if (shouldRemember) rememberDismissedPlayerNotification(notifId);
+        }
+
+        function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
+            if (!id || !text) return;
+            if (isPlayerNotificationDismissed(id)) return;
+            const wrap = document.getElementById('player-notification-wrap');
+            if (!wrap) return;
+            if (document.getElementById(id)) return;
+            const card = document.createElement('div');
+            card.id = id;
+            card.className = 'player-notification';
+            card.style.borderColor = borderColor;
+            card.innerHTML = `<button class="player-notification-close" onclick="closePlayerNotification('${id}', true)">✕</button><div style="font-size:13px; line-height:1.4; color:#4a148c;">${text}</div>`;
+            wrap.appendChild(card);
+        }
+
+        function hasFullSubmissionForRound(roundNum, userId = currentUserId) {
+            return allSubmissions.some(s => String(s.userId) === String(userId) && Number(s.round) === Number(roundNum) && s.beforeImageData && s.afterImageData);
+        }
+
+        async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const updates = {};
+
+            Object.entries(board).forEach(([idx, cell]) => {
+                if (!cell || Number(cell.userId) !== Number(userId)) return;
+                updates[`board/${idx}/excluded`] = true;
+                updates[`board/${idx}/ticketBurned`] = true;
+            });
+
+            const archiveSnap = await db.ref('tickets_archive').once('value');
+            archiveSnap.forEach(item => {
+                const v = item.val() || {};
+                if (Number(v.userId) !== Number(userId)) return;
+                updates[`tickets_archive/${item.key}/excluded`] = true;
+                updates[`tickets_archive/${item.key}/ticketBurned`] = true;
+            });
+
+            updates[`whitelist/${userId}/isEliminated`] = true;
+            updates[`whitelist/${userId}/isParticipationBlocked`] = true;
+            updates[`whitelist/${userId}/eliminatedAt`] = Date.now();
+            updates[`whitelist/${userId}/eliminatedAtRound`] = currentRoundNum;
+            updates[`whitelist/${userId}/eliminationReason`] = reason;
+
+            await db.ref().update(updates);
+        }
+
+        async function checkSubmissionRoundDeadlines() {
+            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID) || myIndex === -1) return;
+            if (!currentRoundNum || !roundEndTime) return;
+
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const roundCell = Object.values(board).find(c => c && Number(c.userId) === Number(currentUserId) && c.round === currentRoundNum);
+
+            const msLeft = roundEndTime - Date.now();
+            if (roundCell && msLeft <= 10 * 3600000 && msLeft > 0 && !hasFullSubmissionForRound(currentRoundNum)) {
+                const remindKey = `workReminderShownRound${currentRoundNum}`;
+                if (!window[remindKey]) {
+                    window[remindKey] = true;
+                    showPlayerNotification({
+                        id: `work-reminder-${currentRoundNum}`,
+                        text: 'Твоя муза застряла в проке? 🎨 Твой холст скучает без мазков. Поторопись, иначе магические чернила испарятся, а твоё место на поле займет другой художник!'
+                    });
+                }
+            }
+
+            const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
+            const userState = userStateSnap.val() || {};
+            if (userState.isParticipationBlocked || userState.eliminationReason === 'no_submission') return;
+
+            const previousRound = currentRoundNum - 1;
+            if (previousRound < 1) return;
+            const hadPrevCell = Object.values(board).some(c => c && Number(c.userId) === Number(currentUserId) && c.round === previousRound);
+            if (!hadPrevCell || hasFullSubmissionForRound(previousRound)) return;
+
+            await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
+            showPlayerNotification({
+                id: `work-eliminated-${previousRound}`,
+                text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
+                borderColor: '#ef5350'
+            });
+            await postNews(`🚫 ${players[myIndex].n} пропустил(а) сдачу работы за раунд №${previousRound}. Билеты аннулированы, участие в игре остановлено.`);
+        }
+
+        function readImageAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function compressImage(dataUrl, maxSide = 1200, quality = 0.82) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * ratio);
+                    canvas.height = Math.round(img.height * ratio);
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.src = dataUrl;
+            });
+        }
+
+        async function submitWork() {
+            const select = document.getElementById('work-task-select');
+            const beforeInput = document.getElementById('work-image-before-input');
+            const afterInput = document.getElementById('work-image-after-input');
+            if (!select || select.disabled) return alert('Нет доступных заданий для сдачи.');
+            const chosenCellIdx = Number(select.value);
+            if (!Number.isInteger(chosenCellIdx) || chosenCellIdx < 0) return alert('Выбери задание.');
+            const beforeFile = beforeInput?.files?.[0];
+            const afterFile = afterInput?.files?.[0];
+            if (!beforeFile || !afterFile) return alert('Нужно добавить оба фото: «До» и «После».');
+
+            const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
+            const cell = boardCellSnap.val();
+            if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+            if (cell.excluded) return alert('По этому заданию ты уже сдался(ась), билетик не начисляется.');
+            if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(cell.ticket)) {
+                return alert('Этот билетик вычеркнут из игры, загрузка работы для него недоступна.');
+            }
+
+            const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
+            const challenge = challengeSnap.val();
+            if (cell.isWandBlessing) {
+                const wandSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
+                const wand = wandSnap.val();
+                if (!wand || !wand.selectedOption) return alert('Сначала выбери упрощённое задание от волшебной палочки.');
+            }
+
+            if (cell.isInkChallenge && challenge?.selectedOption === 4) {
+                if (!challenge.optionDeadline || Date.now() > challenge.optionDeadline) {
+                    return alert('⏰ Срок 24 часа истёк, билетик за это задание не начисляется.');
+                }
+            }
+
+            const beforeRaw = await readImageAsDataURL(beforeFile);
+            const afterRaw = await readImageAsDataURL(afterFile);
+            const beforeImageData = await compressImage(beforeRaw);
+            const afterImageData = await compressImage(afterRaw);
+
+            const payload = {
+                userId: currentUserId,
+                owner: myIndex,
+                cellIdx: chosenCellIdx,
+                round: cell.round,
+                ticket: cell.ticket,
+                taskLabel: getTaskLabelByCell(cell),
+                beforeImageData,
+                afterImageData,
+                status: 'pending',
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+            await db.ref('submissions').push(payload);
+
+            if (cell.isInkChallenge && challenge?.selectedOption === 4 && !challenge.isResolved) {
+                await db.ref(`board/${chosenCellIdx}/ticket`).set(challenge.pendingTicket || '');
+                await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, submittedInTime: true });
+            }
+
+            beforeInput.value = '';
+            afterInput.value = '';
+            alert('Работа загружена! Статус: На проверке.');
+        }
+
+        async function setSubmissionStatus(submissionId, sourcePrefix, dbPath, status) {
+
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+            if (!['accepted', 'rejected'].includes(status)) return;
+            const refPath = sourcePrefix === 'works' ? `works/${dbPath || submissionId}` : `submissions/${dbPath || submissionId}`;
+            await db.ref(refPath).update({
+                status,
+                reviewedBy: currentUserId,
+                updatedAt: Date.now()
+            });
+        }
+
+        window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
+        // END works.js
+
+
         init();
     </script>
-    <script src="adminpage.js"></script>
 </body>
 </html>
 
