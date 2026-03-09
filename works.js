@@ -113,7 +113,6 @@ function syncData() {
     });
 
     const submissionsById = {};
-
     const extractSubmissionEntries = (parentKey, value) => {
         if (!value || typeof value !== 'object') return [];
         const hasDirectFields = value.beforeImageData || value.afterImageData || value.imageData || value.userId || value.owner !== undefined;
