@@ -541,6 +541,7 @@
     const database = await waitForDbReady().catch(() => null);
     if (!database) {
       if (listEl) listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
+ main
       return [];
     }
 
@@ -553,13 +554,16 @@
     const whitelistMap = whitelistSnap.val() || {};
     const merged = new Map();
 
+
     Object.entries(usersMap).forEach(([uid, row]) => {
       merged.set(String(uid), {
         userId: String(uid),
         name: String(row?.name || row?.username || row?.displayName || ''),
+main
         charIndex: Number(whitelistMap?.[uid]?.charIndex)
       });
     });
+
 
     Object.entries(whitelistMap).forEach(([uid, row]) => {
       const key = String(uid);
@@ -568,10 +572,12 @@
         userId: key,
         name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
         charIndex: Number(row?.charIndex)
+main
       });
     });
 
     const users = Array.from(merged.values())
+
       .map((row) => ({
         userId: String(row.userId),
         charIndex: Number.isFinite(Number(row.charIndex)) ? Number(row.charIndex) : null,
@@ -585,6 +591,7 @@
 
     if (listEl && !users.length) {
       listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+main
     }
 
     return users;
