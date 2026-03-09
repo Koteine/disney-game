@@ -921,7 +921,15 @@
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
-            const myCells = allTicketsData.filter(t => t.userId === currentUserId && !t.excluded);
+            const myCells = allTicketsData.filter(t => {
+                const sameUserId = Number(t.userId) === Number(currentUserId);
+                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
+                if (!sameUserId && !sameOwner) return false;
+                if (!Number.isInteger(t.cellIdx) || t.cellIdx < 0) return false;
+                if (t.excluded) return false;
+                if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
+                return true;
+            });
             if (!myCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
@@ -932,7 +940,7 @@
             select.disabled = false;
             select.innerHTML = myCells.map(cell => {
                 const shortTask = getTaskLabelByCell(cell).slice(0, 90);
-                return `<option value="${cell.cell - 1}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
             }).join('');
         }
 
@@ -1600,7 +1608,7 @@
                 if (!Number.isInteger(owner) || !players[owner]) continue;
 
                 const awarded = await claimSequentialTickets(2);
-                if (!awarded) continue;
+                if (!Array.isArray(awarded) || awarded.length < 2) continue;
                 rewardedCount += 1;
                 const ticketValue = `${awarded[0]} и ${awarded[1]}`;
                 await db.ref('tickets_archive').push({
@@ -1637,7 +1645,7 @@
             if (!tx.committed) return;
 
             const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
-            await postNews('Кажется, в другой команде перевесил Ван Гог. В следующий раз удача точно будет на твоей стороне!');
+            await postNews(`🏁 «Стенка на стенку» завершена: победила ${winnerTeam === 'red' ? 'красная' : 'синяя'} команда. Победители получили награды.`);
             await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
         }
 
@@ -2260,6 +2268,12 @@
 
             const segs = tickets.length;
             const angle = (2 * Math.PI) / segs;
+            const shouldRenderLabel = (index, count) => {
+                if (count <= 70) return true;
+                if (count <= 120) return index % 2 === 0;
+                return index % 3 === 0;
+            };
+
             tickets.forEach((t, i) => {
                 const startA = i * angle;
                 const endA = (i + 1) * angle;
@@ -2278,14 +2292,27 @@
                 ctx.lineWidth = 1;
                 ctx.stroke();
 
-                ctx.save();
-                ctx.translate(140, 140);
-                ctx.rotate(startA + angle / 2);
-                ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#b71c1c';
-                ctx.font = segs > 120 ? 'bold 8px Arial' : 'bold 10px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(t.num, 92, 3);
-                ctx.restore();
+                if (shouldRenderLabel(i, segs)) {
+                    ctx.save();
+                    ctx.translate(140, 140);
+                    ctx.rotate(startA + angle / 2);
+
+                    const fontSize = segs > 120 ? 10 : 11;
+                    ctx.font = `900 ${fontSize}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = (i % 2 === 0) ? '#7a0a0a' : '#fff7f7';
+                    ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#9d1212';
+
+                    const label = String(t.num);
+                    const x = 100;
+                    const y = 0;
+                    ctx.strokeText(label, x, y);
+                    ctx.fillText(label, x, y);
+                    ctx.restore();
+                }
             });
 
             const rimGradOuter = ctx.createLinearGradient(12, 12, 268, 268);
@@ -3229,25 +3256,17 @@
                 archivedTicketsData = [];
                 updateAllTicketsDataAndRender();
 
-                if (currentUserId === ADMIN_ID) {
-                    const adminRef = db.ref('tickets_archive');
-                    archiveRefs.push(adminRef);
-                    adminRef.on('value', snap => {
-                        const archived = [];
-                        snap.forEach(item => {
-                            const v = item.val() || {};
-                            archived.push({ ...v, isArchived: true, archiveKey: item.key });
-                        });
-                        archivedTicketsData = archived;
-                        updateAllTicketsDataAndRender();
+                const archiveRef = db.ref('tickets_archive');
+                archiveRefs.push(archiveRef);
+                archiveRef.on('value', snap => {
+                    const archived = [];
+                    snap.forEach(item => {
+                        const v = item.val() || {};
+                        archived.push({ ...v, isArchived: true, archiveKey: item.key });
                     });
-                    return;
-                }
-
-                attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(Number(currentUserId)));
-                if (Number.isInteger(myIndex)) {
-                    attachArchiveRef(db.ref('tickets_archive').orderByChild('owner').equalTo(myIndex));
-                }
+                    archivedTicketsData = archived;
+                    updateAllTicketsDataAndRender();
+                });
             }
 
             function syncTicketData() {
@@ -3867,19 +3886,15 @@
             }
           }
 
-          window.initEventSystem = initEventSystem;
-          window.syncGameEvents = initEventSystem;
-          window.initEvents = initEventSystem;
-          window.setupEpicPaintCanvas = bindCanvasEvents;
+          window.legacyInitEventSystem = initEventSystem;
+          window.legacyInitEvents = initEventSystem;
+          window.legacySetupEpicPaintCanvas = bindCanvasEvents;
           window.openEventOverlay = openEventOverlay;
           window.closeEventOverlay = closeEventOverlay;
-          window.openEventSpace = openEventOverlay;
-          window.backToGameFromEvent = closeEventOverlay;
-          window.startDrawing = startDrawing;
-          window.draw = draw;
-          window.stopDrawing = stopDrawing;
-          window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
-          window.adminScheduleEvent = adminLaunchEpicPaintEvent;
+          window.legacyStartDrawing = startDrawing;
+          window.legacyDraw = draw;
+          window.legacyStopDrawing = stopDrawing;
+          window.legacyAdminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
         })();
         // END ivents.js
 
@@ -4770,7 +4785,10 @@
             if (!select) return;
 
             const myCells = allTicketsData.filter(t => {
-                if (Number(t.userId) !== Number(currentUserId)) return false;
+                const sameUserId = Number(t.userId) === Number(currentUserId);
+                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
+                if (!sameUserId && !sameOwner) return false;
+                if (!Number.isInteger(t.cellIdx) || t.cellIdx < 0) return false;
                 if (t.excluded) return false;
                 if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
                 return true;
@@ -4785,7 +4803,7 @@
             select.disabled = false;
             select.innerHTML = myCells.map(cell => {
                 const shortTask = getTaskLabelByCell(cell).slice(0, 90);
-                return `<option value="${cell.cell - 1}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
             }).join('');
         }
 
@@ -5087,4 +5105,3 @@
     </script>
 </body>
 </html>
-
