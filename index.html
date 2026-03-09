@@ -184,7 +184,7 @@
                 <div class="admin-section">
                     <b>🎨 Управление ивентами</b>
                     <div style="font-size:12px; color:#666; margin:8px 0;">Запуск сразу или планирование очереди будущих ивентов.</div>
-                    <button id="btn-launch-epic-paint" onclick="adminLaunchEpicPaintEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0 0 10px 0;">🚀 Запустить Эпичный раскрас сейчас</button>
+                    <button id="btn-launch-epic-paint" onclick="startEpicEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0 0 10px 0;">🚀 Запустить Эпичный раскрас сейчас</button>
 
                     <label style="font-size:12px; color:#777;">Дата и время старта</label>
                     <input type="datetime-local" id="event-start-at" class="admin-input">
@@ -216,8 +216,7 @@
                 <div id="active-players-wrap" style="display:none;">
                     <div id="active-players" style="max-height:55vh; overflow-y:auto; padding-right:4px;"></div>
                 </div>
-                <button onclick="resetAllInventories()" class="admin-btn" style="background:#ec407a; width:100%; margin:8px 0 6px;">🧹 Обнулить рюкзаки всех игроков</button>
-                <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
+                                <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
             </div>
             <div class="admin-section">
@@ -229,19 +228,14 @@
                     <div style="font-size:12px; color:#666; margin:6px 0 4px;">Операции с билетами (Firebase)</div>
                     <select id="emergency-action-type" class="admin-input">
                         <option value="issue">Выдать</option>
-                        <option value="revoke">Вычеркнуть</option>
-                    </select>
+                                            </select>
                     <input type="number" id="emergency-user-id" placeholder="ID игрока" class="admin-input">
-                    <input type="number" id="emergency-amount-or-ticket" placeholder="Количество / Номер" class="admin-input" min="1">
+                    <input type="number" id="emergency-amount-or-ticket" placeholder="Номер билета" class="admin-input" min="1">
                     <textarea id="emergency-reason" placeholder="Причина" class="admin-input" rows="3" style="resize:vertical;"></textarea>
                     <button id="btn-execute-emergency" class="admin-btn" style="background:#455A64; width:100%; margin:0;">⚡ Выполнить</button>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Вычеркнуть диапазон билетиков из игры</div>
-                    <input type="number" id="admin-revoke-ticket-from" placeholder="Номер от (например: 56)" class="admin-input" min="1">
-                    <input type="number" id="admin-revoke-ticket-to" placeholder="Номер до (например: 900)" class="admin-input" min="1">
-                    <input type="text" id="admin-revoke-ticket-range-note" placeholder="Пометка (почему вычеркнули диапазон)" class="admin-input">
-                    <button onclick="adminRevokeTicketRange()" class="admin-btn" style="background:#ad1457; width:100%; margin:0;">✂️ Вычеркнуть диапазон</button>
+                    <button onclick="resetAllInventories()" class="admin-btn" style="background:#ec407a; width:100%; margin:0;">🧹 Обнулить рюкзаки всех игроков</button>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
@@ -677,13 +671,16 @@
                     serverTimeOffsetMs = Number(snap.val()) || 0;
                     window.serverTimeOffsetMs = serverTimeOffsetMs;
                 });
-                setupEpicPaintCanvas();
-                checkAccess();
-                syncData();
-                syncGameEvents();
-                observeEvents();
-                syncWheelSystems();
-            } catch(e) { console.error(e); }
+            } catch (e) {
+                console.error('init bootstrap failed:', e);
+            }
+
+            try { setupEpicPaintCanvas(); } catch (e) { console.error('setupEpicPaintCanvas failed:', e); }
+            try { observeEvents(); } catch (e) { console.error('observeEvents failed:', e); }
+            try { checkAccess(); } catch (e) { console.error('checkAccess failed:', e); }
+            try { syncData(); } catch (e) { console.error('syncData failed:', e); }
+            try { syncGameEvents(); } catch (e) { console.error('syncGameEvents failed:', e); }
+            try { syncWheelSystems(); } catch (e) { console.error('syncWheelSystems failed:', e); }
         }
 
         function playExplosion() {
@@ -959,6 +956,33 @@
                 document.body.appendChild(dialog);
                 document.getElementById('forced-surrender-yes').onclick = () => cleanup(true);
                 document.getElementById('forced-surrender-no').onclick = () => cleanup(false);
+            });
+        }
+
+
+        function observeEvents() {
+            const previewEl = document.getElementById('news-preview');
+            const listEl = document.getElementById('news-list');
+            if (!previewEl || !listEl) return;
+
+            if (newsFeedRef) newsFeedRef.off();
+            newsFeedRef = db.ref('news_feed').limitToLast(100);
+            newsFeedRef.on('value', snap => {
+                const rows = [];
+                snap.forEach(item => rows.push({ key: item.key, ...(item.val() || {}) }));
+                rows.sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+
+                if (!rows.length) {
+                    previewEl.textContent = 'Пока новостей нет — откройте первую клетку! ✨';
+                    listEl.innerHTML = '';
+                    return;
+                }
+
+                previewEl.textContent = rows[0].text || 'Есть новые события';
+                listEl.innerHTML = rows.map((row, idx) => {
+                    const when = formatMoscowDateTime(row.timestamp || 0);
+                    return `<div class="news-item">${rows.length - idx}. ${when} · ${row.text || ''}</div>`;
+                }).join('');
             });
         }
 

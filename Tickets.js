@@ -32,7 +32,29 @@
     const createTicketGuardByUser = {};
 
     function updateAllTicketsDataAndRender() {
-        allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
+        const base = [...archivedTicketsData, ...liveBoardTicketsData];
+        const seenNums = new Set();
+        base.forEach((row) => {
+            extractTicketNumbers(row.ticket).forEach((n) => seenNums.add(String(n)));
+        });
+
+        const fromTicketsNode = liveTicketsFromDb
+            .filter((row) => !seenNums.has(String(row.ticket)))
+            .map((row) => ({
+                ticket: String(row.ticket),
+                ticketNum: String(row.ticket),
+                userId: row.userId,
+                owner: row.owner,
+                round: row.round || 0,
+                cell: row.cell || 0,
+                cellIdx: -1,
+                excluded: false,
+                isArchived: false,
+                isManualReward: !!row.isManualReward,
+                adminNote: row.reason || ''
+            }));
+
+        allTicketsData = [...base, ...fromTicketsNode];
         updateTicketsTable();
     }
 
@@ -42,6 +64,8 @@
     let adminTicketsSubtab = 'all';
     let selectedAdminTicketUserId = null;
     let personalTicketsRef = null;
+    let wheelTicketsFromDb = [];
+    let liveTicketsFromDb = [];
     let personalTicketsWarmupDone = false;
     const seenPersonalTicketKeys = new Set();
 
@@ -156,6 +180,21 @@
         }
     }
 
+    function normalizeWheelTicketRow(rawRow, fallbackKey) {
+        const ticketNum = Number(rawRow?.num ?? rawRow?.ticketNum ?? rawRow?.ticket ?? fallbackKey);
+        if (!Number.isInteger(ticketNum) || ticketNum < 1) return null;
+        return {
+            num: String(ticketNum),
+            owner: Number(rawRow?.owner),
+            userId: String(rawRow?.userId || ''),
+            name: String(rawRow?.name || players[Number(rawRow?.owner)]?.n || 'Неизвестный'),
+            reason: String(rawRow?.reason || ''),
+            round: Number(rawRow?.round) || 0,
+            cell: Number(rawRow?.cell) || 0,
+            isManualReward: !!rawRow?.isManualReward
+        };
+    }
+
     function syncTicketData() {
         db.ref('board').on('value', snap => {
             const data = snap.val() || {};
@@ -196,6 +235,37 @@
         db.ref('revoked_tickets').on('value', snap => {
             revokedTicketsMap = snap.val() || {};
             updateAllTicketsDataAndRender();
+        });
+
+        db.ref('tickets').on('value', snap => {
+            const raw = snap.val();
+            const list = [];
+            if (Array.isArray(raw)) {
+                raw.forEach((row, idx) => {
+                    const normalized = normalizeWheelTicketRow(row, idx);
+                    if (normalized) list.push(normalized);
+                });
+            } else if (raw && typeof raw === 'object') {
+                Object.entries(raw).forEach(([key, row]) => {
+                    const normalized = normalizeWheelTicketRow(row, key);
+                    if (normalized) list.push(normalized);
+                });
+            }
+
+            wheelTicketsFromDb = list.sort((a, b) => Number(a.num) - Number(b.num));
+            liveTicketsFromDb = wheelTicketsFromDb.map((row) => ({
+                ticket: String(row.num),
+                userId: String(row.userId || ''),
+                owner: Number(row.owner),
+                reason: String(row.reason || ''),
+                round: Number(row.round) || 0,
+                cell: Number(row.cell) || 0,
+                isManualReward: !!row.isManualReward
+            }));
+            updateAllTicketsDataAndRender();
+            if (typeof window.drawWheel === 'function') {
+                window.drawWheel();
+            }
         });
 
         subscribeArchiveTickets();
@@ -311,9 +381,34 @@
                 timestamp: Date.now()
             };
 
+            const whitelistSnap = await database.ref(`whitelist/${uid}`).once('value');
+            const ownerIdx = Number(whitelistSnap.val()?.charIndex);
+            const wheelPayload = {
+                num: ticketId,
+                ticketNum: ticketId,
+                ticket: String(ticketId),
+                userId: uid,
+                owner: Number.isInteger(ownerIdx) ? ownerIdx : -1,
+                name: String(players?.[ownerIdx]?.n || whitelistSnap.val()?.name || `ID ${uid}`),
+                reason: normalizedReason || 'Выдача билета',
+                createdAt: Date.now(),
+                timestamp: Date.now(),
+                amount: normalizedAmount
+            };
+
+            const archiveKey = database.ref('tickets_archive').push().key;
             const updates = {};
-            updates[`ticket_archive/${ticketId}`] = payload;
-            updates[`users/${uid}/tickets/${ticketId}`] = payload;
+            updates[`tickets/${ticketId}`] = wheelPayload;
+            updates[`tickets_archive/${archiveKey}`] = {
+                ...wheelPayload,
+                round: currentRoundNum || 0,
+                cell: 0,
+                cellIdx: -1,
+                archivedAt: Date.now(),
+                excluded: false
+            };
+            updates[`users/${uid}/tickets/${ticketId}`] = { ...payload, ...wheelPayload };
+            updates[`revoked_tickets/${ticketId}`] = null;
             await database.ref().update(updates);
 
             createTicketGuardByUser[uid] = {
@@ -352,11 +447,16 @@
 
         if (!/^\d+$/.test(normalizedTicketId)) throw new Error('Некорректный ticketId.');
 
-        const ticketRef = database.ref(`ticket_archive/${normalizedTicketId}`);
-        const ticketSnap = await ticketRef.once('value');
-        if (!ticketSnap.exists()) throw new Error(`Билет #${normalizedTicketId} не найден в ticket_archive.`);
+        const [liveTicketSnap, archiveSnap] = await Promise.all([
+            database.ref(`tickets/${normalizedTicketId}`).once('value'),
+            database.ref('tickets_archive').orderByChild('num').equalTo(Number(normalizedTicketId)).once('value')
+        ]);
 
-        const ticketData = ticketSnap.val() || {};
+        const ticketData = liveTicketSnap.val() || {};
+        if (!liveTicketSnap.exists() && !archiveSnap.exists()) {
+            throw new Error(`Билет #${normalizedTicketId} не найден в tickets/tickets_archive.`);
+        }
+
         const ownerUserId = String(ticketData.userId || '').trim();
 
         const revokedPayload = {
@@ -367,7 +467,15 @@
 
         const updates = {};
         updates[`revoked_tickets/${normalizedTicketId}`] = revokedPayload;
-        updates[`ticket_archive/${normalizedTicketId}`] = null;
+        updates[`tickets/${normalizedTicketId}`] = null;
+        if (archiveSnap.exists()) {
+            archiveSnap.forEach((row) => {
+                updates[`tickets_archive/${row.key}/excluded`] = true;
+                updates[`tickets_archive/${row.key}/isManualRevoke`] = true;
+                updates[`tickets_archive/${row.key}/revokeReason`] = normalizedReason;
+                updates[`tickets_archive/${row.key}/revokedAt`] = Date.now();
+            });
+        }
         if (ownerUserId) {
             updates[`users/${ownerUserId}/tickets/${normalizedTicketId}`] = null;
         }
@@ -497,10 +605,36 @@
 
     function getAdminPlayersAlphabetically() {
         const whitelist = window.cachedWhitelistData || {};
-        const users = Object.entries(whitelist)
-            .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
-            .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
-            .map(p => ({ ...p, name: players[p.charIndex].n }));
+        const usersMap = window.cachedUsersData || {};
+        const merged = new Map();
+
+        Object.entries(usersMap).forEach(([uid, row]) => {
+            merged.set(String(uid), {
+                userId: String(uid),
+                name: String(row?.name || row?.username || row?.displayName || ''),
+                charIndex: Number(whitelist?.[uid]?.charIndex)
+            });
+        });
+
+        Object.entries(whitelist).forEach(([uid, row]) => {
+            const key = String(uid);
+            const prev = merged.get(key) || { userId: key, name: '' };
+            merged.set(key, {
+                userId: key,
+                name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
+                charIndex: Number(row?.charIndex)
+            });
+        });
+
+        const users = Array.from(merged.values()).map((row) => {
+            const idx = Number(row.charIndex);
+            const fallbackName = Number.isInteger(idx) && players[idx] ? players[idx].n : '';
+            return {
+                userId: String(row.userId),
+                charIndex: Number.isInteger(idx) ? idx : null,
+                name: String(row.name || fallbackName || `ID ${row.userId}`)
+            };
+        });
 
         users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
         return users;
@@ -630,6 +764,10 @@ ${taskText}`);
     }
 
     function getActiveTicketsForWheel() {
+        if (Array.isArray(wheelTicketsFromDb) && wheelTicketsFromDb.length) {
+            return wheelTicketsFromDb.filter(t => !isTicketRevoked(t.num));
+        }
+
         const tickets = [];
         allTicketsData.forEach(t => {
             if (t.excluded) return;
