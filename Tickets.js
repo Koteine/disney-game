@@ -1,60 +1,6 @@
 (function () {
-    function getDbInstance() {
-        if (typeof db !== 'undefined' && db && typeof db.ref === 'function') return db;
-        if (window.db && typeof window.db.ref === 'function') return window.db;
-        return null;
-    }
-
-    async function waitForDbReady(timeoutMs = 10000) {
-        const readyDb = getDbInstance();
-        if (readyDb) return readyDb;
-
-        return new Promise((resolve, reject) => {
-            const startedAt = Date.now();
-            const timer = setInterval(() => {
-                const instance = getDbInstance();
-                if (instance) {
-                    clearInterval(timer);
-                    resolve(instance);
-                    return;
-                }
-                if (Date.now() - startedAt >= timeoutMs) {
-                    clearInterval(timer);
-                    reject(new Error('Firebase db не инициализирован.'));
-                }
-            }, 100);
-        });
-    }
-
-    const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
-    let lastTicketCounterRepairAt = 0;
-    let ticketCounterRepairInFlight = null;
-    const createTicketGuardByUser = {};
-
     function updateAllTicketsDataAndRender() {
-        const base = [...archivedTicketsData, ...liveBoardTicketsData];
-        const seenNums = new Set();
-        base.forEach((row) => {
-            extractTicketNumbers(row.ticket).forEach((n) => seenNums.add(String(n)));
-        });
-
-        const fromTicketsNode = liveTicketsFromDb
-            .filter((row) => !seenNums.has(String(row.ticket)))
-            .map((row) => ({
-                ticket: String(row.ticket),
-                ticketNum: String(row.ticket),
-                userId: row.userId,
-                owner: row.owner,
-                round: row.round || 0,
-                cell: row.cell || 0,
-                cellIdx: -1,
-                excluded: false,
-                isArchived: false,
-                isManualReward: !!row.isManualReward,
-                adminNote: row.reason || ''
-            }));
-
-        allTicketsData = [...base, ...fromTicketsNode];
+        allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
         updateTicketsTable();
     }
 
@@ -63,68 +9,6 @@
     let revokedTicketsMap = {};
     let adminTicketsSubtab = 'all';
     let selectedAdminTicketUserId = null;
-    let personalTicketsRef = null;
-    let wheelTicketsFromDb = [];
-    let wheelTicketsRefreshInterval = null;
-    let personalTicketsWarmupDone = false;
-    const seenPersonalTicketKeys = new Set();
-
-    function showEventTicketRewardToast() {
-        const toast = document.createElement('div');
-        toast.textContent = '✨ +2 билетика за ивент! 🎫';
-        toast.style.position = 'fixed';
-        toast.style.left = '50%';
-        toast.style.bottom = '24px';
-        toast.style.transform = 'translateX(-50%)';
-        toast.style.background = '#ff4fa3';
-        toast.style.color = '#fff';
-        toast.style.padding = '12px 16px';
-        toast.style.borderRadius = '12px';
-        toast.style.boxShadow = '0 10px 30px rgba(173,20,87,0.35)';
-        toast.style.zIndex = '9999';
-        toast.style.fontWeight = '700';
-        toast.style.fontSize = '14px';
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 180ms ease';
-        document.body.appendChild(toast);
-        requestAnimationFrame(() => {
-            toast.style.opacity = '1';
-        });
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 220);
-        }, 2600);
-    }
-
-    function subscribePersonalTicketNotifications() {
-        const uid = String(currentUserId || '').trim();
-        if (!/^\d+$/.test(uid)) return;
-        if (personalTicketsRef) personalTicketsRef.off();
-        personalTicketsWarmupDone = false;
-        seenPersonalTicketKeys.clear();
-
-        personalTicketsRef = db.ref(`users/${uid}/tickets`);
-        personalTicketsRef.once('value', snap => {
-            snap.forEach(child => seenPersonalTicketKeys.add(String(child.key)));
-            personalTicketsWarmupDone = true;
-        });
-
-        personalTicketsRef.on('child_added', snap => {
-            const ticketKey = String(snap.key || '');
-            if (!ticketKey) return;
-            if (!personalTicketsWarmupDone || seenPersonalTicketKeys.has(ticketKey)) {
-                seenPersonalTicketKeys.add(ticketKey);
-                return;
-            }
-            seenPersonalTicketKeys.add(ticketKey);
-
-            const payload = snap.val() || {};
-            const reason = String(payload.reason || '').toLowerCase();
-            if (reason.includes('эпичный раскрас') || reason.includes('ивент')) {
-                showEventTicketRewardToast();
-            }
-        });
-    }
 
     function clearArchiveSubscriptions() {
         archiveRefs.forEach(ref => ref.off());
@@ -158,7 +42,7 @@
         archivedTicketsData = [];
         updateAllTicketsDataAndRender();
 
-        if (isAdminUser()) {
+        if (currentUserId === ADMIN_ID) {
             const adminRef = db.ref('tickets_archive');
             archiveRefs.push(adminRef);
             adminRef.on('value', snap => {
@@ -174,26 +58,9 @@
         }
 
         attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(Number(currentUserId)));
-        attachArchiveRef(db.ref('tickets_archive').orderByChild('userId').equalTo(String(currentUserId)));
         if (Number.isInteger(myIndex)) {
             attachArchiveRef(db.ref('tickets_archive').orderByChild('owner').equalTo(myIndex));
         }
-    }
-
-    function normalizeWheelTicketRow(rawRow, fallbackKey) {
-        const ticketNum = Number(rawRow?.num ?? rawRow?.ticketNum ?? rawRow?.ticket ?? fallbackKey);
-        if (!Number.isInteger(ticketNum) || ticketNum < 1) return null;
-        return {
-            num: String(ticketNum),
-            owner: Number(rawRow?.owner),
-            userId: String(rawRow?.userId || ''),
-
-            name: String(rawRow?.name || players[Number(rawRow?.owner)]?.n || 'Неизвестный'),
-            reason: String(rawRow?.reason || ''),
-            round: Number(rawRow?.round) || 0,
-            cell: Number(rawRow?.cell) || 0,
-            isManualReward: !!rawRow?.isManualReward
-        };
     }
 
     function syncTicketData() {
@@ -238,54 +105,9 @@
             updateAllTicketsDataAndRender();
         });
 
-        const loadWheelTicketsFromMainStore = async () => {
-            const snap = await db.ref('tickets').once('value');
-            const raw = snap.val();
-            const list = [];
-            if (Array.isArray(raw)) {
-                raw.forEach((row, idx) => {
-                    const normalized = normalizeWheelTicketRow(row, idx);
-                    if (normalized) list.push(normalized);
-                });
-            } else if (raw && typeof raw === 'object') {
-                Object.entries(raw).forEach(([key, row]) => {
-                    const normalized = normalizeWheelTicketRow(row, key);
-                    if (normalized) list.push(normalized);
-                });
-            }
-
-            wheelTicketsFromDb = list.sort((a, b) => Number(a.num) - Number(b.num));
-            liveTicketsFromDb = wheelTicketsFromDb.map((row) => ({
-                ticket: String(row.num),
-                userId: String(row.userId || ''),
-                owner: Number(row.owner),
-                reason: String(row.reason || ''),
-                round: Number(row.round) || 0,
-                cell: Number(row.cell) || 0,
-                isManualReward: !!row.isManualReward
-            }));
-            updateAllTicketsDataAndRender();
-
-            if (typeof window.drawWheel === 'function') {
-                window.drawWheel();
-            }
-        };
-
-        loadWheelTicketsFromMainStore().catch((error) => {
-            console.error('Не удалось загрузить билеты из tickets:', error);
-        });
-
-        if (wheelTicketsRefreshInterval) clearInterval(wheelTicketsRefreshInterval);
-        wheelTicketsRefreshInterval = setInterval(() => {
-            loadWheelTicketsFromMainStore().catch((error) => {
-                console.error('Не удалось обновить билеты из tickets:', error);
-            });
-        }, 2000);
-
         subscribeArchiveTickets();
-        subscribePersonalTicketNotifications();
-        db.ref(`users/${currentUserId}/charIndex`).on('value', () => {
-            if (isAdminUser()) return;
+        db.ref(`whitelist/${currentUserId}/charIndex`).on('value', () => {
+            if (currentUserId === ADMIN_ID) return;
             subscribeArchiveTickets();
         });
     }
@@ -299,10 +121,6 @@
 
     function isTicketRevoked(ticketNum) {
         return !!revokedTicketsMap[String(ticketNum)];
-    }
-
-    function hasRevokedTicket(ticketValue) {
-        return extractTicketNumbers(ticketValue).some(n => isTicketRevoked(n));
     }
 
     function getTicketSourceLabel(t) {
@@ -332,17 +150,16 @@
                     ...t,
                     ticketNum: String(ticketNum),
                     isRevoked: isTicketRevoked(ticketNum),
-                    canUndoRevoke: !!(t.isManualRevoke && !t.revokeCancelledAt && t.archiveKey),
                     sourceLabel: getTicketSourceLabel(t),
                     taskLabel: getTicketTaskLabel(t)
                 });
             });
         });
-        return expanded.filter(t => !t.isRevoked && (!t.excluded || t.isManualRevoke));
+        return expanded;
     }
 
     async function toggleTicketRevocation(ticketNum, shouldRevoke) {
-        if (!isAdminUser()) return;
+        if (currentUserId !== ADMIN_ID) return;
         const num = String(ticketNum || '').trim();
         if (!/^\d+$/.test(num)) return;
         if (shouldRevoke) {
@@ -352,252 +169,16 @@
         await db.ref(`revoked_tickets/${num}`).remove();
     }
 
-
-    window.createTicket = async function(userId, amount, reason) {
-        console.log('Попытка выдать билет для:', userId);
-        const database = await waitForDbReady();
-        const uid = String(userId || '').trim();
-        const normalizedAmount = Number(amount);
-        const normalizedReason = String(reason || '').trim();
-
-        if (!/^\d+$/.test(uid)) throw new Error('Некорректный userId.');
-        if (!Number.isFinite(normalizedAmount)) throw new Error('Некорректный amount.');
-        if (!isAdminUser() && (normalizedAmount < 1 || normalizedAmount > 2)) {
-            throw new Error('Разрешён amount только от 1 до 2 для обычных пользователей.');
-        }
-
-        const now = Date.now();
-        const guard = createTicketGuardByUser[uid] || {};
-        if (guard.inFlightPromise && (now - (guard.startedAt || 0)) < 1000) {
-            return guard.inFlightPromise;
-        }
-        if (guard.lastIssuedAt && (now - guard.lastIssuedAt) < 1000) {
-            return null;
-        }
-
-        const issuePromise = (async () => {
-            let ticketId = null;
-            const txResult = await database.ref('lastTicketId').transaction(currentValue => {
-                const current = Number(currentValue) || 0;
-                ticketId = current + 1;
-                return ticketId;
-            });
-
-            if (!txResult.committed || !Number.isInteger(ticketId)) {
-                throw new Error('Не удалось создать ticketId через transaction().');
-            }
-
-            const payload = {
-                ticketId,
-                userId: uid,
-                amount: normalizedAmount,
-                reason: normalizedReason,
-                timestamp: Date.now()
-            };
-
-            const userSnap = await database.ref(`users/${uid}`).once('value');
-            const ownerIdx = Number(userSnap.val()?.charIndex);
-            const wheelPayload = {
-                num: ticketId,
-                ticketNum: ticketId,
-                ticket: String(ticketId),
-                userId: uid,
-                owner: Number.isInteger(ownerIdx) ? ownerIdx : -1,
-                name: String(players?.[ownerIdx]?.n || userSnap.val()?.name || `ID ${uid}`),
-                reason: normalizedReason || 'Выдача билета',
-                createdAt: Date.now(),
-                timestamp: Date.now(),
-                amount: normalizedAmount
-            };
-
-            const archiveKey = database.ref('tickets_archive').push().key;
-            const updates = {};
-            updates[`tickets/${ticketId}`] = wheelPayload;
-            updates[`tickets_archive/${archiveKey}`] = {
-                ...wheelPayload,
-                round: currentRoundNum || 0,
-                cell: 0,
-                cellIdx: -1,
-                archivedAt: Date.now(),
-                excluded: false
-            };
-            updates[`users/${uid}/tickets/${ticketId}`] = { ...payload, ...wheelPayload };
-            updates[`revoked_tickets/${ticketId}`] = null;
-            await database.ref().update(updates);
-
-            createTicketGuardByUser[uid] = {
-                ...(createTicketGuardByUser[uid] || {}),
-                inFlightPromise: null,
-                startedAt: 0,
-                lastIssuedAt: Date.now(),
-                lastPayload: payload
-            };
-
-            return payload;
-        })();
-
-        createTicketGuardByUser[uid] = {
-            ...(guard || {}),
-            startedAt: now,
-            inFlightPromise: issuePromise
-        };
-
-        try {
-            return await issuePromise;
-        } catch (error) {
-            createTicketGuardByUser[uid] = {
-                ...(createTicketGuardByUser[uid] || {}),
-                inFlightPromise: null,
-                startedAt: 0
-            };
-            throw error;
-        }
-    };
-
-    async function revokeTicket(ticketId, reason) {
-        const database = await waitForDbReady();
-        const normalizedTicketId = String(ticketId || '').trim();
-        const normalizedReason = String(reason || '').trim();
-
-        if (!/^\d+$/.test(normalizedTicketId)) throw new Error('Некорректный ticketId.');
-
-        const [liveTicketSnap, archiveSnap] = await Promise.all([
-            database.ref(`tickets/${normalizedTicketId}`).once('value'),
-            database.ref('tickets_archive').orderByChild('num').equalTo(Number(normalizedTicketId)).once('value')
-        ]);
-
-        const ticketData = liveTicketSnap.val() || {};
-        if (!liveTicketSnap.exists() && !archiveSnap.exists()) {
-            throw new Error(`Билет #${normalizedTicketId} не найден в tickets/tickets_archive.`);
-        }
-
-        const ownerUserId = String(ticketData.userId || '').trim();
-
-        const revokedPayload = {
-            ...ticketData,
-            revokeReason: normalizedReason,
-            revokedAt: Date.now()
-        };
-
-        const updates = {};
-        updates[`revoked_tickets/${normalizedTicketId}`] = revokedPayload;
-        updates[`tickets/${normalizedTicketId}`] = null;
-        if (archiveSnap.exists()) {
-            archiveSnap.forEach((row) => {
-                updates[`tickets_archive/${row.key}/excluded`] = true;
-                updates[`tickets_archive/${row.key}/isManualRevoke`] = true;
-                updates[`tickets_archive/${row.key}/revokeReason`] = normalizedReason;
-                updates[`tickets_archive/${row.key}/revokedAt`] = Date.now();
-            });
-        }
-        if (ownerUserId) {
-            updates[`users/${ownerUserId}/tickets/${normalizedTicketId}`] = null;
-        }
-
-        await database.ref().update(updates);
-        return revokedPayload;
-    }
-
-    async function claimSequentialTickets(count = 1, userId = currentUserId) {
-        const needed = Math.max(1, Math.floor(Number(count) || 1));
-
-        await maybeRepairTicketCounterDrift(true);
-
-        let rangeStart = null;
-        let rangeEnd = null;
+    async function claimSequentialTickets(count = 1) {
+        let startFrom = null;
         const tx = await db.ref('ticket_counter').transaction(c => {
             const current = Number(c) || 0;
-            if (current >= MAX_TICKETS) return;
-            const remain = MAX_TICKETS - current;
-            if (remain < needed) return;
-            rangeStart = current + 1;
-            rangeEnd = current + needed;
-            return current + needed;
+            if (current + count > MAX_TICKETS) return;
+            startFrom = current + 1;
+            return current + count;
         });
-
-        if (!tx.committed || !Number.isInteger(rangeStart) || !Number.isInteger(rangeEnd)) return null;
-
-        const awarded = [];
-        for (let n = rangeStart; n <= rangeEnd; n += 1) {
-            awarded.push(String(n));
-        }
-
-        const revokedCleanup = {};
-        awarded.forEach(num => {
-            revokedCleanup[`revoked_tickets/${num}`] = null;
-            delete revokedTicketsMap[String(num)];
-        });
-        await db.ref().update(revokedCleanup);
-
-        const normalizedUserId = String(userId || '').trim();
-        if (/^\d+$/.test(normalizedUserId)) {
-            const updates = {};
-            const ticketDelta = Number(awarded.length) || 0;
-            updates[`users/${normalizedUserId}/tickets`] = firebase.database.ServerValue.increment(ticketDelta);
-            await db.ref().update(updates);
-        }
-
-        return awarded;
-    }
-
-    async function maybeRepairTicketCounterDrift(force = false) {
-        const now = Date.now();
-        if (ticketCounterRepairInFlight) return ticketCounterRepairInFlight;
-        if (!force && now - lastTicketCounterRepairAt < 30000) return;
-
-        ticketCounterRepairInFlight = (async () => {
-            const [counterSnap, boardSnap, archiveSnap, revokedSnap] = await Promise.all([
-                db.ref('ticket_counter').once('value'),
-                db.ref('board').once('value'),
-                db.ref('tickets_archive').once('value'),
-                db.ref('revoked_tickets').once('value')
-            ]);
-
-            const counter = Number(counterSnap.val()) || 0;
-            const revokedMap = { ...(revokedSnap.val() || {}), ...revokedTicketsMap };
-            let maxActiveTicket = 0;
-
-            const includeTicket = (ticketValue) => {
-                extractTicketNumbers(ticketValue).forEach(num => {
-                    const n = Number(num);
-                    if (!Number.isInteger(n) || n < 1) return;
-                    if (revokedMap[String(n)]) return;
-                    if (n > maxActiveTicket) maxActiveTicket = n;
-                });
-            };
-
-            Object.values(boardSnap.val() || {}).forEach(cell => {
-                if (!cell || cell.excluded) return;
-                includeTicket(cell.ticket);
-            });
-
-            archiveSnap.forEach(item => {
-                const row = item.val() || {};
-                if (row.excluded) return;
-                includeTicket(row.ticket);
-            });
-
-            const drift = counter - maxActiveTicket;
-            if (force) {
-                if (counter !== maxActiveTicket) {
-                    await db.ref('ticket_counter').transaction(currentValue => {
-                        const liveCounter = Number(currentValue) || 0;
-                        if (liveCounter !== counter) return;
-                        return maxActiveTicket;
-                    });
-                }
-            } else if (counter < maxActiveTicket || drift > 200) {
-                await db.ref('ticket_counter').set(maxActiveTicket);
-            }
-
-            lastTicketCounterRepairAt = Date.now();
-        })();
-
-        try {
-            await ticketCounterRepairInFlight;
-        } finally {
-            ticketCounterRepairInFlight = null;
-        }
+        if (!tx.committed || !Number.isInteger(startFrom)) return null;
+        return Array.from({ length: count }, (_, idx) => String(startFrom + idx));
     }
 
     function switchAdminTicketsSubtab(tabName) {
@@ -617,59 +198,11 @@
     }
 
     function getAdminPlayersAlphabetically() {
-        const canLoadFromAdminPage = typeof window.renderPlayerTicketsList === 'function';
-        const cacheReady = Array.isArray(window.adminPlayersCache) && window.adminPlayersCache.length;
-        const cacheFresh = cacheReady && (Date.now() - adminPlayersFetchedAt < 30000);
-
-        if (canLoadFromAdminPage && !cacheFresh && !adminPlayersFetchInFlight) {
-            adminPlayersFetchInFlight = window.renderPlayerTicketsList()
-                .then(users => {
-                    if (!Array.isArray(users)) return;
-                    window.adminPlayersCache = users;
-                    adminPlayersFetchedAt = Date.now();
-                    updateTicketsTable();
-                })
-                .catch(() => {})
-                .finally(() => {
-                    adminPlayersFetchInFlight = null;
-                });
-        }
-
-        if (cacheReady) {
-            return [...window.adminPlayersCache].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
-        }
-
         const whitelist = window.cachedWhitelistData || {};
-        const usersMap = window.cachedUsersData || {};
-        const merged = new Map();
-
-        Object.entries(usersMap).forEach(([uid, row]) => {
-            merged.set(String(uid), {
-                userId: String(uid),
-                name: String(row?.name || row?.username || row?.displayName || ''),
-                charIndex: Number(whitelist?.[uid]?.charIndex)
-            });
-        });
-
-        Object.entries(whitelist).forEach(([uid, row]) => {
-            const key = String(uid);
-            const prev = merged.get(key) || { userId: key, name: '' };
-            merged.set(key, {
-                userId: key,
-                name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
-                charIndex: Number(row?.charIndex)
-            });
-        });
-
-        const users = Array.from(merged.values()).map((row) => {
-            const idx = Number(row.charIndex);
-            const fallbackName = Number.isInteger(idx) && players[idx] ? players[idx].n : '';
-            return {
-                userId: String(row.userId),
-                charIndex: Number.isInteger(idx) ? idx : null,
-                name: String(row.name || fallbackName || `ID ${row.userId}`)
-            };
-        });
+        const users = Object.entries(whitelist)
+            .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
+            .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
+            .map(p => ({ ...p, name: players[p.charIndex].n }));
 
         users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
         return users;
@@ -679,7 +212,6 @@
         const playersListEl = document.getElementById('admin-ticket-players-list');
         const ticketsListEl = document.getElementById('admin-player-tickets-list');
         const titleEl = document.getElementById('admin-player-tickets-title');
-        const isAdmin = isAdminUser();
         if (!playersListEl || !ticketsListEl || !titleEl) return;
 
         const users = getAdminPlayersAlphabetically();
@@ -701,7 +233,7 @@
 
         const selectedUser = users.find(u => String(u.userId) === String(selectedAdminTicketUserId));
         const filtered = expandedRows
-            .filter(t => String(t.userId) === String(selectedAdminTicketUserId))
+            .filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex))
             .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
 
         titleEl.innerText = selectedUser ? `Билетики игрока: ${selectedUser.name}` : 'Билетики игрока';
@@ -713,12 +245,13 @@
         ticketsListEl.innerHTML = filtered.map(t => `
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #eee;">
                 <div style="text-align:left;">
-                    <div style="font-weight:700; color:#222;">🎟 ${t.ticketNum}</div>
+                    <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
                     <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
+                    <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:12px; padding:5px 8px;">👀</button>
-                </div>
+                <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
+                    ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
+                </button>
             </div>
         `).join('');
     }
@@ -730,7 +263,7 @@
 
     function updateTicketsTable() {
         const body = document.getElementById('tickets-body');
-        const isAdmin = isAdminUser();
+        const isAdmin = (currentUserId === ADMIN_ID);
         const adminSubtabs = document.getElementById('admin-tickets-subtabs');
 
         if (adminSubtabs) adminSubtabs.style.display = isAdmin ? 'flex' : 'none';
@@ -744,25 +277,24 @@
 
         const visibleData = isAdmin
             ? allTicketsData
-            : allTicketsData.filter(t => t.owner === myIndex || String(t.userId) === String(currentUserId) || Number(t.userId) === Number(currentUserId));
+            : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
 
         const expandedRows = expandTicketsRows(visibleData)
             .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
 
         body.innerHTML = expandedRows.map(t => {
-            const statusClass = t.excluded ? 'row-excluded' : '';
+            const statusClass = t.excluded || t.isRevoked ? 'row-excluded' : '';
             return `
                 <tr class="${statusClass}">
                     <td>${t.round || '—'}</td>
                     <td>${t.cell || '—'}</td>
                     ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
-                    <td><b>${t.ticketNum}</b></td>
+                    <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                     <td>
                         <div style="font-size:11px;">${t.sourceLabel}</div>
+                        <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
                         ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
-                        ${t.isManualRevoke && t.revokeCancelledAt ? `<div style="font-size:10px; color:#2e7d32; margin-top:3px;">Изъятие отменено</div>` : ''}
-                        <button onclick="openTicketTask('${t.ticketNum}')" title="Посмотреть задание" style="margin-top:4px; background:none; border:1px solid #90caf9; color:#1565c0; border-radius:8px; font-size:10px; padding:3px 6px;">👀</button>
-                        ${t.canUndoRevoke ? `<button onclick="adminUndoTicketRevoke('${t.archiveKey}')" title="Отменить изъятие" style="margin-top:4px; margin-left:4px; background:#fff8e1; border:1px solid #ffcc80; color:#ef6c00; border-radius:8px; font-size:10px; padding:3px 6px;">↩️ Отменить</button>` : ''}
+                        ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                     </td>
                 </tr>`;
         }).join('');
@@ -778,63 +310,20 @@
         });
     }
 
-
-
-    function openTicketTask(ticketNum) {
-        const num = String(ticketNum || '').trim();
-        if (!/^\d+$/.test(num)) return;
-        const isAdmin = isAdminUser();
-        const entry = allTicketsData.find(t => {
-            const owns = Number(t.userId) === Number(currentUserId) || t.owner === myIndex;
-            return extractTicketNumbers(t.ticket).includes(num) && (isAdmin || owns);
-        });
-        if (!entry) {
-            alert('Не удалось найти задание для этого билетика.');
-            return;
-        }
-        const taskText = getTicketTaskLabel(entry);
-        alert(`🎫 Билет ${num}
-
-${taskText}`);
-    }
-
     function getActiveTicketsForWheel() {
-        const ticketsByNum = new Map();
-
-        if (Array.isArray(wheelTicketsFromDb)) {
-            wheelTicketsFromDb.forEach((row) => {
-                if (isTicketRevoked(row.num)) return;
-                ticketsByNum.set(String(row.num), row);
-            });
-        }
-
-        allTicketsData.forEach((row) => {
-            if (row.excluded) return;
-            extractTicketNumbers(row.ticket).forEach((ticketNum) => {
-                if (isTicketRevoked(ticketNum)) return;
-                const num = String(ticketNum);
-                if (ticketsByNum.has(num)) return;
-
-                ticketsByNum.set(num, {
-                    num,
-                    owner: Number(row.owner),
-                    userId: String(row.userId || ''),
-                    name: String(row.name || players[Number(row.owner)]?.n || 'Неизвестный'),
-                    reason: String(row.reason || ''),
-                    round: Number(row.round) || 0,
-                    cell: Number(row.cell) || 0,
-                    isManualReward: !!row.isManualReward
-                });
+        const tickets = [];
+        allTicketsData.forEach(t => {
+            if (t.excluded) return;
+            extractTicketNumbers(t.ticket).forEach(n => {
+                if (isTicketRevoked(n)) return;
+                tickets.push({ num: String(n), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' });
             });
         });
-
-        return Array.from(ticketsByNum.values())
-            .sort((a, b) => Number(a.num) - Number(b.num));
+        return tickets.sort((a, b) => Number(a.num) - Number(b.num));
     }
 
     window.syncTicketData = syncTicketData;
     window.extractTicketNumbers = extractTicketNumbers;
-    window.hasRevokedTicket = hasRevokedTicket;
     window.claimSequentialTickets = claimSequentialTickets;
     window.updateTicketsTable = updateTicketsTable;
     window.viewTaskDetails = viewTaskDetails;
@@ -842,7 +331,4 @@ ${taskText}`);
     window.toggleTicketRevocation = toggleTicketRevocation;
     window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
     window.selectAdminTicketUser = selectAdminTicketUser;
-    window.openTicketTask = openTicketTask;
-    window.revokeTicket = revokeTicket;
-    window.waitForDbReady = window.waitForDbReady || waitForDbReady;
 })();
