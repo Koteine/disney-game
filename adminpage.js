@@ -568,6 +568,7 @@
       merged.set(String(uid), {
         userId: String(uid),
         name: String(row?.name || row?.username || row?.displayName || ''),
+
         charIndex: Number(whitelistMap?.[uid]?.charIndex)
       });
     });
@@ -579,10 +580,12 @@
         userId: key,
         name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
         charIndex: Number(row?.charIndex)
+
       });
     });
 
     const users = Array.from(merged.values())
+
       .map((row) => ({
         userId: String(row.userId),
         charIndex: Number.isFinite(Number(row.charIndex)) ? Number(row.charIndex) : null,
@@ -596,6 +599,7 @@
 
     if (listEl && !users.length) {
       listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
+
     }
 
     return users;
