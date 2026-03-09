@@ -113,7 +113,6 @@ function syncData() {
     });
 
     const submissionsById = {};
-
     const extractSubmissionEntries = (parentKey, value) => {
         if (!value || typeof value !== 'object') return [];
         const hasDirectFields = value.beforeImageData || value.afterImageData || value.imageData || value.userId || value.owner !== undefined;
@@ -509,6 +508,7 @@ async function submitWork() {
 }
 
 async function setSubmissionStatus(submissionId, sourcePrefix, dbPath, status) {
+
     if (Number(currentUserId) !== Number(ADMIN_ID)) return;
     if (!['accepted', 'rejected'].includes(status)) return;
     const refPath = sourcePrefix === 'works' ? `works/${dbPath || submissionId}` : `submissions/${dbPath || submissionId}`;
