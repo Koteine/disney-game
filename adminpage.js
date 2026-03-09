@@ -538,11 +538,10 @@
 
   async function renderPlayerTicketsList() {
     const listEl = document.getElementById('admin-ticket-players-list');
-    if (!listEl) return [];
-
     const database = await waitForDbReady().catch(() => null);
     if (!database) {
-      listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
+      if (listEl) listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
+ main
       return [];
     }
 
@@ -555,44 +554,44 @@
     const whitelistMap = whitelistSnap.val() || {};
     const merged = new Map();
 
-    Object.keys(usersMap).forEach((uid) => {
+
+    Object.entries(usersMap).forEach(([uid, row]) => {
       merged.set(String(uid), {
         userId: String(uid),
-        userName: String(usersMap[uid]?.name || usersMap[uid]?.username || ''),
+        name: String(row?.name || row?.username || row?.displayName || ''),
+main
         charIndex: Number(whitelistMap?.[uid]?.charIndex)
       });
     });
 
-    Object.keys(whitelistMap).forEach((uid) => {
+
+    Object.entries(whitelistMap).forEach(([uid, row]) => {
       const key = String(uid);
-      const prev = merged.get(key) || { userId: key };
-      const charIndex = Number(whitelistMap?.[uid]?.charIndex);
+      const prev = merged.get(key) || { userId: key, name: '' };
       merged.set(key, {
-        ...prev,
         userId: key,
-        charIndex,
-        userName: prev.userName || String(whitelistMap?.[uid]?.name || whitelistMap?.[uid]?.username || '')
+        name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
+        charIndex: Number(row?.charIndex)
+main
       });
     });
 
     const users = Array.from(merged.values())
-      .map((row) => {
-        const idx = Number(row.charIndex);
-        const fallbackName = Number.isInteger(idx) && window.players?.[idx]?.n ? window.players[idx].n : '';
-        return {
-          userId: String(row.userId),
-          charIndex: idx,
-          name: row.userName || fallbackName || `ID ${row.userId}`
-        };
-      })
-      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
 
-    window.cachedWhitelistData = whitelistMap;
+      .map((row) => ({
+        userId: String(row.userId),
+        charIndex: Number.isFinite(Number(row.charIndex)) ? Number(row.charIndex) : null,
+        name: String(row.name || `ID ${row.userId}`)
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
     window.cachedUsersData = usersMap;
+    window.cachedWhitelistData = whitelistMap;
+    window.adminPlayersCache = users;
 
-    if (!users.length) {
+    if (listEl && !users.length) {
       listEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
-      return [];
+main
     }
 
     return users;
@@ -640,6 +639,18 @@
     ensureDateTimeInputDefault('event-start-at');
     syncRoundSchedules();
     syncEventSchedules();
+
+    database.ref('users').on('value', (snap) => {
+      window.cachedUsersData = snap.val() || {};
+      if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
+    });
+
+    database.ref('whitelist').on('value', (snap) => {
+      window.cachedWhitelistData = snap.val() || {};
+      if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
+    });
+
+    renderPlayerTicketsList().catch(() => {});
 
     database.ref('.info/serverTimeOffset').on('value', snap => {
       adminServerOffsetMs = Number(snap.val()) || 0;

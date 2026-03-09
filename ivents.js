@@ -120,6 +120,7 @@
       colors: {}
     };
     participantMarked = false;
+    setCanvasLocked(false);
     showNotification();
     updateOverlayUi();
     closeEventOverlay();
@@ -168,6 +169,21 @@
     document.body.classList.remove('event-mode');
   }
 
+  function setCanvasLocked(isLocked) {
+    const canvas = getCanvas();
+    if (!canvas) return;
+    if (isLocked) {
+      drawing = false;
+      canvas.style.pointerEvents = 'none';
+      canvas.style.opacity = '0.75';
+      canvas.dataset.locked = '1';
+      return;
+    }
+    canvas.style.pointerEvents = 'auto';
+    canvas.style.opacity = '1';
+    delete canvas.dataset.locked;
+  }
+
   function toWorldPoint(evt) {
     const canvas = getCanvas();
     const rect = canvas.getBoundingClientRect();
@@ -189,7 +205,7 @@
   }
 
   async function startDrawing(evt) {
-    if (state.status !== STATUS_ACTIVE) return;
+    if (state.status !== STATUS_ACTIVE || finishing) return;
     evt.preventDefault();
     const p = toWorldPoint(evt);
     drawing = true;
@@ -204,7 +220,7 @@
   }
 
   async function draw(evt) {
-    if (!drawing || state.status !== STATUS_ACTIVE) return;
+    if (!drawing || state.status !== STATUS_ACTIVE || finishing) return;
     evt.preventDefault();
     const p = toWorldPoint(evt);
     const from = lastPoint;
@@ -314,6 +330,15 @@
     });
     if (!statusTx.committed) return;
 
+    setCanvasLocked(true);
+
+    const box = $('event-notification');
+    if (box) {
+      box.style.display = 'block';
+      box.classList.add('event-notification-pink');
+      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">✨ Успех! Начисляем награды...</div>`;
+    }
+
     const snapshot = await db.ref('current_event/participants').once('value');
     const participants = snapshot.val() || {};
     const participantIds = Object.keys(participants);
@@ -321,36 +346,31 @@
     const rewardResults = [];
     for (const userId of participantIds) {
       try {
-        console.log('Выдаю награду участнику:', userId);
+
         const ticketResult = await window.createTicket(userId, 2, 'Победа в Эпичном раскрасе');
-        rewardResults.push({ userId, ok: !!ticketResult, result: ticketResult || null });
-        if (!ticketResult) {
-          console.error('Билеты не начислены участнику (createTicket вернул пустой результат):', userId);
+        const ok = !!ticketResult;
+        rewardResults.push({ userId, ok, result: ticketResult || null });
+        if (!ok) {
+          console.error('Билеты не начислились участнику ивента:', userId);
         }
       } catch (err) {
         rewardResults.push({ userId, ok: false, error: err });
-        console.error('Не удалось выдать награду участнику:', userId, err);
+        console.error('Не удалось выдать награду участнику ивента:', userId, err);
+main
       }
-
     }
 
-    const box = $('event-notification');
-    if (box) {
-      box.style.display = 'block';
-      box.classList.add('event-notification-pink');
-      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">Ивент завершен! Награды выдаются... ✨</div>`;
-    }
 
     const failedRewards = rewardResults.filter((row) => !row.ok);
     if (failedRewards.length) {
-      console.error('Часть наград не была выдана. Проблемные записи:', failedRewards);
+      console.error('Выдача наград завершилась с ошибками:', failedRewards);
     }
+ main
 
     setTimeout(() => {
       clearEventUi();
       closeEventOverlay();
     }, 5000);
-
   }
 
   async function finalizeEventWithRewards() {
@@ -480,6 +500,7 @@
   // exports / compatibility
   window.initEventSystem = initEventSystem;
   window.syncGameEvents = initEventSystem;
+  window.initEvents = initEventSystem;
   window.setupEpicPaintCanvas = bindCanvasEvents;
   window.openEventOverlay = openEventOverlay;
   window.closeEventOverlay = closeEventOverlay;

@@ -43,8 +43,6 @@
     let selectedAdminTicketUserId = null;
     let personalTicketsRef = null;
     let wheelTicketsFromDb = [];
-    let adminPlayersFetchInFlight = null;
-    let adminPlayersFetchedAt = 0;
     let personalTicketsWarmupDone = false;
     const seenPersonalTicketKeys = new Set();
 
@@ -555,10 +553,36 @@
         }
 
         const whitelist = window.cachedWhitelistData || {};
-        const users = Object.entries(whitelist)
-            .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
-            .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
-            .map(p => ({ ...p, name: players[p.charIndex].n }));
+        const usersMap = window.cachedUsersData || {};
+        const merged = new Map();
+
+        Object.entries(usersMap).forEach(([uid, row]) => {
+            merged.set(String(uid), {
+                userId: String(uid),
+                name: String(row?.name || row?.username || row?.displayName || ''),
+                charIndex: Number(whitelist?.[uid]?.charIndex)
+            });
+        });
+
+        Object.entries(whitelist).forEach(([uid, row]) => {
+            const key = String(uid);
+            const prev = merged.get(key) || { userId: key, name: '' };
+            merged.set(key, {
+                userId: key,
+                name: prev.name || String(row?.name || row?.username || row?.displayName || ''),
+                charIndex: Number(row?.charIndex)
+            });
+        });
+
+        const users = Array.from(merged.values()).map((row) => {
+            const idx = Number(row.charIndex);
+            const fallbackName = Number.isInteger(idx) && players[idx] ? players[idx].n : '';
+            return {
+                userId: String(row.userId),
+                charIndex: Number.isInteger(idx) ? idx : null,
+                name: String(row.name || fallbackName || `ID ${row.userId}`)
+            };
+        });
 
         users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
         return users;
