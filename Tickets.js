@@ -702,7 +702,7 @@
 
         const selectedUser = users.find(u => String(u.userId) === String(selectedAdminTicketUserId));
         const filtered = expandedRows
-            .filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex))
+            .filter(t => String(t.userId) === String(selectedAdminTicketUserId))
             .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
 
         titleEl.innerText = selectedUser ? `Билетики игрока: ${selectedUser.name}` : 'Билетики игрока';
