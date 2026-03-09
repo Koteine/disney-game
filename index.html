@@ -1420,6 +1420,7 @@
             const canvas = document.getElementById('epic-paint-canvas');
             if (!canvas || canvas.dataset.ready === '1') return;
             canvas.dataset.ready = '1';
+            const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
 
             const getPos = evt => {
                 const rect = canvas.getBoundingClientRect();
@@ -1434,6 +1435,7 @@
 
             const begin = async evt => {
                 if (!currentGameEvent || currentGameEvent.status !== 'active' || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id)) return;
+                if (isAdminUser()) return;
                 evt.preventDefault();
                 const team = await joinCurrentEventTeam();
                 if (!team) return;
@@ -1467,6 +1469,7 @@
 
         async function pushEpicPaintStroke(x1, y1, x2, y2) {
             if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
+            if (Number(currentUserId) === Number(ADMIN_ID)) return;
             const uid = currentUserId;
             const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
             const team = teamInfo.team || 'red';
@@ -1974,6 +1977,13 @@
                     return;
                 }
 
+                if (Number(currentUserId) === Number(ADMIN_ID)) {
+                    btn.disabled = true;
+                    btn.innerText = "👀 Режим наблюдателя";
+                    updateEventUiState();
+                    return;
+                }
+
                 const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
                 const userState = userStateSnap.val() || {};
                 if (userState.isEliminated) {
@@ -1992,6 +2002,9 @@
         }
 
         async function roll() {
+            if (Number(currentUserId) === Number(ADMIN_ID)) {
+                return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
+            }
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
             if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
@@ -3571,6 +3584,7 @@
           function getCanvas() { return $('event-canvas'); }
           function getCtx() { return getCanvas()?.getContext('2d'); }
           function getUserId() { return String(window.currentUserId || '').trim(); }
+          function isAdminUser() { return Number(window.currentUserId) === Number(window.ADMIN_ID); }
 
           function normalizeEvent(raw) {
             const e = raw || {};
@@ -3733,7 +3747,7 @@
           }
 
           async function startDrawing(evt) {
-            if (state.status !== ACTIVE_STATUS || finishing) return;
+            if (state.status !== ACTIVE_STATUS || finishing || isAdminUser()) return;
             evt.preventDefault();
             drawing = true;
             lastPoint = toWorldPoint(evt);
@@ -3745,7 +3759,7 @@
           }
 
           async function draw(evt) {
-            if (!drawing || state.status !== ACTIVE_STATUS || finishing) return;
+            if (!drawing || state.status !== ACTIVE_STATUS || finishing || isAdminUser()) return;
             evt.preventDefault();
             const p = toWorldPoint(evt);
             const from = lastPoint;
