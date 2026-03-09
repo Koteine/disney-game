@@ -956,6 +956,35 @@
             });
         }
 
+
+
+        function observeEvents() {
+            const previewEl = document.getElementById('news-preview');
+            const listEl = document.getElementById('news-list');
+            if (!previewEl || !listEl) return;
+
+            if (newsFeedRef) newsFeedRef.off();
+            newsFeedRef = db.ref('news_feed').limitToLast(100);
+            newsFeedRef.on('value', snap => {
+                const rows = [];
+                snap.forEach(item => rows.push({ key: item.key, ...(item.val() || {}) }));
+                rows.sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
+
+                if (!rows.length) {
+                    previewEl.textContent = 'Пока новостей нет — откройте первую клетку! ✨';
+                    listEl.innerHTML = '';
+                    return;
+                }
+
+                previewEl.textContent = rows[0].text || 'Есть новые события';
+                listEl.innerHTML = rows.map((row, idx) => {
+                    const when = formatMoscowDateTime(row.timestamp || 0);
+                    return `<div class="news-item">${rows.length - idx}. ${when} · ${row.text || ''}</div>`;
+                }).join('');
+            });
+        }
+
+
         function postNews(text) {
             if (!text) return;
             return db.ref('news_feed').push({

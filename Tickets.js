@@ -344,9 +344,34 @@
                 timestamp: Date.now()
             };
 
+            const whitelistSnap = await database.ref(`whitelist/${uid}`).once('value');
+            const ownerIdx = Number(whitelistSnap.val()?.charIndex);
+            const wheelPayload = {
+                num: ticketId,
+                ticketNum: ticketId,
+                ticket: String(ticketId),
+                userId: uid,
+                owner: Number.isInteger(ownerIdx) ? ownerIdx : -1,
+                name: String(players?.[ownerIdx]?.n || whitelistSnap.val()?.name || `ID ${uid}`),
+                reason: normalizedReason || 'Выдача билета',
+                createdAt: Date.now(),
+                timestamp: Date.now(),
+                amount: normalizedAmount
+            };
+
+            const archiveKey = database.ref('tickets_archive').push().key;
             const updates = {};
-            updates[`ticket_archive/${ticketId}`] = payload;
-            updates[`users/${uid}/tickets/${ticketId}`] = payload;
+            updates[`tickets/${ticketId}`] = wheelPayload;
+            updates[`tickets_archive/${archiveKey}`] = {
+                ...wheelPayload,
+                round: currentRoundNum || 0,
+                cell: 0,
+                cellIdx: -1,
+                archivedAt: Date.now(),
+                excluded: false
+            };
+            updates[`users/${uid}/tickets/${ticketId}`] = { ...payload, ...wheelPayload };
+            updates[`revoked_tickets/${ticketId}`] = null;
             await database.ref().update(updates);
 
             createTicketGuardByUser[uid] = {
@@ -385,11 +410,16 @@
 
         if (!/^\d+$/.test(normalizedTicketId)) throw new Error('Некорректный ticketId.');
 
-        const ticketRef = database.ref(`ticket_archive/${normalizedTicketId}`);
-        const ticketSnap = await ticketRef.once('value');
-        if (!ticketSnap.exists()) throw new Error(`Билет #${normalizedTicketId} не найден в ticket_archive.`);
+        const [liveTicketSnap, archiveSnap] = await Promise.all([
+            database.ref(`tickets/${normalizedTicketId}`).once('value'),
+            database.ref('tickets_archive').orderByChild('num').equalTo(Number(normalizedTicketId)).once('value')
+        ]);
 
-        const ticketData = ticketSnap.val() || {};
+        const ticketData = liveTicketSnap.val() || {};
+        if (!liveTicketSnap.exists() && !archiveSnap.exists()) {
+            throw new Error(`Билет #${normalizedTicketId} не найден в tickets/tickets_archive.`);
+        }
+
         const ownerUserId = String(ticketData.userId || '').trim();
 
         const revokedPayload = {
@@ -400,7 +430,15 @@
 
         const updates = {};
         updates[`revoked_tickets/${normalizedTicketId}`] = revokedPayload;
-        updates[`ticket_archive/${normalizedTicketId}`] = null;
+        updates[`tickets/${normalizedTicketId}`] = null;
+        if (archiveSnap.exists()) {
+            archiveSnap.forEach((row) => {
+                updates[`tickets_archive/${row.key}/excluded`] = true;
+                updates[`tickets_archive/${row.key}/isManualRevoke`] = true;
+                updates[`tickets_archive/${row.key}/revokeReason`] = normalizedReason;
+                updates[`tickets_archive/${row.key}/revokedAt`] = Date.now();
+            });
+        }
         if (ownerUserId) {
             updates[`users/${ownerUserId}/tickets/${normalizedTicketId}`] = null;
         }
