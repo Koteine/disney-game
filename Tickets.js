@@ -65,6 +65,7 @@
     let selectedAdminTicketUserId = null;
     let personalTicketsRef = null;
     let wheelTicketsFromDb = [];
+    let wheelTicketsRefreshInterval = null;
     let personalTicketsWarmupDone = false;
     const seenPersonalTicketKeys = new Set();
 
@@ -237,7 +238,8 @@
             updateAllTicketsDataAndRender();
         });
 
-        db.ref('tickets').on('value', snap => {
+        const loadWheelTicketsFromMainStore = async () => {
+            const snap = await db.ref('tickets').once('value');
             const raw = snap.val();
             const list = [];
             if (Array.isArray(raw)) {
@@ -267,7 +269,18 @@
             if (typeof window.drawWheel === 'function') {
                 window.drawWheel();
             }
+        };
+
+        loadWheelTicketsFromMainStore().catch((error) => {
+            console.error('Не удалось загрузить билеты из tickets:', error);
         });
+
+        if (wheelTicketsRefreshInterval) clearInterval(wheelTicketsRefreshInterval);
+        wheelTicketsRefreshInterval = setInterval(() => {
+            loadWheelTicketsFromMainStore().catch((error) => {
+                console.error('Не удалось обновить билеты из tickets:', error);
+            });
+        }, 2000);
 
         subscribeArchiveTickets();
         subscribePersonalTicketNotifications();
