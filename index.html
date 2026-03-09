@@ -3277,11 +3277,17 @@ window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
 
        const JSON_URL = 'tasks.json';
         const db = window.db;
-        const tg = window.Telegram.WebApp;
-        tg.ready(); tg.expand();
+        const tg = window.Telegram?.WebApp || null;
+        if (tg?.ready) tg.ready();
+        if (tg?.expand) tg.expand();
 
         const ADMIN_ID = 341995937;
-        const currentUserId = tg.initDataUnsafe?.user?.id || 0;
+        const queryUserId = Number(new URLSearchParams(window.location.search).get('user_id') || 0);
+        const storedUserId = Number(window.localStorage.getItem('disneyBattleUserId') || 0);
+        const currentUserId = Number(tg?.initDataUnsafe?.user?.id || queryUserId || storedUserId || 0);
+        if (Number.isFinite(currentUserId) && currentUserId > 0) {
+            window.localStorage.setItem('disneyBattleUserId', String(currentUserId));
+        }
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
 
         function generateBrightColors(count) {
@@ -5004,7 +5010,6 @@ window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
     </script>
 </body>
 </html>
-
 
 
 
