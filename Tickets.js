@@ -787,19 +787,37 @@ ${taskText}`);
     }
 
     function getActiveTicketsForWheel() {
-        if (Array.isArray(wheelTicketsFromDb) && wheelTicketsFromDb.length) {
-            return wheelTicketsFromDb.filter(t => !isTicketRevoked(t.num));
+        const ticketsByNum = new Map();
+
+        if (Array.isArray(wheelTicketsFromDb)) {
+            wheelTicketsFromDb.forEach((row) => {
+                if (isTicketRevoked(row.num)) return;
+                ticketsByNum.set(String(row.num), row);
+            });
         }
 
-        const tickets = [];
-        allTicketsData.forEach(t => {
-            if (t.excluded) return;
-            extractTicketNumbers(t.ticket).forEach(n => {
-                if (isTicketRevoked(n)) return;
-                tickets.push({ num: String(n), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' });
+        allTicketsData.forEach((row) => {
+            if (row.excluded) return;
+            extractTicketNumbers(row.ticket).forEach((ticketNum) => {
+                if (isTicketRevoked(ticketNum)) return;
+                const num = String(ticketNum);
+                if (ticketsByNum.has(num)) return;
+
+                ticketsByNum.set(num, {
+                    num,
+                    owner: Number(row.owner),
+                    userId: String(row.userId || ''),
+                    name: String(row.name || players[Number(row.owner)]?.n || 'Неизвестный'),
+                    reason: String(row.reason || ''),
+                    round: Number(row.round) || 0,
+                    cell: Number(row.cell) || 0,
+                    isManualReward: !!row.isManualReward
+                });
             });
         });
-        return tickets.sort((a, b) => Number(a.num) - Number(b.num));
+
+        return Array.from(ticketsByNum.values())
+            .sort((a, b) => Number(a.num) - Number(b.num));
     }
 
     window.syncTicketData = syncTicketData;
