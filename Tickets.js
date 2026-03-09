@@ -567,6 +567,28 @@
     }
 
     function getAdminPlayersAlphabetically() {
+        const canLoadFromAdminPage = typeof window.renderPlayerTicketsList === 'function';
+        const cacheReady = Array.isArray(window.adminPlayersCache) && window.adminPlayersCache.length;
+        const cacheFresh = cacheReady && (Date.now() - adminPlayersFetchedAt < 30000);
+
+        if (canLoadFromAdminPage && !cacheFresh && !adminPlayersFetchInFlight) {
+            adminPlayersFetchInFlight = window.renderPlayerTicketsList()
+                .then(users => {
+                    if (!Array.isArray(users)) return;
+                    window.adminPlayersCache = users;
+                    adminPlayersFetchedAt = Date.now();
+                    updateTicketsTable();
+                })
+                .catch(() => {})
+                .finally(() => {
+                    adminPlayersFetchInFlight = null;
+                });
+        }
+
+        if (cacheReady) {
+            return [...window.adminPlayersCache].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+        }
+
         const whitelist = window.cachedWhitelistData || {};
         const usersMap = window.cachedUsersData || {};
         const merged = new Map();
