@@ -2260,6 +2260,12 @@
 
             const segs = tickets.length;
             const angle = (2 * Math.PI) / segs;
+            const shouldRenderLabel = (index, count) => {
+                if (count <= 70) return true;
+                if (count <= 120) return index % 2 === 0;
+                return index % 3 === 0;
+            };
+
             tickets.forEach((t, i) => {
                 const startA = i * angle;
                 const endA = (i + 1) * angle;
@@ -2278,14 +2284,27 @@
                 ctx.lineWidth = 1;
                 ctx.stroke();
 
-                ctx.save();
-                ctx.translate(140, 140);
-                ctx.rotate(startA + angle / 2);
-                ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#b71c1c';
-                ctx.font = segs > 120 ? 'bold 8px Arial' : 'bold 10px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(t.num, 92, 3);
-                ctx.restore();
+                if (shouldRenderLabel(i, segs)) {
+                    ctx.save();
+                    ctx.translate(140, 140);
+                    ctx.rotate(startA + angle / 2);
+
+                    const fontSize = segs > 120 ? 10 : 11;
+                    ctx.font = `900 ${fontSize}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.lineJoin = 'round';
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = (i % 2 === 0) ? '#7a0a0a' : '#fff7f7';
+                    ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#9d1212';
+
+                    const label = String(t.num);
+                    const x = 100;
+                    const y = 0;
+                    ctx.strokeText(label, x, y);
+                    ctx.fillText(label, x, y);
+                    ctx.restore();
+                }
             });
 
             const rimGradOuter = ctx.createLinearGradient(12, 12, 268, 268);
@@ -5087,4 +5106,3 @@
     </script>
 </body>
 </html>
-
