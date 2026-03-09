@@ -65,7 +65,6 @@
     let selectedAdminTicketUserId = null;
     let personalTicketsRef = null;
     let wheelTicketsFromDb = [];
-    let liveTicketsFromDb = [];
     let personalTicketsWarmupDone = false;
     const seenPersonalTicketKeys = new Set();
 
@@ -187,6 +186,7 @@
             num: String(ticketNum),
             owner: Number(rawRow?.owner),
             userId: String(rawRow?.userId || ''),
+
             name: String(rawRow?.name || players[Number(rawRow?.owner)]?.n || 'Неизвестный'),
             reason: String(rawRow?.reason || ''),
             round: Number(rawRow?.round) || 0,
@@ -263,6 +263,7 @@
                 isManualReward: !!row.isManualReward
             }));
             updateAllTicketsDataAndRender();
+
             if (typeof window.drawWheel === 'function') {
                 window.drawWheel();
             }
@@ -604,6 +605,28 @@
     }
 
     function getAdminPlayersAlphabetically() {
+        const canLoadFromAdminPage = typeof window.renderPlayerTicketsList === 'function';
+        const cacheReady = Array.isArray(window.adminPlayersCache) && window.adminPlayersCache.length;
+        const cacheFresh = cacheReady && (Date.now() - adminPlayersFetchedAt < 30000);
+
+        if (canLoadFromAdminPage && !cacheFresh && !adminPlayersFetchInFlight) {
+            adminPlayersFetchInFlight = window.renderPlayerTicketsList()
+                .then(users => {
+                    if (!Array.isArray(users)) return;
+                    window.adminPlayersCache = users;
+                    adminPlayersFetchedAt = Date.now();
+                    updateTicketsTable();
+                })
+                .catch(() => {})
+                .finally(() => {
+                    adminPlayersFetchInFlight = null;
+                });
+        }
+
+        if (cacheReady) {
+            return [...window.adminPlayersCache].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+        }
+
         const whitelist = window.cachedWhitelistData || {};
         const usersMap = window.cachedUsersData || {};
         const merged = new Map();

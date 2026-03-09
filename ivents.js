@@ -347,6 +347,7 @@
     for (const userId of participantIds) {
       try {
         const ticketResult = await window.createTicket(userId, 2, 'Ивент');
+
         const ok = !!ticketResult;
         rewardResults.push({ userId, ok, result: ticketResult || null });
         if (!ok) {
@@ -355,9 +356,6 @@
       } catch (err) {
         rewardResults.push({ userId, ok: false, error: err });
         console.error('Не удалось выдать награду участнику ивента:', userId, err);
-      }
-    }
-
     const failedRewards = rewardResults.filter((row) => !row.ok);
     if (failedRewards.length) {
       console.error('Выдача наград завершилась с ошибками:', failedRewards);

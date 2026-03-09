@@ -681,6 +681,7 @@
             try { syncData(); } catch (e) { console.error('syncData failed:', e); }
             try { syncGameEvents(); } catch (e) { console.error('syncGameEvents failed:', e); }
             try { syncWheelSystems(); } catch (e) { console.error('syncWheelSystems failed:', e); }
+
         }
 
         function playExplosion() {
@@ -958,7 +959,6 @@
                 document.getElementById('forced-surrender-no').onclick = () => cleanup(false);
             });
         }
-
 
         function observeEvents() {
             const previewEl = document.getElementById('news-preview');
