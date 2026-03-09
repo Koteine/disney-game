@@ -1,36 +1,21 @@
 (function () {
   const EVENT_PATH = 'current_event';
   const EVENT_TYPE = 'paint';
-  const STATUS_ACTIVE = 'active';
-  const STATUS_IDLE = 'idle';
-  const TARGET_PERCENT = 95;
+  const ACTIVE_STATUS = 'active';
+  const FINISHED_STATUS = 'finished';
   const BRUSH_SIZE = 20;
+  const TARGET_PERCENT = 95;
 
-  // Общий «канонический» холст одинакового размера для всех клиентов
   const WORLD_WIDTH = 900;
   const WORLD_HEIGHT = 1500;
 
   let eventRef = null;
-  let strokesRef = null;
-  let progressRef = null;
   let timerHandle = null;
-  let progressHandle = null;
-  let finishing = false;
-
-  let state = {
-    status: STATUS_IDLE,
-    type: EVENT_TYPE,
-    end_timestamp: 0,
-    progress: 0,
-    participants: {},
-    colors: {}
-  };
-
-  let strokeMap = {};
+  let state = { status: 'idle', type: EVENT_TYPE, endTime: 0, progress: 0, participants: {} };
   let drawing = false;
   let lastPoint = { x: 0, y: 0 };
+  let finishing = false;
   let myColor = null;
-  let participantMarked = false;
 
   const $ = (id) => document.getElementById(id);
 
@@ -44,115 +29,55 @@
   function getCtx() { return getCanvas()?.getContext('2d'); }
   function getUserId() { return String(window.currentUserId || '').trim(); }
 
-  function normalizeEvent(v) {
-    const e = v || {};
+  function normalizeEvent(raw) {
+    const e = raw || {};
     return {
-      status: String(e.status || e.event_status || STATUS_IDLE),
+      status: String(e.status || 'idle'),
       type: String(e.type || EVENT_TYPE),
-      end_timestamp: Number(e.end_timestamp || 0),
-      progress: Number(e.progress?.percent ?? e.progress ?? 0),
+      endTime: Number(e.endTime || 0),
+      progress: Number(e.progress || 0),
       participants: e.participants || {},
-      colors: e.colors || {}
+      canvas_data: e.canvas_data || ''
     };
   }
 
-  function formatTimer(ts) {
-    const left = Math.max(0, Number(ts || 0) - Date.now());
-    const sec = Math.floor(left / 1000);
-    return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+  function formatLeft(ms) {
+    const left = Math.max(0, Math.floor(ms / 1000));
+    const mm = String(Math.floor(left / 60)).padStart(2, '0');
+    const ss = String(left % 60).padStart(2, '0');
+    return `${mm}:${ss}`;
   }
 
-  function randomColorForUser(uid) {
-    const n = (uid || '').split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-    const hue = (n * 57) % 360;
-    return `hsl(${hue}, 85%, 55%)`;
-  }
-
-  async function ensureMyColor() {
-    const uid = getUserId();
-    if (!uid) return '#ff4fa3';
-    if (myColor) return myColor;
-    if (state.colors && state.colors[uid]) {
-      myColor = state.colors[uid];
-      return myColor;
+  function updateTimer() {
+    const timerEl = $('event-timer');
+    if (!timerEl) return;
+    if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE || !state.endTime) {
+      timerEl.textContent = '00:00';
+      return;
     }
-
-    const db = await getDbReady();
-    const colorRef = db.ref(`${EVENT_PATH}/colors/${uid}`);
-    const snap = await colorRef.once('value');
-    if (snap.exists()) {
-      myColor = String(snap.val());
-      return myColor;
-    }
-    const generated = randomColorForUser(uid);
-    await colorRef.set(generated);
-    myColor = generated;
-    return generated;
-  }
-
-  function showNotification() {
-    const box = $('event-notification');
-    if (!box) return;
-
-    if (state.status === STATUS_ACTIVE && state.type === EVENT_TYPE) {
-      box.style.display = 'block';
-      box.classList.add('event-notification-pink');
-      box.innerHTML = `
-        <div class="event-notification-text">✨🎨 ✨ Внимание! Начался ивент: Эпичный раскрас! Присоединяйся и получи билетики! 🎫</div>
-        <button id="btn-join-event" class="event-notification-join">Присоединиться</button>
-      `;
-      const joinBtn = $('btn-join-event');
-      if (joinBtn) joinBtn.onclick = () => openEventOverlay();
-    } else {
-      box.style.display = 'none';
-      box.classList.remove('event-notification-pink');
-      box.innerHTML = '';
-    }
-  }
-
-  function clearEventUi() {
-    state = {
-      status: STATUS_IDLE,
-      type: EVENT_TYPE,
-      end_timestamp: 0,
-      progress: 0,
-      participants: {},
-      colors: {}
-    };
-    participantMarked = false;
-    setCanvasLocked(false);
-    showNotification();
-    updateOverlayUi();
-    closeEventOverlay();
+    const leftMs = Number(state.endTime) - Date.now();
+    timerEl.textContent = formatLeft(leftMs);
+    if (leftMs <= 0) finalizeEventWithRewards().catch(() => {});
   }
 
   function updateOverlayUi() {
-    const timerEl = $('event-timer');
     const titleEl = $('event-space-title');
     const progressEl = $('paint-progress');
-
     if (titleEl) titleEl.textContent = 'Эпичный раскрас';
-    if (timerEl) timerEl.textContent = state.status === STATUS_ACTIVE ? formatTimer(state.end_timestamp) : '00:00';
-    if (progressEl) progressEl.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
+    updateTimer();
     if (progressEl) {
-      const win = Number(state.progress || 0) >= TARGET_PERCENT;
-      progressEl.classList.toggle('paint-progress-win', win);
+      progressEl.textContent = `Закрашено: ${Number(state.progress || 0).toFixed(1)}%`;
+      progressEl.classList.toggle('paint-progress-win', Number(state.progress || 0) >= TARGET_PERCENT);
     }
   }
 
   function resizeCanvasToViewport() {
     const canvas = getCanvas();
     if (!canvas) return;
-
-    const width = Math.max(320, window.innerWidth);
-    const height = Math.max(420, window.innerHeight - 120);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-
-    // внутренний размер фиксирован для всех клиентов => одинаковая геометрия/прогресс
+    canvas.style.width = `${Math.max(320, window.innerWidth)}px`;
+    canvas.style.height = `${Math.max(420, window.innerHeight - 120)}px`;
     canvas.width = WORLD_WIDTH;
     canvas.height = WORLD_HEIGHT;
-    redrawStrokes();
   }
 
   function openEventOverlay() {
@@ -160,7 +85,6 @@
     if (overlay) overlay.style.display = 'flex';
     document.body.classList.add('event-mode');
     resizeCanvasToViewport();
-    redrawStrokes();
   }
 
   function closeEventOverlay() {
@@ -169,19 +93,26 @@
     document.body.classList.remove('event-mode');
   }
 
-  function setCanvasLocked(isLocked) {
-    const canvas = getCanvas();
-    if (!canvas) return;
-    if (isLocked) {
-      drawing = false;
-      canvas.style.pointerEvents = 'none';
-      canvas.style.opacity = '0.75';
-      canvas.dataset.locked = '1';
-      return;
+  function randomColorForUser(uid) {
+    const n = (uid || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    return `hsl(${(n * 57) % 360}, 85%, 55%)`;
+  }
+
+  async function ensureMyColor() {
+    if (myColor) return myColor;
+    const uid = getUserId();
+    if (!uid) return '#ff4fa3';
+    const db = await getDbReady();
+    const ref = db.ref(`${EVENT_PATH}/colors/${uid}`);
+    const snap = await ref.once('value');
+    if (snap.exists()) {
+      myColor = String(snap.val());
+      return myColor;
     }
-    canvas.style.pointerEvents = 'auto';
-    canvas.style.opacity = '1';
-    delete canvas.dataset.locked;
+    const c = randomColorForUser(uid);
+    await ref.set(c);
+    myColor = c;
+    return c;
   }
 
   function toWorldPoint(evt) {
@@ -197,107 +128,47 @@
   }
 
   async function registerParticipant() {
-    const myId = localStorage.getItem('userId');
-    if (!myId || participantMarked) return;
-    participantMarked = true;
+    const uid = getUserId();
+    if (!uid) return;
     const db = await getDbReady();
-    await db.ref('current_event/participants/' + myId).set(true);
+    await db.ref(`${EVENT_PATH}/participants/${uid}`).set(true);
   }
 
-  async function startDrawing(evt) {
-    if (state.status !== STATUS_ACTIVE || finishing) return;
-    evt.preventDefault();
-    const p = toWorldPoint(evt);
-    drawing = true;
-    lastPoint = p;
-    registerParticipant().catch(() => {});
-    const color = await ensureMyColor();
-    pushStroke(p.x, p.y, p.x, p.y, color).catch(() => {});
-    const percent = Number(computeProgressPercent().toFixed(2));
-    state.progress = percent;
-    updateOverlayUi();
-    checkEventStatus(percent).catch(() => {});
-  }
-
-  async function draw(evt) {
-    if (!drawing || state.status !== STATUS_ACTIVE || finishing) return;
-    evt.preventDefault();
-    const p = toWorldPoint(evt);
-    const from = lastPoint;
-    lastPoint = p;
-    const color = await ensureMyColor();
-    pushStroke(from.x, from.y, p.x, p.y, color).catch(() => {});
-    const percent = Number(computeProgressPercent().toFixed(2));
-    state.progress = percent;
-    updateOverlayUi();
-    checkEventStatus(percent).catch(() => {});
-  }
-
-  function stopDrawing() {
-    drawing = false;
-  }
-
-  function bindCanvasEvents() {
+  async function persistCanvasState() {
     const canvas = getCanvas();
-    if (!canvas || canvas.dataset.bound === '1') return;
-    canvas.dataset.bound = '1';
-
-    canvas.addEventListener('touchstart', startDrawing, { passive: false });
-    canvas.addEventListener('touchmove', draw, { passive: false });
-    canvas.addEventListener('touchend', stopDrawing);
-    canvas.addEventListener('touchcancel', stopDrawing);
-
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseleave', stopDrawing);
+    if (!canvas) return;
+    const db = await getDbReady();
+    const data = canvas.toDataURL('image/png');
+    await db.ref(`${EVENT_PATH}/canvas_data`).set(data);
   }
 
-  async function pushStroke(x1, y1, x2, y2, color) {
-    if (!strokesRef) return;
-    await strokesRef.push({ x1, y1, x2, y2, size: BRUSH_SIZE, color: color || '#ff4fa3', uid: getUserId(), at: Date.now() });
-  }
-
-  function redrawStrokes() {
-    const canvas = getCanvas();
+  function drawLine(x1, y1, x2, y2, color) {
     const ctx = getCtx();
-    if (!canvas || !ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    Object.values(strokeMap).forEach((s) => {
-      ctx.beginPath();
-      const x1 = Number(s.x1) || 0;
-      const y1 = Number(s.y1) || 0;
-      const x2 = Number(s.x2) || 0;
-      const y2 = Number(s.y2) || 0;
-      const size = Number(s.size) || BRUSH_SIZE;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = size;
-      ctx.strokeStyle = s.color || '#ff4fa3';
-      if (Math.abs(x1 - x2) < 0.001 && Math.abs(y1 - y2) < 0.001) {
-        ctx.beginPath();
-        ctx.fillStyle = s.color || '#ff4fa3';
-        ctx.arc(x1, y1, size / 2, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-    });
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = BRUSH_SIZE;
+    ctx.strokeStyle = color || '#ff4fa3';
+    if (Math.abs(x1 - x2) < 0.001 && Math.abs(y1 - y2) < 0.001) {
+      ctx.fillStyle = color || '#ff4fa3';
+      ctx.arc(x1, y1, BRUSH_SIZE / 2, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
   }
 
   function computeProgressPercent() {
     const canvas = getCanvas();
     const ctx = getCtx();
     if (!canvas || !ctx) return 0;
-
     const step = 4;
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     let total = 0;
     let painted = 0;
-
     for (let y = 0; y < canvas.height; y += step) {
       for (let x = 0; x < canvas.width; x += step) {
         total += 1;
@@ -305,66 +176,92 @@
         if (img[i + 3] > 0) painted += 1;
       }
     }
-
     return total ? (painted / total) * 100 : 0;
   }
 
-  async function checkEventStatus(progress) {
-    if (state.status !== STATUS_ACTIVE || state.type !== EVENT_TYPE) return;
-    const eventEndTime = Number(state.end_timestamp || 0);
-    const currentProgress = Number.isFinite(Number(progress)) ? Number(progress) : Number(state.progress || 0);
-    if (currentProgress >= TARGET_PERCENT) {
-      await rewardAllParticipants();
+  async function syncProgressAndMaybeFinish() {
+    if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
+    const db = await getDbReady();
+    const percent = Number(computeProgressPercent().toFixed(2));
+    state.progress = percent;
+    updateOverlayUi();
+    await db.ref(`${EVENT_PATH}/progress`).set(percent);
+    if (percent >= TARGET_PERCENT) await finalizeEventWithRewards();
+  }
+
+  async function startDrawing(evt) {
+    if (state.status !== ACTIVE_STATUS || finishing) return;
+    evt.preventDefault();
+    drawing = true;
+    lastPoint = toWorldPoint(evt);
+    await registerParticipant();
+    const color = await ensureMyColor();
+    drawLine(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y, color);
+    await persistCanvasState();
+    await syncProgressAndMaybeFinish();
+  }
+
+  async function draw(evt) {
+    if (!drawing || state.status !== ACTIVE_STATUS || finishing) return;
+    evt.preventDefault();
+    const p = toWorldPoint(evt);
+    const from = lastPoint;
+    lastPoint = p;
+    const color = await ensureMyColor();
+    drawLine(from.x, from.y, p.x, p.y, color);
+    await persistCanvasState();
+    await syncProgressAndMaybeFinish();
+  }
+
+  function stopDrawing() { drawing = false; }
+
+  function bindCanvasEvents() {
+    const canvas = getCanvas();
+    if (!canvas || canvas.dataset.bound === '1') return;
+    canvas.dataset.bound = '1';
+    canvas.addEventListener('touchstart', startDrawing, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchcancel', stopDrawing);
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseleave', stopDrawing);
+  }
+
+  function showNotification() {
+    const box = $('event-notification');
+    if (!box) return;
+    if (state.status === ACTIVE_STATUS && state.type === EVENT_TYPE) {
+      box.style.display = 'block';
+      box.classList.add('event-notification-pink');
+      box.innerHTML = '<div class="event-notification-text">✨🎨 Начался ивент: Эпичный раскрас!</div><button id="btn-join-event" class="event-notification-join">Присоединиться</button>';
+      const btn = $('btn-join-event');
+      if (btn) btn.onclick = () => openEventOverlay();
       return;
     }
-    if (eventEndTime > 0 && Date.now() >= eventEndTime) {
-      await rewardAllParticipants();
-    }
+    box.style.display = 'none';
+    box.classList.remove('event-notification-pink');
+    box.innerHTML = '';
   }
 
   async function rewardAllParticipants() {
     const db = await getDbReady();
-    const statusTx = await db.ref('current_event/status').transaction((status) => {
-      if (String(status || '') === 'finished') return;
-      return 'finished';
+    const tx = await db.ref(`${EVENT_PATH}/status`).transaction((v) => {
+      if (String(v || '') === FINISHED_STATUS) return;
+      return FINISHED_STATUS;
     });
-    if (!statusTx.committed) return;
+    if (!tx.committed) return;
 
-    setCanvasLocked(true);
-
-    const box = $('event-notification');
-    if (box) {
-      box.style.display = 'block';
-      box.classList.add('event-notification-pink');
-      box.innerHTML = `<div class="event-notification-text" style="margin:0; color:#d81b60;">✨ Ивент завершен! Начисляем 2 билета участникам...</div>`;
-    }
-
-    const snapshot = await db.ref('current_event/participants').once('value');
-    const participants = snapshot.val() || {};
-    const participantIds = Object.keys(participants);
-
-    const rewardResults = [];
-    for (const userId of participantIds) {
+    const participantsSnap = await db.ref(`${EVENT_PATH}/participants`).once('value');
+    const participants = participantsSnap.val() || {};
+    for (const uid of Object.keys(participants)) {
       try {
-        const ticketResult = await window.createTicket(userId, 2, 'Ивент');
-
-        const ok = !!ticketResult;
-        rewardResults.push({ userId, ok, result: ticketResult || null });
-        if (!ok) {
-          console.error('Билеты не начислились участнику ивента:', userId);
-        }
-      } catch (err) {
-        rewardResults.push({ userId, ok: false, error: err });
-        console.error('Не удалось выдать награду участнику ивента:', userId, err);
-    const failedRewards = rewardResults.filter((row) => !row.ok);
-    if (failedRewards.length) {
-      console.error('Выдача наград завершилась с ошибками:', failedRewards);
+        await window.createTicket(uid, 2, 'Ивент');
+      } catch (e) {
+        console.error('Ticket reward failed for user:', uid, e);
+      }
     }
-
-    setTimeout(() => {
-      clearEventUi();
-      closeEventOverlay();
-    }, 5000);
   }
 
   async function finalizeEventWithRewards() {
@@ -372,66 +269,38 @@
     finishing = true;
     try {
       await rewardAllParticipants();
-    } catch (err) {
-      console.error('Ошибка завершения ивента:', err);
     } finally {
       finishing = false;
     }
   }
 
-  async function syncProgressAndCheckFinish() {
-    if (state.status !== STATUS_ACTIVE || state.type !== EVENT_TYPE) return;
-    try {
-      const db = await getDbReady();
-      const percent = Number(computeProgressPercent().toFixed(2));
-      const visiblePercent = Number(percent.toFixed(1));
-      state.progress = percent;
-      updateOverlayUi();
-      await db.ref(`${EVENT_PATH}/progress`).set({ percent, updated_at: Date.now() });
-      await checkEventStatus(percent);
-    } catch (err) {
-      console.error('Ошибка синхронизации прогресса:', err);
-    }
+  function applyCanvasData(dataUrl) {
+    const canvas = getCanvas();
+    const ctx = getCtx();
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!dataUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = dataUrl;
   }
 
   async function attachListeners() {
     const db = await getDbReady();
-
     if (eventRef) eventRef.off();
-    if (strokesRef) strokesRef.off();
-    if (progressRef) progressRef.off();
 
     eventRef = db.ref(EVENT_PATH);
     eventRef.on('value', (snap) => {
-      const prevStatus = state.status;
       state = normalizeEvent(snap.val());
-      if (!snap.exists()) {
-        clearEventUi();
-        return;
-      }
-      if (prevStatus !== STATUS_ACTIVE && state.status === STATUS_ACTIVE) {
-        myColor = null;
-        participantMarked = false;
-      }
       showNotification();
       updateOverlayUi();
     });
 
-    strokesRef = db.ref(`${EVENT_PATH}/strokes`);
-    strokesRef.on('value', (snap) => {
-      strokeMap = snap.val() || {};
-      redrawStrokes();
-    });
-
-    progressRef = db.ref(`${EVENT_PATH}/progress/percent`);
-    progressRef.on('value', (snap) => {
-      const sharedPercent = Number(snap.val());
-      if (Number.isFinite(sharedPercent)) {
-        state.progress = sharedPercent;
-        updateOverlayUi();
-        checkEventStatus(sharedPercent).catch(() => {});
-
-      }
+    db.ref(`${EVENT_PATH}/canvas_data`).on('value', (snap) => {
+      applyCanvasData(snap.val() || '');
     });
   }
 
@@ -450,12 +319,8 @@
 
       if (timerHandle) clearInterval(timerHandle);
       timerHandle = setInterval(() => {
-        updateOverlayUi();
-        checkEventStatus(state.progress).catch(() => {});
+        updateTimer();
       }, 1000);
-
-      if (progressHandle) clearInterval(progressHandle);
-      progressHandle = setInterval(syncProgressAndCheckFinish, 5000);
 
       window.addEventListener('resize', resizeCanvasToViewport);
       window.addEventListener('orientationchange', resizeCanvasToViewport);
@@ -464,34 +329,20 @@
     }
   }
 
-  function resolveEpicPaintDurationMins(durationMins) {
-    const fromArg = Number(durationMins);
-    if (Number.isFinite(fromArg) && fromArg >= 1) return Math.max(1, Math.round(fromArg));
-    const fromInput = Number(document.getElementById('event-duration-mins')?.value || 0);
-    if (Number.isFinite(fromInput) && fromInput >= 1) return Math.max(1, Math.round(fromInput));
-    return 10;
-  }
-
-  async function adminLaunchEpicPaintEvent(durationMins) {
+  async function adminLaunchEpicPaintEvent() {
     try {
       const db = await getDbReady();
       if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
-      const mins = resolveEpicPaintDurationMins(durationMins);
       await db.ref(EVENT_PATH).set({
+        status: ACTIVE_STATUS,
         type: EVENT_TYPE,
-        status: STATUS_ACTIVE,
-        end_timestamp: Date.now() + mins * 60000,
-        participants: {},
-        colors: {},
-        strokes: {},
-        progress: { percent: 0 }
+        endTime: Date.now() + 600000
       });
     } catch (err) {
       console.error('adminLaunchEpicPaintEvent failed:', err);
     }
   }
 
-  // exports / compatibility
   window.initEventSystem = initEventSystem;
   window.syncGameEvents = initEventSystem;
   window.initEvents = initEventSystem;
@@ -505,11 +356,4 @@
   window.stopDrawing = stopDrawing;
   window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
   window.adminScheduleEvent = adminLaunchEpicPaintEvent;
-
-  // compatibility no-op
-  window.activateScheduledEventIfNeeded = async function () {};
-  window.maybeFinalizeCompletedEventByEndTime = async function () {};
-  window.failExpiredEventIfNeeded = async function () {};
-  window.dismissEpicPaintStartAlert = async function () { openEventOverlay(); };
-  window.chooseRoundInsteadOfEvent = function () { closeEventOverlay(); };
 })();
