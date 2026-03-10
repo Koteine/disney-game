@@ -126,11 +126,11 @@
             margin: 0 auto 10px;
             border-radius: 20px;
             overflow: hidden;
-            border: 1px solid rgba(255, 215, 120, 0.35);
-            background: radial-gradient(circle at 20% 20%, rgba(46, 77, 170, 0.25), transparent 40%), radial-gradient(circle at 80% 30%, rgba(123, 52, 175, 0.2), transparent 42%), linear-gradient(180deg, #010104 0%, #020512 45%, #010205 100%);
-            background-size: 140% 140%, 130% 130%, 100% 100%;
-            animation: magicSkyShift 14s ease-in-out infinite alternate;
-            box-shadow: inset 0 0 55px rgba(114, 169, 255, 0.12), inset 0 -18px 40px rgba(0, 0, 0, 0.56), 0 16px 38px rgba(0,0,0,0.45);
+            border: 1px solid rgba(255, 226, 145, 0.35);
+            background: radial-gradient(circle at 15% 20%, rgba(52, 88, 198, 0.33), transparent 40%), radial-gradient(circle at 85% 25%, rgba(117, 62, 188, 0.28), transparent 44%), linear-gradient(180deg, #01020a 0%, #03081b 48%, #01020a 100%);
+            background-size: 140% 140%, 150% 150%, 100% 100%;
+            animation: magicSkyShift 16s ease-in-out infinite alternate;
+            box-shadow: inset 0 0 65px rgba(122, 170, 255, 0.18), inset 0 -18px 40px rgba(0, 0, 0, 0.56), 0 16px 38px rgba(0,0,0,0.45);
         }
         .magic-cards-stage {
             position: relative;
@@ -139,27 +139,60 @@
             perspective: 1400px;
             isolation: isolate;
         }
+        .magic-cards-stage::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-image:
+                radial-gradient(2px 2px at 12% 18%, rgba(255,255,255,.7) 95%, transparent),
+                radial-gradient(1.4px 1.4px at 24% 62%, rgba(255,249,212,.64) 95%, transparent),
+                radial-gradient(1.8px 1.8px at 44% 16%, rgba(192,223,255,.72) 95%, transparent),
+                radial-gradient(1.3px 1.3px at 66% 38%, rgba(255,255,255,.62) 95%, transparent),
+                radial-gradient(1.7px 1.7px at 80% 70%, rgba(248,237,203,.66) 95%, transparent),
+                radial-gradient(1.5px 1.5px at 92% 28%, rgba(196,211,255,.58) 95%, transparent);
+            animation: twinkleBackdrop 4.5s ease-in-out infinite;
+            pointer-events: none;
+        }
         .magic-ticket-star {
             position: absolute;
             left: 0;
             top: 0;
-            width: clamp(22px, 5.4vw, 34px);
-            height: clamp(22px, 5.4vw, 34px);
+            width: var(--star-size, clamp(26px, 5.6vw, 34px));
+            height: var(--star-size, clamp(26px, 5.6vw, 34px));
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #fff9d6;
-            font-size: 9px;
-            font-weight: 700;
             text-shadow: 0 0 8px rgba(255, 235, 171, 0.75);
-            background: radial-gradient(circle at 40% 35%, rgba(255,255,255,0.95), rgba(255,236,179,0.72) 48%, rgba(255,208,100,0.4) 68%, rgba(255,208,100,0));
-            clip-path: polygon(50% 0%, 60% 34%, 95% 34%, 67% 55%, 77% 90%, 50% 70%, 23% 90%, 33% 55%, 5% 34%, 40% 34%);
+            background: radial-gradient(circle at 44% 35%, rgba(255,255,255,0.98) 0 26%, rgba(255,242,205,.9) 27% 42%, rgba(255,212,120,.48) 62%, rgba(255,208,100,0) 100%);
+            clip-path: polygon(50% 0%, 62% 32%, 98% 32%, 68% 54%, 79% 94%, 50% 72%, 21% 94%, 32% 54%, 2% 32%, 38% 32%);
             opacity: var(--so, 0.8);
             animation: twinkle var(--tw, 3s) ease-in-out infinite;
             pointer-events: none;
             z-index: 1;
-            transition: transform 900ms cubic-bezier(.2,.8,.2,1), opacity 700ms ease;
+            transition: transform 900ms cubic-bezier(.2,.8,.2,1), opacity 700ms ease, filter 700ms ease;
             will-change: transform, opacity;
+        }
+        .magic-ticket-star .ticket-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 54%;
+            min-height: 54%;
+            border-radius: 999px;
+            padding: 2px;
+            color: #1b1232;
+            font-weight: 900;
+            font-size: clamp(10px, 2.4vw, 14px);
+            line-height: 1;
+            letter-spacing: 0.1px;
+            background: rgba(255, 255, 255, 0.88);
+            box-shadow: 0 0 8px rgba(255,255,255,.5), inset 0 0 3px rgba(255,213,135,.75);
+        }
+        .magic-ticket-star.size-2 { --star-size: clamp(32px, 7vw, 42px); }
+        .magic-ticket-star.size-3 {
+            --star-size: clamp(38px, 8vw, 50px);
+            filter: drop-shadow(0 0 15px #fff);
         }
         .magic-ticket-star.is-converging {
             opacity: 0;
@@ -251,6 +284,10 @@
         @keyframes twinkle {
             0%, 100% { opacity: calc(var(--so, 0.5) * 0.65); }
             50% { opacity: var(--so, 0.5); }
+        }
+        @keyframes twinkleBackdrop {
+            0%, 100% { opacity: 0.65; }
+            50% { opacity: 1; }
         }
         @keyframes sparkle-burst {
             0% { transform: translate(0,0) scale(0.4); opacity: 1; }
