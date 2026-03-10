@@ -2185,30 +2185,24 @@
         }
 
         async function failExpiredEventIfNeeded() {
+            const nowMs = typeof getServerNowMs === 'function' ? getServerNowMs() : Date.now();
             const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id));
             if (!active?.key) return;
-            if (Date.now() < (active.endAt || 0)) return;
+            if (nowMs < (active.endAt || 0)) return;
 
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
                 if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
-                if (Date.now() < (ev.endAt || 0)) return ev;
-                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: '🚫 Время вышло: Мушу остался голодным О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫' };
+                if (nowMs < (ev.endAt || 0)) return ev;
+                return { ...ev, status: 'failed', failedAt: nowMs, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' };
             });
             if (tx.committed) {
                 if (active.id === MUSHU_EVENT_ID) {
-                    const failedAt = Date.now();
-                    await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло: Мушу остался голодным О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫' });
+                    const failedAt = nowMs;
+                    await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' });
                     const failedLogTx = await db.ref('mushu_event/feed_result_posted/failed').transaction((v) => v || { at: failedAt, eventId: String(active.activatedAt || active.startAt || failedAt) });
-                    if (failedLogTx.committed) await db.ref('events/feed').push({
-                        type: MUSHU_EVENT_ID,
-                        eventId: String(active.activatedAt || active.startAt || failedAt),
-                        status: 'failed',
-                        title: '🚫 Время вышло: Мушу остался голодным',
-                        text: 'О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫',
-                        createdAt: failedAt
-                    });
+                    if (failedLogTx.committed) await postNews('🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟');
                 } else {
-                    await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
+                    await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
                 }
             }
         }
@@ -4659,9 +4653,9 @@
           ];
           const GOLDEN_CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 6 };
           const SUCCESS_TITLE = '✨ Мушу сыт и доволен!';
-          const SUCCESS_TEXT = 'Р-р-рар! Мушу наелся! Магия активирована! 🐲✨';
-          const FAILED_TITLE = '🚫 Время вышло: Мушу остался голодным';
-          const FAILED_TEXT = 'О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫';
+          const SUCCESS_TEXT = 'Р-р-рар! Игроки накормили дракончика, магия активирована! 🐲';
+          const FAILED_TITLE = '🚫 Время вышло.';
+          const FAILED_TEXT = 'Мушу остался голодным и ушел ворчать в свой храм... 🥟';
 
           let mushuRef = null;
           let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
@@ -4670,9 +4664,12 @@
           let dragState = null;
           let statusToastShown = '';
           let lastFeedResultLogged = '';
+          let mushuServerOffsetMs = 0;
+          let mushuOffsetRef = null;
 
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || currentUserId || '').trim();
+          const getNow = () => Date.now() + (Number(mushuServerOffsetMs) || 0);
           const isActive = () => String(mushuState.status || '') === 'active';
           const isKnownFruitId = (id) => id === GOLDEN_CUPCAKE.id || FRUITS.some((fruit) => fruit.id === id);
           const resolveFruitIdFromEntry = (entry) => {
@@ -4705,7 +4702,7 @@
             if (!fruitId) return null;
             if (fruitId === GOLDEN_CUPCAKE.id) {
               const pickedAt = Number(personal?.pickedAt || 0);
-              const graceLeft = Math.max(0, GOLDEN_CUPCAKE_GRACE_MS - (Date.now() - pickedAt));
+              const graceLeft = Math.max(0, GOLDEN_CUPCAKE_GRACE_MS - (getNow() - pickedAt));
               if (pickedAt > 0 && graceLeft === 0) return { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
               return { ...GOLDEN_CUPCAKE, graceLeftMs: graceLeft };
             }
@@ -4895,7 +4892,7 @@
           function startEventTimer() {
             if (timerId) clearInterval(timerId);
             timerId = setInterval(() => {
-              const left = Math.max(0, Number(mushuState.endAt || 0) - Date.now());
+              const left = Math.max(0, Number(mushuState.endAt || 0) - getNow());
               const mm = String(Math.floor(left / 60000)).padStart(2, '0');
               const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
               const timeText = $('mushu-time-left');
@@ -4928,7 +4925,7 @@
             const eventId = getMushuEventRuntimeId();
             const logKey = `${status}:${eventId}`;
             if (lastFeedResultLogged === logKey) return;
-            const logTx = await db.ref(`${EVENT_PATH}/feed_result_posted/${status}`).transaction((v) => v || { at: Date.now(), eventId });
+            const logTx = await db.ref(`${EVENT_PATH}/feed_result_posted/${status}`).transaction((v) => v || { at: getNow(), eventId });
             if (!logTx.committed) {
               lastFeedResultLogged = logKey;
               return;
@@ -4936,13 +4933,18 @@
             const payload = status === 'completed'
               ? { title: SUCCESS_TITLE, text: SUCCESS_TEXT }
               : { title: FAILED_TITLE, text: FAILED_TEXT };
+            const feedText = `${payload.title} ${payload.text}`;
+            await db.ref('news_feed').push({
+              text: feedText,
+              createdAt: getNow()
+            });
             await db.ref('events/feed').push({
               type: MUSHU_EVENT_ID,
               eventId,
               status,
               title: payload.title,
               text: payload.text,
-              createdAt: Date.now()
+              createdAt: getNow()
             });
             lastFeedResultLogged = logKey;
           }
@@ -4953,21 +4955,8 @@
             if (statusToastShown === status) return;
             const me = uid();
             if (!me) return;
-            const db = await ensureDb();
-            const eventId = getMushuEventRuntimeId();
-            const seenRef = db.ref(`users/${me}/seenMushuFinal`);
-            const tx = await seenRef.transaction((v) => v || true);
-            if (!tx.committed) {
-              statusToastShown = status;
-              return;
-            }
             statusToastShown = status;
             closeMushuOverlay();
-            const title = status === 'completed' ? SUCCESS_TITLE : FAILED_TITLE;
-            const text = status === 'completed' ? SUCCESS_TEXT : FAILED_TEXT;
-            alert(`${title}
-
-${text}`);
           }
 
           function spawnEatSpark() {
@@ -5033,7 +5022,7 @@ ${text}`);
 
             await db.ref(`${EVENT_PATH}/participants/${me}`).update({ joinedAt: Date.now(), fed: true, item: mushuState.participants?.[me]?.item || mushuState.personal_fruits?.[me] || { id: fruit.id } });
             const baseSatiety = Number(fruit.satiety || 1);
-            const now = Date.now();
+            const now = getNow();
             await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: fruit.id, satiety: baseSatiety, at: now });
             await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + baseSatiety);
             await applyComboBonus(db, now);
@@ -5046,7 +5035,7 @@ ${text}`);
             const evSnap = await db.ref(EVENT_PATH).once('value');
             const ev = evSnap.val() || {};
             if (String(ev.status || '') !== 'active') return;
-            const left = Math.max(0, Number(ev.endAt || 0) - Date.now());
+            const left = Math.max(0, Number(ev.endAt || 0) - getNow());
             if (left > 0) return;
 
             const success = Number(ev.current_satiety || 0) >= Number(ev.target || 1);
@@ -5054,7 +5043,7 @@ ${text}`);
             const tx = await db.ref(`${EVENT_PATH}/status`).transaction((v) => v === 'active' ? nextStatus : v);
             if (!tx.committed) return;
 
-            const now = Date.now();
+            const now = getNow();
             if (success) {
               const participants = ev.participants || {};
               const rewards = {};
@@ -5090,13 +5079,13 @@ ${text}`);
             const rewards = {};
             Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
             await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
-            await db.ref(`${EVENT_PATH}/completedAt`).set(Date.now());
+            await db.ref(`${EVENT_PATH}/completedAt`).set(getNow());
             await db.ref(`${EVENT_PATH}/resultText`).set(`${SUCCESS_TITLE} ${SUCCESS_TEXT}`);
             await pushMushuResultToFeed(db, 'completed');
 
             const activeKey = await findActiveMushuGameEventKey(db);
             if (activeKey) {
-              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({ status: 'completed', completedAt: Date.now(), resultText: SUCCESS_TEXT });
+              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({ status: 'completed', completedAt: getNow(), resultText: SUCCESS_TEXT });
             }
           }
 
@@ -5124,6 +5113,11 @@ ${text}`);
           async function attachMushuListeners() {
             ensureMushuUi();
             const db = await ensureDb();
+            if (mushuOffsetRef) mushuOffsetRef.off();
+            mushuOffsetRef = db.ref('.info/serverTimeOffset');
+            mushuOffsetRef.on('value', (snap) => {
+              mushuServerOffsetMs = Number(snap.val()) || 0;
+            });
             if (mushuRef) mushuRef.off();
             mushuRef = db.ref(EVENT_PATH);
             mushuRef.on('value', async (snap) => {
