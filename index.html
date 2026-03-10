@@ -71,7 +71,7 @@
        <div id="tab-tickets" class="tab-content">
     <h1>👤 Профиль</h1>
     <div id="profile-admin-mode" class="works-card" style="margin-bottom:8px; text-align:center; display:none;">
-        <div style="font-weight:800; font-size:16px; color:#6a1b9a;">Режим Администратора: Управление системой</div>
+        <div style="font-weight:800; font-size:16px; color:#6a1b9a;">Режим Администратора. Доступ к игровым механикам ограничен</div>
     </div>
     <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
         <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
@@ -250,8 +250,12 @@
                     </div>
 
                     <div class="works-card" style="margin:8px 0;">
-                        <b>🗂 Архив билетов</b>
-                        <div style="font-size:11px; color:#666; margin-top:4px;">Серый — вычеркнут, белый — свободен. Нажми на вычеркнутый билет, чтобы увидеть детали.</div>
+                        <b>🗂 Архив билетов · Умный поиск</b>
+                        <div style="display:flex; gap:6px; margin-top:8px;">
+                            <input type="number" id="admin-ticket-search-input" placeholder="Введите номер билета" class="admin-input" style="margin:0;">
+                            <button onclick="runAdminTicketArchiveSearch()" class="admin-btn" style="margin:0; white-space:nowrap; background:#5e35b1;">Найти информацию</button>
+                        </div>
+                        <div id="admin-ticket-archive-search-result" style="margin-top:8px;"></div>
                         <div id="admin-ticket-archive-grid" style="margin-top:8px; display:grid; grid-template-columns:repeat(auto-fill, minmax(46px, 1fr)); gap:6px;"></div>
                     </div>
 
@@ -1382,6 +1386,7 @@
         }
 
         async function submitWork() {
+            if (Number(currentUserId) === Number(ADMIN_ID)) return alert('Режим администратора: сдача работ недоступна.');
             const select = document.getElementById('work-task-select');
             const beforeInput = document.getElementById('work-image-before-input');
             const afterInput = document.getElementById('work-image-after-input');
@@ -3465,6 +3470,7 @@
         async function adminGrantTicketsToPlayer() {
             if (currentUserId !== ADMIN_ID) return;
             const userId = (document.getElementById('admin-grant-ticket-user-id')?.value || '').trim();
+            if (Number(userId) === Number(ADMIN_ID)) return alert('Администратор не участвует в сезоне и не может получать билеты.');
             const count = Math.max(1, Number(document.getElementById('admin-grant-ticket-count')?.value || 1));
             const note = (document.getElementById('admin-grant-ticket-note')?.value || '').trim();
             if (!userId) return alert('Укажи Telegram ID игрока.');
@@ -4336,16 +4342,10 @@
                     const key = String(i);
                     const row = byNum.get(key);
                     const isUsed = !!(row && (row.isRevoked || row.excluded));
-                    const ownerName = players[row?.owner]?.n || 'Неизвестный';
-                    const usedTs = Number(row?.updatedAt || row?.revokedAt || row?.archivedAt || row?.ts || row?.createdAt || 0);
-                    const usedDate = usedTs ? new Date(usedTs).toLocaleString('ru-RU') : 'дата неизвестна';
-                    const tooltip = isUsed ? `Использовал: ${ownerName} | ${usedDate}` : '';
                     html.push(`
                         <button
-                            onclick="showTicketArchiveTooltip('${key}')"
                             data-ticket-num="${key}"
-                            data-tooltip="${tooltip.replace(/"/g, '&quot;')}"
-                            style="height:32px; border-radius:8px; border:1px solid ${isUsed ? '#bdbdbd' : '#e0e0e0'}; background:${isUsed ? '#e0e0e0' : '#fff'}; color:#333; font-size:11px; padding:0; text-decoration:${isUsed ? 'line-through' : 'none'};"
+                            style="height:32px; border-radius:8px; border:1px solid ${isUsed ? '#ef9a9a' : '#e0e0e0'}; background:${isUsed ? '#ffebee' : '#fff'}; color:${isUsed ? '#b71c1c' : '#333'}; font-size:11px; padding:0; text-decoration:${isUsed ? 'line-through' : 'none'};"
                         >${key}</button>
                     `);
                 }
@@ -4378,6 +4378,50 @@
                 bubble.style.top = `${Math.max(8, r.top - 42)}px`;
                 document.body.appendChild(bubble);
                 setTimeout(() => bubble.remove(), 2200);
+            }
+
+
+            function formatTicketArchiveHistoryDate(ts) {
+                const value = Number(ts || 0);
+                if (!value) return '—';
+                return new Date(value).toLocaleString('ru-RU');
+            }
+
+            function runAdminTicketArchiveSearch() {
+                if (currentUserId !== ADMIN_ID) return;
+                const input = String(document.getElementById('admin-ticket-search-input')?.value || '').trim();
+                const resultEl = document.getElementById('admin-ticket-archive-search-result');
+                if (!resultEl) return;
+                if (!/^\d+$/.test(input)) {
+                    resultEl.innerHTML = '<div style="font-size:12px; color:#666;">Введите корректный номер билета (только цифры).</div>';
+                    return;
+                }
+
+                const row = expandTicketsRows(allTicketsData).find(t => String(t.ticketNum) === input);
+                if (!row) {
+                    resultEl.innerHTML = `<div style="font-size:12px; color:#888;">Билет №${input} не найден в архиве текущей сессии.</div>`;
+                    return;
+                }
+
+                const ownerName = players[row.owner]?.n || 'Неизвестный игрок';
+                const ownerId = String(row.userId || '—');
+                const status = (row.excluded || row.isRevoked) ? 'Вычеркнут' : 'В игре';
+                const grantedAt = Number(row.createdAt || row.ts || row.archivedAt || 0);
+                const revokedAt = Number(row.updatedAt || row.revokedAt || row.archivedAt || 0);
+                const reason = row.isManualRevoke ? 'Сдан админу' : ((row.excluded || row.isRevoked) ? 'Сгорел на выставке' : '—');
+
+                resultEl.innerHTML = `
+                    <div style="border:1px solid #e1bee7; border-radius:12px; padding:10px; background:#faf7ff; text-align:left;">
+                        <div style="font-size:13px; margin-bottom:6px;"><b>🎟 Билет №${row.ticketNum}</b></div>
+                        <div style="font-size:12px; margin-bottom:4px;"><b>Статус:</b> ${status}</div>
+                        <div style="font-size:12px; margin-bottom:6px;"><b>Владелец:</b> ${ownerName} (ID: ${ownerId})</div>
+                        <div style="font-size:12px;"><b>История:</b></div>
+                        <ul style="margin:4px 0 0 16px; padding:0; font-size:12px; line-height:1.4;">
+                            <li>Получен: ${formatTicketArchiveHistoryDate(grantedAt)} за задание ${row.taskIdx ?? '—'}</li>
+                            <li>Вычеркнут: ${(row.excluded || row.isRevoked) ? formatTicketArchiveHistoryDate(revokedAt) : '—'} (Причина: ${(row.excluded || row.isRevoked) ? reason : '—'})</li>
+                        </ul>
+                    </div>
+                `;
             }
 
             function selectAdminTicketUser(userId) {
@@ -4468,6 +4512,7 @@
             window.selectAdminTicketUser = selectAdminTicketUser;
             window.openTicketTaskDetails = openTicketTaskDetails;
             window.showTicketArchiveTooltip = showTicketArchiveTooltip;
+            window.runAdminTicketArchiveSearch = runAdminTicketArchiveSearch;
         })();
         // END Tickets.js
 
@@ -6619,6 +6664,7 @@
         }
 
         async function submitWork() {
+            if (Number(currentUserId) === Number(ADMIN_ID)) return alert('Режим администратора: сдача работ недоступна.');
             const select = document.getElementById('work-task-select');
             const beforeInput = document.getElementById('work-image-before-input');
             const afterInput = document.getElementById('work-image-after-input');
@@ -6928,8 +6974,8 @@
                 return alert('Недостаточно билетиков для этого комплимента.');
             }
 
+            await db.ref(`player_season_status/${currentUserId}/karma_points`).transaction(v => (Number(v) || 0) + Number(cfg.points || 0));
             await db.ref(`player_season_status/${currentUserId}`).update({
-                karma_points: firebase.database.ServerValue.increment(cfg.points),
                 updatedAt: Date.now(),
                 lastGalleryComplimentAt: Date.now(),
                 lastGalleryComplimentType: String(type || ''),
