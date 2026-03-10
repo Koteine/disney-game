@@ -2158,7 +2158,7 @@
                             personalFruits[id] = { id: 'golden_cupcake', pickedAt: Date.now() };
                             return;
                         }
-                        const base = ['apple', 'cherry', 'pear', 'plum'][Math.floor(Math.random() * 4)];
+                        const base = ['apple', 'cherry', 'pear', 'peach'][Math.floor(Math.random() * 4)];
                         personalFruits[id] = { id: base };
                     });
                     await db.ref('mushu_event').set({
@@ -2192,18 +2192,19 @@
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
                 if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 if (Date.now() < (ev.endAt || 0)) return ev;
-                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: '🚫 Время вышло: Мушу остался голодным О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!' };
+                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: '🚫 Время вышло: Мушу остался голодным О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫' };
             });
             if (tx.committed) {
                 if (active.id === MUSHU_EVENT_ID) {
                     const failedAt = Date.now();
-                    await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло: Мушу остался голодным О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!' });
-                    await db.ref('events/feed').push({
+                    await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло: Мушу остался голодным О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫' });
+                    const failedLogTx = await db.ref('mushu_event/feed_result_posted/failed').transaction((v) => v || { at: failedAt, eventId: String(active.activatedAt || active.startAt || failedAt) });
+                    if (failedLogTx.committed) await db.ref('events/feed').push({
                         type: MUSHU_EVENT_ID,
                         eventId: String(active.activatedAt || active.startAt || failedAt),
                         status: 'failed',
                         title: '🚫 Время вышло: Мушу остался голодным',
-                        text: 'О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!',
+                        text: 'О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫',
                         createdAt: failedAt
                     });
                 } else {
@@ -4654,13 +4655,13 @@
             { id: 'apple', emoji: '🍎', label: 'Яблоко', satiety: 1 },
             { id: 'cherry', emoji: '🍒', label: 'Вишня', satiety: 1 },
             { id: 'pear', emoji: '🍐', label: 'Груша', satiety: 1 },
-            { id: 'plum', emoji: '🍑', label: 'Слива', satiety: 1 }
+            { id: 'peach', emoji: '🍑', label: 'Персик', satiety: 1 }
           ];
           const GOLDEN_CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 6 };
           const SUCCESS_TITLE = '✨ Мушу сыт и доволен!';
-          const SUCCESS_TEXT = 'Р-р-рар! Игроки накормили дракончика! Магия активирована, ждем следующего появления. Молодцы!';
+          const SUCCESS_TEXT = 'Р-р-рар! Мушу наелся! Магия активирована! 🐲✨';
           const FAILED_TITLE = '🚫 Время вышло: Мушу остался голодным';
-          const FAILED_TEXT = 'О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!';
+          const FAILED_TEXT = 'О нет! Мушу остался голодным и ушел ворчать в свой храм... 🥟🚫';
 
           let mushuRef = null;
           let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
@@ -4692,7 +4693,7 @@
           function getMyPersonalFruit() {
             const me = uid();
             if (!me) return null;
-            const personal = mushuState.personal_fruits?.[me] || null;
+            const personal = mushuState.personal_fruits?.[me] || mushuState.participants?.[me]?.item || null;
             if (!personal?.id) return null;
             if (personal.id === GOLDEN_CUPCAKE.id) {
               const pickedAt = Number(personal.pickedAt || 0);
@@ -4760,14 +4761,32 @@
 
           async function ensureMyFruitAssigned() {
             const me = uid();
-            if (!me || !isActive() || mushuState.personal_fruits?.[me]?.id) return getMyPersonalFruit();
-            const db = await ensureDb();
-            const base = FRUITS[Math.floor(Math.random() * FRUITS.length)] || FRUITS[0];
-            const tx = await db.ref(`${EVENT_PATH}/personal_fruits/${me}`).transaction((v) => v || { id: base.id });
-            if (tx.committed) {
-              mushuState.personal_fruits = mushuState.personal_fruits || {};
-              mushuState.personal_fruits[me] = tx.snapshot?.val() || { id: base.id };
+            if (!me || !isActive()) return getMyPersonalFruit();
+
+            const existing = mushuState.personal_fruits?.[me]?.id || mushuState.participants?.[me]?.item?.id;
+            if (existing) {
+              if (!mushuState.personal_fruits?.[me]?.id && mushuState.participants?.[me]?.item?.id) {
+                mushuState.personal_fruits = mushuState.personal_fruits || {};
+                mushuState.personal_fruits[me] = { ...mushuState.participants[me].item };
+              }
+              return getMyPersonalFruit();
             }
+
+            const db = await ensureDb();
+            const luckyUid = String(mushuState.lucky_cupcake_uid || '');
+            const fruitId = luckyUid && luckyUid === me
+              ? GOLDEN_CUPCAKE.id
+              : (FRUITS[Math.floor(Math.random() * FRUITS.length)] || FRUITS[0]).id;
+
+            const tx = await db.ref(`${EVENT_PATH}/participants/${me}/item`).transaction((v) => v || { id: fruitId, pickedAt: Date.now() });
+            const assigned = tx.snapshot?.val() || { id: fruitId, pickedAt: Date.now() };
+            await db.ref(`${EVENT_PATH}/personal_fruits/${me}`).transaction((v) => v || assigned);
+
+            mushuState.personal_fruits = mushuState.personal_fruits || {};
+            mushuState.personal_fruits[me] = assigned;
+            mushuState.participants = mushuState.participants || {};
+            mushuState.participants[me] = mushuState.participants[me] || {};
+            mushuState.participants[me].item = assigned;
             return getMyPersonalFruit();
           }
 
@@ -4852,6 +4871,7 @@
               if (burn) burn.style.width = `${pct}%`;
               if (timer) timer.classList.toggle('mushu-time-critical', left <= 60000);
               if (isActive() && localFruit?.id === GOLDEN_CUPCAKE.id) renderFruitPanel().catch((e) => console.error('renderFruitPanel failed', e));
+              if (left === 0) ensureDb().then((db) => finalizeMushuByTimer(db)).catch((e) => console.error('finalizeMushuByTimer failed', e));
             }, 1000);
           }
 
@@ -4899,8 +4919,7 @@
             if (!me) return;
             const db = await ensureDb();
             const eventId = getMushuEventRuntimeId();
-            const seenKey = `seenMushu_${eventId}`;
-            const seenRef = db.ref(`users/${me}/seenEvents/${seenKey}`);
+            const seenRef = db.ref(`users/${me}/seenMushuFinal`);
             const tx = await seenRef.transaction((v) => v || true);
             if (!tx.committed) {
               statusToastShown = status;
@@ -4976,7 +4995,7 @@ ${text}`);
             spawnEatSpark();
             setTimeout(() => dragon?.classList.remove('mushu-chew'), 1000);
 
-            await db.ref(`${EVENT_PATH}/participants/${me}`).set(true);
+            await db.ref(`${EVENT_PATH}/participants/${me}`).update({ joinedAt: Date.now(), fed: true, item: mushuState.participants?.[me]?.item || mushuState.personal_fruits?.[me] || { id: fruit.id } });
             const baseSatiety = Number(fruit.satiety || 1);
             const now = Date.now();
             await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: fruit.id, satiety: baseSatiety, at: now });
@@ -4984,6 +5003,43 @@ ${text}`);
             await applyComboBonus(db, now);
             await renderFruitPanel();
             await maybeFinalizeEvent(db);
+          }
+
+
+          async function finalizeMushuByTimer(db) {
+            const evSnap = await db.ref(EVENT_PATH).once('value');
+            const ev = evSnap.val() || {};
+            if (String(ev.status || '') !== 'active') return;
+            const left = Math.max(0, Number(ev.endAt || 0) - Date.now());
+            if (left > 0) return;
+
+            const success = Number(ev.current_satiety || 0) >= Number(ev.target || 1);
+            const nextStatus = success ? 'completed' : 'failed';
+            const tx = await db.ref(`${EVENT_PATH}/status`).transaction((v) => v === 'active' ? nextStatus : v);
+            if (!tx.committed) return;
+
+            const now = Date.now();
+            if (success) {
+              const participants = ev.participants || {};
+              const rewards = {};
+              Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
+              await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
+              await db.ref(`${EVENT_PATH}/completedAt`).set(now);
+              await db.ref(`${EVENT_PATH}/resultText`).set(`${SUCCESS_TITLE} ${SUCCESS_TEXT}`);
+            } else {
+              await db.ref(`${EVENT_PATH}/failedAt`).set(now);
+              await db.ref(`${EVENT_PATH}/resultText`).set(`${FAILED_TITLE} ${FAILED_TEXT}`);
+            }
+            await pushMushuResultToFeed(db, nextStatus);
+
+            const activeKey = await findActiveMushuGameEventKey(db);
+            if (activeKey) {
+              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({
+                status: nextStatus,
+                [success ? 'completedAt' : 'failedAt']: now,
+                resultText: success ? SUCCESS_TEXT : FAILED_TEXT
+              });
+            }
           }
 
           async function maybeFinalizeEvent(db) {
@@ -5040,6 +5096,7 @@ ${text}`);
               updateInlineInvite();
               updateProgressUi();
               startEventTimer();
+              await ensureMyFruitAssigned().catch((e) => console.error('ensureMyFruitAssigned failed', e));
               await renderFruitPanel();
               await showMushuResultIfNeeded().catch((e) => console.error('showMushuResultIfNeeded failed', e));
               await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
