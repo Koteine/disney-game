@@ -12,7 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="karmaSystem.js"></script>
     <script src="design.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 </head>
 <body>
 
@@ -158,6 +158,7 @@
 
         <div id="tab-gallery" class="tab-content">
             <h1>🖼️ Выставка одной картины</h1>
+            <div id="gallery-rotation-info" class="gallery-rotation-scroll">Следующее обновление экспозиции через: <b id="gallery-rotation-countdown">--:--:--</b></div>
             <div id="gallery-content" class="works-card"></div>
         </div>
 
@@ -275,6 +276,19 @@
                     </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <button onclick="toggleEmergencySection('karma')" class="admin-btn" style="background:#6a1b9a; width:100%; margin:0 0 6px;">⚖️ Регулятор кармы</button>
+                    <div id="admin-emergency-karma-body" class="news-list" style="margin-bottom:8px;">
+                        <input type="text" id="admin-karma-search" placeholder="Поиск по нику или Telegram ID" class="admin-input" oninput="adminRenderKarmaSearchResults()">
+                        <div id="admin-karma-search-results" style="max-height:20vh; overflow:auto; margin-bottom:8px;"></div>
+                        <div id="admin-karma-selected" style="font-size:12px; color:#555; margin-bottom:8px;">Игрок не выбран.</div>
+                        <input type="number" id="admin-karma-amount" placeholder="Сколько изменить" class="admin-input" min="1" value="1">
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="adminAdjustKarma(1)" class="admin-btn" style="background:#2e7d32; margin:0; flex:1;">[+] Начислить</button>
+                            <button onclick="adminAdjustKarma(-1)" class="admin-btn" style="background:#c62828; margin:0; flex:1;">[-] Списать</button>
+                        </div>
+                    </div>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
                     <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
                     <button onclick="adminResetGame()" class="admin-btn" style="background:#FF8C00; font-size:12px; width:100%; margin-top:8px;">🔄 Сброс текущей сессии (Задания и Игроки)</button>
@@ -345,6 +359,7 @@
 
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
+        const currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? "admin" : "player";
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
 
         function generateBrightColors(count) {
@@ -1734,7 +1749,8 @@
                 revoke: 'admin-emergency-revoke-body',
                 rename: 'admin-emergency-rename-body',
                 teleport: 'admin-emergency-teleport-body',
-                items: 'admin-emergency-items-body'
+                items: 'admin-emergency-items-body',
+                karma: 'admin-emergency-karma-body'
             };
             const targetId = map[sectionName];
             if (!targetId) return;
@@ -1745,7 +1761,10 @@
             body.style.overflowY = 'auto';
             if (sectionName === 'items' && body.classList.contains('expanded')) {
                 fillAdminItemsFormDefaults?.();
-            renderAdminItemsPlayersList?.().catch(() => {});
+                renderAdminItemsPlayersList?.().catch(() => {});
+            }
+            if (sectionName === 'karma' && body.classList.contains('expanded')) {
+                adminRenderKarmaSearchResults?.();
             }
         }
 
@@ -5992,11 +6011,13 @@
               if (isAdminUser() && typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
             });
             renderPlayerTicketsList().catch(() => {});
+            startGalleryRotationCountdown();
 
             renderAdminItemsPlayersList?.().catch(() => {});
 
             database.ref('.info/serverTimeOffset').on('value', snap => {
               adminServerOffsetMs = Number(snap.val()) || 0;
+              galleryServerOffsetMs = adminServerOffsetMs;
             });
 
             if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
@@ -6665,9 +6686,20 @@
         let seasonProfileRef = null;
         let seasonProfileData = { karma_points: 0, nickname: '' };
 
-        function getAvatarEmojiByIndex(idx) {
-            const list = ['🎨','🖌️','🖼️','✨','🌟','🦊','🐉','🎭'];
-            return list[Math.abs(Number(idx) || 0) % list.length];
+        function renderProfileAvatar(nickname) {
+            const avatarEl = document.getElementById('profile-avatar');
+            if (!avatarEl) return;
+            const photoUrl = tg?.initDataUnsafe?.user?.photo_url || '';
+            if (photoUrl) {
+                avatarEl.innerHTML = `<img src="${photoUrl}" alt="Аватар" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+                avatarEl.style.background = '#f3e5ab';
+                return;
+            }
+            const initial = String(nickname || 'И').trim().charAt(0).toUpperCase() || 'И';
+            avatarEl.textContent = initial;
+            avatarEl.style.background = 'linear-gradient(135deg,#f7d774,#d4af37)';
+            avatarEl.style.color = '#5a3e00';
+            avatarEl.style.fontWeight = '800';
         }
 
         function updateProfileUI() {
@@ -6677,9 +6709,8 @@
             const karmaBar = document.getElementById('profile-karma-bar');
             const karmaRank = document.getElementById('profile-karma-rank');
             const nickEl = document.getElementById('profile-nickname');
-            const avatarEl = document.getElementById('profile-avatar');
             if (nickEl) nickEl.textContent = nickname;
-            if (avatarEl) avatarEl.textContent = getAvatarEmojiByIndex(myIndex);
+            renderProfileAvatar(nickname);
             if (karmaText) karmaText.textContent = `${Math.max(0, Math.min(100, karma))} / 100`;
             if (karmaBar) karmaBar.style.width = `${Math.max(0, Math.min(100, karma))}%`;
             if (karmaRank && window.karmaSystem) karmaRank.textContent = window.karmaSystem.getKarmaRank(karma);
@@ -6712,7 +6743,7 @@
 
         function pickExhibitWork(acceptedWorks) {
             if (!acceptedWorks.length) return null;
-            const slot = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
+            const slot = getGallerySlot();
             let seed = slot % 2147483647;
             seed = (seed * 48271) % 2147483647;
             const idx = seed % acceptedWorks.length;
@@ -6737,8 +6768,72 @@
             return true;
         }
 
+        let galleryServerOffsetMs = 0;
+        let galleryRotationTimer = null;
+        let selectedKarmaUserId = '';
+
+        function getServerNow() {
+            return Date.now() + (Number(galleryServerOffsetMs) || 0);
+        }
+
+        function getGallerySlot(timestamp = getServerNow()) {
+            return Math.floor(timestamp / (3 * 60 * 60 * 1000));
+        }
+
+        function startGalleryRotationCountdown() {
+            if (galleryRotationTimer) clearInterval(galleryRotationTimer);
+            const updateCountdown = () => {
+                const now = getServerNow();
+                const period = 3 * 60 * 60 * 1000;
+                const msLeft = period - (now % period);
+                const totalSec = Math.max(0, Math.floor(msLeft / 1000));
+                const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+                const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+                const ss = String(totalSec % 60).padStart(2, '0');
+                const timerEl = document.getElementById('gallery-rotation-countdown');
+                if (timerEl) timerEl.textContent = `${hh}:${mm}:${ss}`;
+            };
+            updateCountdown();
+            galleryRotationTimer = setInterval(updateCountdown, 1000);
+        }
+
+        function playGalleryChime() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(1320, now + 0.22);
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            } catch (e) {
+                console.warn('chime error', e);
+            }
+        }
+
+        function launchVoteConfetti() {
+            if (typeof window.confetti !== 'function') return;
+            const duration = 3000;
+            const end = Date.now() + duration;
+            const frame = () => {
+                window.confetti({ particleCount: 40, startVelocity: 35, spread: 90, origin: { x: 0.5, y: 0.5 } });
+                if (Date.now() < end) requestAnimationFrame(frame);
+            };
+            frame();
+        }
+
         async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
-            if (!currentUserId || currentUserId === ADMIN_ID) return alert('Админ не начисляет карму.');
+            if (currentUserRole === 'admin') return alert('Админ не может участвовать в голосовании');
+            if (!currentUserId || currentUserId === ADMIN_ID) return alert('Админ не может участвовать в голосовании');
             const targetOwnerUserId = String(ownerUserId || '').trim();
             if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
             if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
@@ -6762,6 +6857,8 @@
                 fx.className = `gallery-fx active ${type}`;
                 setTimeout(() => { fx.className = 'gallery-fx'; fx.textContent = ''; }, 1200);
             }
+            playGalleryChime();
+            launchVoteConfetti();
             alert('Комплимент отправлен!');
             updateProfileTicketBalance();
         }
@@ -6776,7 +6873,7 @@
                 return;
             }
             const ownerUserId = String(picked.userId || allTicketsData.find(t => Number(t.owner) === Number(picked.owner) && t.userId)?.userId || '').trim();
-            const exhibitId = `${ownerUserId || 'unknown'}_${picked.id}_${Math.floor(Date.now() / (3 * 60 * 60 * 1000))}`;
+            const exhibitId = `${ownerUserId || 'unknown'}_${picked.id}_${getGallerySlot()}`;
             const img = picked.afterImageData || picked.imageData;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
@@ -6784,14 +6881,60 @@
                     <div style="font-size:12px; color:#8d6e63; margin-bottom:6px;">Ротация каждые 3 часа</div>
                     <img src="${img}" class="gallery-image" alt="Выставленная работа">
                     <div style="font-size:12px; margin-top:6px;">Автор: <b>${picked.ownerName || players[picked.owner]?.n || 'Художник'}</b></div>
-                    <div style="display:flex; gap:6px; margin-top:8px;">
-                        <button class="admin-btn compliment-btn clap" style="margin:0;" onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏 Аплодисменты</button>
-                        <button class="admin-btn compliment-btn heart" style="margin:0;" onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️ Сердце (1)</button>
-                        <button class="admin-btn compliment-btn sun" style="margin:0;" onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞 Солнце (2)</button>
+                    <div class="gallery-compliments" style="margin-top:8px;">
+                        <div class="compliment-option">
+                            <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
+                            <small>Бесплатно (+1 Карма)</small>
+                        </div>
+                        <div class="compliment-option">
+                            <button class="admin-btn compliment-btn heart" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️</button>
+                            <small>1 Билет (+3 Карма)</small>
+                        </div>
+                        <div class="compliment-option">
+                            <button class="admin-btn compliment-btn sun" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞</button>
+                            <small>2 Билета (+5 Карма)</small>
+                        </div>
                     </div>
                 </div>`;
         }
 
+        function adminRenderKarmaSearchResults() {
+            if (currentUserRole !== 'admin') return;
+            const q = String(document.getElementById('admin-karma-search')?.value || '').trim().toLowerCase();
+            const wrap = document.getElementById('admin-karma-search-results');
+            if (!wrap) return;
+            const rows = Object.entries(window.cachedUsersData || {}).map(([uid, v]) => ({ uid, name: players[Number(v?.charIndex)]?.n || v?.name || `ID ${uid}` }));
+            const filtered = rows.filter(r => !q || r.uid.includes(q) || r.name.toLowerCase().includes(q)).slice(0, 50);
+            wrap.innerHTML = filtered.map(r => `<button class="admin-btn" style="margin:0 0 4px; width:100%; background:#ede7f6; color:#4a148c;" onclick="adminSelectKarmaUser('${r.uid}')">${r.name} · ID ${r.uid}</button>`).join('') || '<div style="font-size:12px; color:#777;">Ничего не найдено.</div>';
+        }
+
+        async function adminSelectKarmaUser(userId) {
+            if (currentUserRole !== 'admin') return;
+            selectedKarmaUserId = String(userId || '').trim();
+            const snap = await db.ref(`player_season_status/${selectedKarmaUserId}/karma_points`).once('value');
+            const karma = Number(snap.val()) || 0;
+            const box = document.getElementById('admin-karma-selected');
+            const pickedName = players[Number((window.cachedUsersData || {})[selectedKarmaUserId]?.charIndex)]?.n || `ID ${selectedKarmaUserId}`;
+            if (box) box.innerHTML = `Выбран: <b>${pickedName}</b> (ID: ${selectedKarmaUserId})<br>Текущая карма: <b>${karma}</b>`;
+        }
+
+        async function adminAdjustKarma(direction) {
+            if (currentUserRole !== 'admin') return;
+            if (!selectedKarmaUserId) return alert('Сначала выбери игрока.');
+            const amount = Math.max(1, Number(document.getElementById('admin-karma-amount')?.value || 0));
+            const delta = (direction >= 0 ? 1 : -1) * amount;
+            await db.ref(`player_season_status/${selectedKarmaUserId}`).update({
+                karma_points: firebase.database.ServerValue.increment(delta),
+                updatedAt: Date.now(),
+                updatedByAdmin: String(currentUserId)
+            });
+            await adminSelectKarmaUser(selectedKarmaUserId);
+            alert(delta > 0 ? 'Карма начислена.' : 'Карма списана.');
+        }
+
+        window.adminRenderKarmaSearchResults = adminRenderKarmaSearchResults;
+        window.adminSelectKarmaUser = adminSelectKarmaUser;
+        window.adminAdjustKarma = adminAdjustKarma;
         window.sendGalleryCompliment = sendGalleryCompliment;
 
         // END works.js
