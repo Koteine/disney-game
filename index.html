@@ -713,12 +713,13 @@
 
    <div id="tab-tickets" class="tab-content">
     <h1 id="profile-main-title">👤 Профиль</h1>
+    <div id="admin-profile-banner" class="works-card" style="display:none; margin-bottom:8px; font-weight:800; color:#6a1b9a;">Панель Администратора</div>
     <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
         <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
         <div id="profile-nickname" style="font-weight:800; font-size:16px;">Путешественник</div>
         <div style="margin-top:10px; text-align:left;">
             <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span>Карма сезона</span><span id="profile-karma-points">0 / 100</span></div>
-            <div style="height:12px; border-radius:999px; background:#f1f1f1; overflow:hidden;"><div id="profile-karma-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#c0c0c0,#d4af37);"></div></div>
+            <div style="height:12px; border-radius:999px; background:#f1f1f1; overflow:hidden;"><div id="karma-progress" style="height:100%; width:0%; background:linear-gradient(90deg,#c0c0c0,#d4af37);"></div></div>
             <div id="profile-karma-rank" style="margin-top:6px; font-size:12px; color:#6a1b9a;">Зритель из Первого Ряда</div>
         </div>
     </div>
@@ -1014,6 +1015,10 @@
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
         const currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? "admin" : "player";
         const telegramUser = tg.initDataUnsafe?.user || {};
+        const onValue = (ref, handler) => ref.on('value', handler);
+        function adminUpdate(path, patch) {
+            return db.ref(path).update(patch);
+        }
 
         function getTelegramDisplayName() {
             const first = String(telegramUser.first_name || '').trim();
@@ -1021,6 +1026,26 @@
             const username = String(telegramUser.username || '').trim();
             if (username) return username.startsWith('@') ? username : `@${username}`;
             return 'Путешественник';
+        }
+
+        async function initializeTelegramSeasonUser() {
+            const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user || {};
+            const userId = String(tgUser.id || currentUserId || '').trim();
+            if (!userId || Number(userId) === Number(ADMIN_ID)) return;
+            if (!String(tgUser.first_name || '').trim()) {
+                console.log('TG User Data:', tgUser);
+            }
+            const profileRef = db.ref(`player_season_status/${userId}`);
+            const snap = await profileRef.once('value');
+            if (snap.exists()) return;
+            await profileRef.set({
+                userId,
+                nickname: String(tgUser.first_name || '').trim() || 'Путешественник',
+                photo_url: String(tgUser.photo_url || '').trim(),
+                avatar_url: String(tgUser.photo_url || '').trim(),
+                karma_points: 0,
+                updatedAt: Date.now()
+            });
         }
 
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
@@ -1375,6 +1400,7 @@
             try {
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
+                await initializeTelegramSeasonUser();
                 setupEpicPaintCanvas();
                 document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
                 checkAccess();
@@ -7476,28 +7502,32 @@
             const profileMainTitleEl = document.getElementById('profile-main-title');
             const playerBlockEl = document.getElementById('profile-player-block');
             const playerTicketsEl = document.getElementById('profile-player-tickets-block');
-            if (profileMainTitleEl) profileMainTitleEl.textContent = isAdminProfile ? '🎫 История билетов' : '👤 Профиль';
+            const adminBannerEl = document.getElementById('admin-profile-banner');
+            const adminSubtabsEl = document.getElementById('admin-tickets-subtabs');
+            const adminAllPanelEl = document.getElementById('admin-tickets-all-panel');
+            const adminPlayerPanelEl = document.getElementById('admin-tickets-player-panel');
+            if (profileMainTitleEl) profileMainTitleEl.textContent = isAdminProfile ? '🎫 Панель' : '👤 Профиль';
             if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
+            if (adminSubtabsEl) adminSubtabsEl.style.display = isAdminProfile ? 'none' : adminSubtabsEl.style.display;
+            if (adminAllPanelEl) adminAllPanelEl.style.display = isAdminProfile ? 'none' : adminAllPanelEl.style.display;
+            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = isAdminProfile ? 'none' : adminPlayerPanelEl.style.display;
+            if (adminBannerEl) adminBannerEl.style.display = isAdminProfile ? 'block' : 'none';
             if (isAdminProfile) return;
 
-            const nickname = seasonProfileData.nickname || getTelegramDisplayName();
+            const nickname = String(seasonProfileData.nickname || '').trim() || 'Путешественник';
             const karma = Math.max(0, Number(seasonProfileData.karma_points) || 0);
             const karmaText = document.getElementById('profile-karma-points');
-            const karmaBar = document.getElementById('profile-karma-bar');
+            const karmaBar = document.getElementById('karma-progress');
             const karmaRank = document.getElementById('profile-karma-rank');
             const nickEl = document.getElementById('profile-nickname');
             const visual = getKarmaVisualMeta(karma);
-            if (nickEl) nickEl.textContent = `${visual.icon} ${nickname}`;
-            renderProfileAvatar(nickname, seasonProfileData.avatar_url || '', karma);
-            const width = Math.max(0, Math.min(100, (karma / KARMA_LEVEL_STEP) * 100));
-            if (karmaText) karmaText.textContent = `${karma} / ${KARMA_LEVEL_STEP}`;
-            if (karmaBar) {
-                karmaBar.style.width = `${width}%`;
-                karmaBar.style.background = karma > 0
-                    ? 'linear-gradient(90deg,#c0c0c0,#d4af37)'
-                    : '#e0e0e0';
-            }
+            if (nickEl) nickEl.textContent = nickname;
+            renderProfileAvatar(nickname, seasonProfileData.avatar_url || seasonProfileData.photo_url || '', karma);
+            let progress = (karma / 100) * 100;
+            progress = Math.max(0, Math.min(100, progress));
+            if (karmaText) karmaText.textContent = `${karma} / 100`;
+            if (karmaBar) karmaBar.style.width = progress + '%';
             if (karmaRank) karmaRank.textContent = `${visual.title} ${visual.icon}`;
         }
 
@@ -7515,20 +7545,20 @@
 
             if (seasonProfileRef) seasonProfileRef.off();
             seasonProfileRef = profileRef;
-            seasonProfileRef.on('value', snap => {
-                const row = snap.val() || {};
+            onValue(seasonProfileRef, snap => {
+                const data = snap.val() || {};
                 seasonProfileData = {
                     ...seasonProfileData,
-                    ...row,
-                    nickname: String(row.nickname || fallbackNickname),
-                    avatar_url: String(row.avatar_url || fallbackAvatarUrl || '')
+                    ...data,
+                    nickname: String(data.nickname || fallbackNickname || 'Путешественник'),
+                    avatar_url: String(data.avatar_url || data.photo_url || fallbackAvatarUrl || '')
                 };
                 updateProfileUI();
             });
 
             if (seasonKarmaRef) seasonKarmaRef.off();
             seasonKarmaRef = db.ref(`player_season_status/${currentUserId}/karma_points`);
-            seasonKarmaRef.on('value', snap => {
+            onValue(seasonKarmaRef, snap => {
                 seasonProfileData.karma_points = Math.max(0, Number(snap.val()) || 0);
                 updateProfileUI();
             });
@@ -7651,8 +7681,8 @@
         }
 
         async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
-            if (currentUserRole === 'admin') return alert('Админ не может участвовать в голосовании');
-            if (!currentUserId || currentUserId === ADMIN_ID) return alert('Админ не может участвовать в голосовании');
+            if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
+            if (!currentUserId) return alert('Пользователь не определён.');
             const targetOwnerUserId = String(ownerUserId || '').trim();
             if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
             if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
@@ -7759,12 +7789,12 @@
             if (window.karmaSystem) {
                 await window.karmaSystem.ensureSeasonProfile(db, selectedKarmaUserId, fallbackNickname, false);
             }
-            await db.ref(`player_season_status/${selectedKarmaUserId}`).update({
+            await adminUpdate(`player_season_status/${selectedKarmaUserId}`, {
                 karma_points: firebase.database.ServerValue.increment(delta),
                 updatedAt: Date.now(),
                 updatedByAdmin: String(currentUserId)
             });
-            console.info(`[KARMA][ADMIN] manual_adjust userId=${selectedKarmaUserId} delta=${delta}`);
+            console.info(`[KARMA][ADMIN] manual_adjust path=player_season_status/${selectedKarmaUserId}/karma_points delta=${delta}`);
             await adminSelectKarmaUser(selectedKarmaUserId);
             alert(delta > 0 ? 'Карма начислена.' : 'Карма списана.');
         }
