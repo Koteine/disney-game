@@ -52,6 +52,7 @@
             <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <div id="event-celebration-overlay"></div>
+            <div id="mushu-inline-invite" class="mushu-inline-invite" style="display:none;"></div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
@@ -170,6 +171,7 @@
                     <select id="event-type" class="admin-input" style="margin-top:8px;">
                         <option value="epic_paint">Эпичный закрас</option>
                         <option value="wall_battle">Раскрас «Стенка на стенку»</option>
+                        <option value="mushu_feast">🐉 Кормление Мушу</option>
                     </select>
                     <label style="font-size:12px; color:#777;">Когда начнется событие</label>
                     <input type="datetime-local" id="event-start-at" class="admin-input">
@@ -177,12 +179,6 @@
                     <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
                     <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
-                </div>
-                <div class="admin-section">
-                    <b>🐉 Управление Мушу</b>
-                    <button onclick="adminStartMushuRandomEvent()" class="admin-btn" style="background:#ef6c00; width:100%; margin:8px 0 6px;">🎲 Запустить случайный ивент</button>
-                    <button onclick="adminStopMushuEvent()" class="admin-btn" style="background:#6d4c41; width:100%; margin:0;">🛑 Принудительный стоп</button>
-                    <div id="admin-mushu-status" style="font-size:12px; margin-top:8px; color:#555;">Прогресс: 0 / 0</div>
                 </div>
             </div>
             <div id="admin-draw-panel" class="admin-inner-panel">
@@ -383,6 +379,7 @@
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
         const WALL_BATTLE_EVENT_ID = 'wall_battle';
+        const MUSHU_EVENT_ID = 'mushu_feast';
         const EPIC_PAINT_COVERAGE_TARGET = 95;
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
@@ -1893,7 +1890,7 @@
 
             const eventRef = db.ref(`game_events/${currentGameEventKey}`);
             const tx = await eventRef.transaction(ev => {
-                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 return {
                     ...ev,
                     status: 'completed',
@@ -2087,7 +2084,7 @@
             const eventType = document.getElementById('event-type').value;
             const startAtValue = document.getElementById('event-start-at').value;
             const durationMins = Number(document.getElementById('event-duration-mins').value || 0);
-            if (![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(eventType)) return alert('Неизвестный тип события.');
+            if (![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(eventType)) return alert('Неизвестный тип события.');
             if (!startAtValue) return alert('Выбери дату и время старта события.');
             if (!durationMins || durationMins < 1) return alert('Укажи длительность события в минутах.');
 
@@ -2107,7 +2104,7 @@
 
             await db.ref('game_events').push({
                 id: eventType,
-                name: eventType === WALL_BATTLE_EVENT_ID ? 'Раскрас «Стенка на стенку»' : 'Эпичный закрас',
+                name: eventType === WALL_BATTLE_EVENT_ID ? 'Раскрас «Стенка на стенку»' : (eventType === MUSHU_EVENT_ID ? '🐉 Кормление Мушу' : 'Эпичный закрас'),
                 status: 'scheduled',
                 createdAt: Date.now(),
                 startAt,
@@ -2146,23 +2143,45 @@
             });
 
             if (tx.committed) {
-                epicPaintHasDismissedStart = false;
-                await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
+                if (due.id === MUSHU_EVENT_ID) {
+                    const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+                    await db.ref('mushu_event').set({
+                        status: 'active',
+                        current_satiety: 0,
+                        target,
+                        participants: {},
+                        fed_users: {},
+                        rewards: {},
+                        rewarded_users: {},
+                        feed_log: {},
+                        combo_bonus: {},
+                        startedAt: Date.now(),
+                        endAt: Number(due.endAt || 0),
+                        durationMs: Math.max(60000, Number(due.endAt || 0) - Date.now())
+                    });
+                } else {
+                    epicPaintHasDismissedStart = false;
+                    await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
+                }
             }
         }
 
         async function failExpiredEventIfNeeded() {
-            const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id));
+            const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id));
             if (!active?.key) return;
             if (Date.now() < (active.endAt || 0)) return;
 
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
-                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 if (Date.now() < (ev.endAt || 0)) return ev;
                 return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели выполнить цель события' };
             });
             if (tx.committed) {
-                await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
+                if (active.id === MUSHU_EVENT_ID) {
+                    await db.ref('mushu_event').update({ status: 'failed', failedAt: Date.now() });
+                } else {
+                    await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
+                }
             }
         }
 
@@ -4600,22 +4619,21 @@
         // BEGIN mushu_event.js
         (function () {
           const EVENT_PATH = 'mushu_event';
+          const GAME_EVENTS_PATH = 'game_events';
+          const MUSHU_EVENT_ID = 'mushu_feast';
           const FEED_WINDOW_MS = 15 * 60 * 1000;
           const FRUITS = [
             { id: 'apple', emoji: '🍎', label: 'Яблоко', satiety: 1 },
-            { id: 'pear', emoji: '🍐', label: 'Груша', satiety: 1 },
-            { id: 'peach', emoji: '🍑', label: 'Персик', satiety: 1 },
-            { id: 'cherry', emoji: '🍒', label: 'Вишня', satiety: 1 }
+            { id: 'cherry', emoji: '🍒', label: 'Вишня', satiety: 1 },
+            { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 5 }
           ];
-          const CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 5, ttlMs: 5 * 60 * 1000 };
-          const TARGET_POOL = [5, 10, 15, 20, 30, 40, 50];
 
           let mushuRef = null;
-          let mushuState = { status: 'idle', current_satiety: 0, target: 10, participants: {}, fed_users: {}, rewards: {} };
+          let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
           let localFruit = null;
-          let cupcakeDeadline = 0;
-          let cupcakeTimer = null;
-          let mushuAutoShownStamp = 0;
+          let timerId = null;
+          let smokeId = null;
+          let dragState = null;
 
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || '').trim();
@@ -4637,13 +4655,7 @@
           }
 
           function ensureMushuUi() {
-            if ($('mushu-invite-modal')) return;
-            const invite = document.createElement('div');
-            invite.id = 'mushu-invite-modal';
-            invite.className = 'mushu-invite-modal';
-            invite.innerHTML = `<div class="mushu-invite-card"><div style="font-size:18px; font-weight:900; margin-bottom:8px;">🔥 Мушу проголодался!</div><div style="font-size:14px; margin-bottom:12px;">Помоги накормить дракона!</div><button id="mushu-join-btn" class="admin-btn" style="margin:0; background:#ef6c00;">Присоединиться</button></div>`;
-            document.body.appendChild(invite);
-
+            if ($('mushu-overlay')) return;
             const overlay = document.createElement('div');
             overlay.id = 'mushu-overlay';
             overlay.className = 'mushu-overlay';
@@ -4651,15 +4663,31 @@
               <div style="margin-top:8px; text-align:left; font-size:13px;">Сытость: <b id="mushu-satiety-text">0 / 0</b></div>
               <div class="mushu-progress-bar"><div id="mushu-progress-fill" class="mushu-progress-fill"></div></div>
               <div id="mushu-combo-text" style="margin-top:6px; font-size:12px; color:#ffe082;"></div>
-              <div class="mushu-dragon-zone"><div id="mushu-dragon" class="mushu-dragon">🐉</div></div>
-              <div id="mushu-fruit-panel" style="padding-bottom:10px;"></div>`;
+              <div id="mushu-fuse-timer" class="mushu-fuse-timer"><div style="font-size:12px; margin-bottom:6px;">Магический фитиль: <b id="mushu-time-left">--:--</b></div><div class="mushu-fuse-track"><div id="mushu-fuse-burn" class="mushu-fuse-burn"><span class="mushu-fuse-spark"></span></div></div></div>
+              <div class="mushu-dragon-zone"><div id="mushu-dragon" class="mushu-dragon">🐉</div><div id="mushu-mouth-zone" class="mushu-mouth-zone"></div></div>
+              <div id="mushu-fruit-panel" class="mushu-fruit-panel"></div>`;
             document.body.appendChild(overlay);
+            $('mushu-back-btn')?.addEventListener('click', closeMushuOverlay);
 
-            $('mushu-join-btn')?.addEventListener('click', () => {
+            const invite = $('mushu-inline-invite');
+            if (invite) {
+              invite.addEventListener('click', (ev) => {
+                const btn = ev.target.closest('#mushu-inline-btn');
+                if (!btn) return;
+                openMushuOverlay();
+              });
+            }
+          }
+
+          function updateInlineInvite() {
+            const invite = $('mushu-inline-invite');
+            if (!invite) return;
+            if (!isActive()) {
               invite.style.display = 'none';
-              openMushuOverlay();
-            });
-            $('mushu-back-btn')?.addEventListener('click', () => closeMushuOverlay());
+              return;
+            }
+            invite.style.display = 'block';
+            invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи фрукт в пасть дракона и помоги команде.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Помочь Мушу</button>`;
           }
 
           function openMushuOverlay() {
@@ -4668,19 +4696,33 @@
             overlay.style.display = 'flex';
             document.body.classList.add('event-mode');
             renderFruitPanel();
+            startOverlayEffects();
           }
 
           function closeMushuOverlay() {
             const overlay = $('mushu-overlay');
             if (overlay) overlay.style.display = 'none';
             document.body.classList.remove('event-mode');
+            if (smokeId) clearInterval(smokeId);
+            smokeId = null;
           }
 
-          function pickLocalFruit() {
-            localFruit = Math.random() < 0.05
-              ? { ...CUPCAKE }
-              : { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
-            cupcakeDeadline = localFruit.id === CUPCAKE.id ? Date.now() + CUPCAKE.ttlMs : 0;
+          function startOverlayEffects() {
+            if (smokeId) clearInterval(smokeId);
+            smokeId = setInterval(() => {
+              const dragon = $('mushu-dragon');
+              if (!dragon || $('mushu-overlay')?.style.display !== 'flex') return;
+              const rect = dragon.getBoundingClientRect();
+              for (let i = 0; i < 2; i += 1) {
+                const p = document.createElement('span');
+                p.className = 'mushu-smoke';
+                p.style.left = `${rect.left + rect.width * 0.67 + (Math.random() * 10 - 5)}px`;
+                p.style.top = `${rect.top + rect.height * 0.34 + (Math.random() * 8 - 4)}px`;
+                p.style.setProperty('--sx', `${(Math.random() * 30) - 15}px`);
+                document.body.appendChild(p);
+                setTimeout(() => p.remove(), 1800);
+              }
+            }, 1300);
           }
 
           function renderFruitPanel() {
@@ -4688,37 +4730,73 @@
             if (!panel) return;
             const me = uid();
             const alreadyFed = Boolean(mushuState.fed_users?.[me]);
-            if (!localFruit) pickLocalFruit();
+            if (!localFruit) localFruit = { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
 
             if (alreadyFed) {
               panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#c8e6c9;">Мушу благодарен! Жди завершения ивента.</div>';
               return;
             }
 
-            const ttlLine = localFruit.id === CUPCAKE.id
-              ? `<div id="mushu-cupcake-timer" style="font-size:12px; margin-top:4px; color:#ffe082;">Кекс активен: 05:00</div>`
-              : '<div style="font-size:12px; margin-top:4px; color:#ffe082;">Обычный фрукт</div>';
-
-            panel.innerHTML = `<div style="font-size:16px;">Твой фрукт: <b>${localFruit.emoji} ${localFruit.label}</b></div>${ttlLine}<button id="mushu-feed-btn" class="mushu-fruit-btn">Покормить Мушу</button>`;
-            $('mushu-feed-btn')?.addEventListener('click', () => feedMushu());
-            startCupcakeTimer();
+            const fruitList = FRUITS.map((fruit) => `<div class="mushu-fruit-chip" data-fruit="${fruit.id}">${fruit.emoji}<br><span style="font-size:11px;">${fruit.label}</span></div>`).join('');
+            panel.innerHTML = `<div style="font-size:15px;">Выбери и перетащи фрукт в зону рта Мушу:</div><div class="mushu-fruit-list">${fruitList}</div>`;
+            panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => {
+              chip.addEventListener('pointerdown', onFruitPointerDown);
+            });
           }
 
-          function startCupcakeTimer() {
-            if (cupcakeTimer) clearInterval(cupcakeTimer);
-            if (localFruit?.id !== CUPCAKE.id) return;
-            cupcakeTimer = setInterval(() => {
-              const left = Math.max(0, cupcakeDeadline - Date.now());
+          function onFruitPointerDown(ev) {
+            const chip = ev.currentTarget;
+            const fruitId = chip?.dataset?.fruit;
+            const fruit = FRUITS.find((x) => x.id === fruitId);
+            if (!fruit) return;
+            localFruit = { ...fruit };
+            chip.classList.add('dragging');
+            const ghost = document.createElement('div');
+            ghost.className = 'mushu-fruit-ghost';
+            ghost.textContent = fruit.emoji;
+            document.body.appendChild(ghost);
+            dragState = { chip, ghost, fruit };
+            moveGhost(ev.clientX, ev.clientY);
+            window.addEventListener('pointermove', onFruitPointerMove);
+            window.addEventListener('pointerup', onFruitPointerUp, { once: true });
+          }
+
+          function moveGhost(x, y) {
+            if (!dragState?.ghost) return;
+            dragState.ghost.style.left = `${x}px`;
+            dragState.ghost.style.top = `${y}px`;
+          }
+
+          function onFruitPointerMove(ev) {
+            moveGhost(ev.clientX, ev.clientY);
+          }
+
+          async function onFruitPointerUp(ev) {
+            window.removeEventListener('pointermove', onFruitPointerMove);
+            const mouth = $('mushu-mouth-zone')?.getBoundingClientRect();
+            const x = ev.clientX;
+            const y = ev.clientY;
+            const droppedInMouth = mouth && x >= mouth.left && x <= mouth.right && y >= mouth.top && y <= mouth.bottom;
+            if (dragState?.chip) dragState.chip.classList.remove('dragging');
+            if (dragState?.ghost) dragState.ghost.remove();
+            dragState = null;
+            if (droppedInMouth) await feedMushu();
+          }
+
+          function startEventTimer() {
+            if (timerId) clearInterval(timerId);
+            timerId = setInterval(() => {
+              const left = Math.max(0, Number(mushuState.endAt || 0) - Date.now());
               const mm = String(Math.floor(left / 60000)).padStart(2, '0');
               const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
-              const timerEl = $('mushu-cupcake-timer');
-              if (timerEl) timerEl.textContent = `Кекс активен: ${mm}:${ss}`;
-              if (left <= 0) {
-                clearInterval(cupcakeTimer);
-                cupcakeTimer = null;
-                localFruit = { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
-                renderFruitPanel();
-              }
+              const timeText = $('mushu-time-left');
+              const burn = $('mushu-fuse-burn');
+              const timer = $('mushu-fuse-timer');
+              if (timeText) timeText.textContent = `${mm}:${ss}`;
+              const total = Math.max(1, Number(mushuState.durationMs || (20 * 60000)));
+              const pct = Math.max(0, Math.min(100, (left / total) * 100));
+              if (burn) burn.style.width = `${pct}%`;
+              if (timer) timer.classList.toggle('mushu-time-critical', left <= 60000);
             }, 1000);
           }
 
@@ -4729,42 +4807,6 @@
             if ($('mushu-satiety-text')) $('mushu-satiety-text').textContent = `${current} / ${target}`;
             if ($('mushu-progress-fill')) $('mushu-progress-fill').style.width = `${pct}%`;
             if ($('mushu-combo-text')) $('mushu-combo-text').textContent = `Комбо за 15 минут: 5 кормлений = +5, 20 кормлений = +10`;
-          }
-
-          function toggleInvite() {
-            const modal = $('mushu-invite-modal');
-            if (!modal) return;
-            modal.style.display = isActive() ? 'flex' : 'none';
-            const stamp = Number(mushuState.startedAt || 0);
-            if (isActive() && stamp && stamp !== mushuAutoShownStamp) {
-              mushuAutoShownStamp = stamp;
-              openMushuOverlay();
-            }
-          }
-
-          function animateFruitFlight() {
-            const dragon = $('mushu-dragon');
-            const btn = $('mushu-feed-btn');
-            if (!dragon || !btn) return Promise.resolve();
-            const s = btn.getBoundingClientRect();
-            const d = dragon.getBoundingClientRect();
-            const fx = document.createElement('div');
-            fx.className = 'mushu-fruit-fly';
-            fx.textContent = localFruit?.emoji || '🍎';
-            fx.style.setProperty('--sx', `${s.left + s.width / 2}px`);
-            fx.style.setProperty('--sy', `${s.top}px`);
-            fx.style.setProperty('--dx', `${d.left + d.width / 2}px`);
-            fx.style.setProperty('--dy', `${d.top + d.height / 2}px`);
-            document.body.appendChild(fx);
-            return new Promise((resolve) => setTimeout(() => { fx.remove(); resolve(); }, 900));
-          }
-
-          async function ensureTargetIfMissing(db) {
-            if (!isActive()) return;
-            const me = uid();
-            if (Number(me) !== Number(window.ADMIN_ID)) return;
-            if (Number(mushuState.target || 0) > 0) return;
-            await db.ref(`${EVENT_PATH}/target`).transaction(v => Number(v || 0) > 0 ? v : TARGET_POOL[Math.floor(Math.random() * TARGET_POOL.length)]);
           }
 
           async function applyComboBonus(db, now) {
@@ -4791,6 +4833,16 @@
             if (add > 0) await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + add);
           }
 
+          async function findActiveMushuGameEventKey(db) {
+            const snap = await db.ref(GAME_EVENTS_PATH).once('value');
+            let key = null;
+            snap.forEach((child) => {
+              const v = child.val() || {};
+              if (!key && v.id === MUSHU_EVENT_ID && v.status === 'active') key = child.key;
+            });
+            return key;
+          }
+
           async function feedMushu() {
             if (!isActive()) return;
             const me = uid();
@@ -4799,7 +4851,10 @@
             const fedTx = await db.ref(`${EVENT_PATH}/fed_users/${me}`).transaction(v => v ? v : { at: Date.now(), fruit: localFruit?.id || 'apple' });
             if (!fedTx.committed) return;
 
-            await animateFruitFlight();
+            const dragon = $('mushu-dragon');
+            dragon?.classList.add('mushu-chomp');
+            setTimeout(() => dragon?.classList.remove('mushu-chomp'), 700);
+
             await db.ref(`${EVENT_PATH}/participants/${me}`).set(true);
             const baseSatiety = Number(localFruit?.satiety || 1);
             const now = Date.now();
@@ -4823,6 +4878,11 @@
             Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
             await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
             await db.ref(`${EVENT_PATH}/completedAt`).set(Date.now());
+
+            const activeKey = await findActiveMushuGameEventKey(db);
+            if (activeKey) {
+              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({ status: 'completed', completedAt: Date.now(), resultText: 'Мушу накормлен!' });
+            }
           }
 
           async function applyMyRewardIfNeeded() {
@@ -4856,38 +4916,15 @@
             mushuRef = db.ref(EVENT_PATH);
             mushuRef.on('value', async (snap) => {
               mushuState = snap.val() || { status: 'idle' };
-              toggleInvite();
+              updateInlineInvite();
               updateProgressUi();
+              startEventTimer();
               renderFruitPanel();
-              await ensureTargetIfMissing(db);
               await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
             });
           }
 
           window.initMushuEventSystem = () => attachMushuListeners().catch((e) => console.error('initMushuEventSystem failed', e));
-          window.adminStartMushuRandomEvent = async () => {
-            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
-            const db = await ensureDb();
-            const target = TARGET_POOL[Math.floor(Math.random() * TARGET_POOL.length)];
-            await db.ref(EVENT_PATH).set({
-              status: 'active',
-              current_satiety: 0,
-              target,
-              participants: {},
-              fed_users: {},
-              rewards: {},
-              rewarded_users: {},
-              feed_log: {},
-              startedAt: Date.now()
-            });
-            alert(`Ивент Мушу запущен. Цель: ${target}`);
-          };
-          window.adminStopMushuEvent = async () => {
-            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
-            const db = await ensureDb();
-            await db.ref(EVENT_PATH).set({ status: 'inactive', current_satiety: 0, target: 0, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {} });
-            alert('Ивент Мушу остановлен и очищен.');
-          };
         })();
         // END mushu_event.js
 
@@ -5384,7 +5421,7 @@
             if (startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
 
             await database.ref(EVENT_SCHEDULES_PATH).push({
-              type: 'paint',
+              type: String(document.getElementById('event-type')?.value || 'epic_paint'),
               status: 'scheduled',
               startAt,
               durationMins,
@@ -5425,14 +5462,20 @@
             if (!tx.committed) return;
 
             const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
-            await database.ref('current_event').set({
-              type: 'paint',
-              status: 'active',
-              endTime: Date.now() + (mins * 60 * 1000),
-              participants: {},
-              strokes: {},
-              progress: { percent: 0 }
-            });
+            const evType = String(tx.snapshot.val()?.type || 'epic_paint');
+            if (evType === 'mushu_feast') {
+              const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+              await database.ref('mushu_event').set({ status: 'active', current_satiety: 0, target, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {}, combo_bonus: {}, startedAt: Date.now(), endAt: Date.now() + (mins * 60 * 1000), durationMs: mins * 60 * 1000 });
+            } else {
+              await database.ref('current_event').set({
+                type: 'paint',
+                status: 'active',
+                endTime: Date.now() + (mins * 60 * 1000),
+                participants: {},
+                strokes: {},
+                progress: { percent: 0 }
+              });
+            }
 
             await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
               status: 'completed',
@@ -5566,14 +5609,6 @@
             });
             renderPlayerTicketsList().catch(() => {});
 
-            database.ref('mushu_event').on('value', (snap) => {
-              const v = snap.val() || {};
-              const el = document.getElementById('admin-mushu-status');
-              if (!el) return;
-              const cur = Number(v.current_satiety || 0);
-              const target = Number(v.target || 0);
-              el.innerText = `Статус: ${v.status || 'inactive'} · Прогресс: ${cur} / ${target}`;
-            });
             renderAdminItemsPlayersList?.().catch(() => {});
 
             database.ref('.info/serverTimeOffset').on('value', snap => {
