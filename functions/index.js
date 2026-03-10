@@ -2,6 +2,11 @@ const functions = require('firebase-functions');
 
 const TELEGRAM_API_BASE = 'https://api.telegram.org';
 const DUEL_URL = 'https://t.me/DisneyGamebyKoteine_bot/ColoringGameByKoteine';
+const EVENT_MESSAGE_BY_TYPE = {
+  epic_paint: '🎨 Начался ЭПИЧНЫЙ ЗАКРАС! Весь холст в твоем распоряжении...',
+  feed_mushu: "🐲 Хранитель проголодался! Начался ивент 'Кормление Мушу'...",
+  wall_to_wall: "⚔️ К бою! Объявлен сбор на раскрас 'Стенка на стенку'...",
+};
 
 function getBotToken() {
   const envToken = process.env.BOT_TOKEN;
@@ -14,6 +19,10 @@ function getBotToken() {
   } catch (error) {
     return null;
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 exports.notifyDuelInvite = functions.database
@@ -71,4 +80,73 @@ exports.notifyDuelInvite = functions.database
       console.error(`Duel ${duelId}: network error while sending Telegram message.`, error);
       return null;
     }
+  });
+
+exports.notifyEventStart = functions.database
+  .ref('/current_event/status')
+  .onUpdate(async (change) => {
+    const beforeStatus = change.before.val();
+    const afterStatus = change.after.val();
+
+    if (afterStatus !== 'active' || beforeStatus === 'active') {
+      return null;
+    }
+
+    const botToken = getBotToken();
+    if (!botToken) {
+      console.error('Telegram bot token is not configured. Set BOT_TOKEN or functions.config().telegram.token.');
+      return null;
+    }
+
+    const currentEventSnapshot = await change.after.ref.parent.once('value');
+    const currentEventData = currentEventSnapshot.val() || {};
+    const eventType = currentEventData.type;
+    const eventText = EVENT_MESSAGE_BY_TYPE[eventType];
+
+    if (!eventText) {
+      console.warn(`Unknown current_event.type: ${eventType}. Notification skipped.`);
+      return null;
+    }
+
+    const playersSnapshot = await change.after.ref.root.child('player_season_status').once('value');
+    const playersData = playersSnapshot.val() || {};
+    const userIds = Object.keys(playersData);
+
+    let sentCount = 0;
+
+    for (const userId of userIds) {
+      const payload = {
+        chat_id: userId,
+        text: eventText,
+        reply_markup: {
+          inline_keyboard: [[{ text: '🎮 Перейти к ивенту', url: DUEL_URL }]],
+        },
+      };
+
+      try {
+        const response = await fetch(`${TELEGRAM_API_BASE}/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.status === 403) {
+          console.warn(`Event notify: user ${userId} blocked the bot (403).`);
+        } else if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Event notify: Telegram sendMessage failed for user ${userId} (${response.status}): ${errorText}`);
+        } else {
+          sentCount += 1;
+        }
+      } catch (error) {
+        console.error(`Event notify: network error while sending message to user ${userId}.`, error);
+      }
+
+      await sleep(50);
+    }
+
+    console.log(`Event notify: successfully sent ${sentCount} messages for event ${eventType}.`);
+    return null;
   });
