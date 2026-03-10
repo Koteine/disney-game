@@ -52,6 +52,7 @@
             <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <div id="event-celebration-overlay"></div>
+            <button onclick="openRulesScroll()" class="admin-btn" style="background:#b08d57; margin:4px 0 0 0;">📜 Свиток правил</button>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
@@ -178,6 +179,12 @@
                     <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
                 </div>
+                <div class="admin-section">
+                    <b>🐉 Управление Мушу</b>
+                    <button onclick="adminStartMushuRandomEvent()" class="admin-btn" style="background:#ef6c00; width:100%; margin:8px 0 6px;">🎲 Запустить случайный ивент</button>
+                    <button onclick="adminStopMushuEvent()" class="admin-btn" style="background:#6d4c41; width:100%; margin:0;">🛑 Принудительный стоп</button>
+                    <div id="admin-mushu-status" style="font-size:12px; margin-top:8px; color:#555;">Прогресс: 0 / 0</div>
+                </div>
             </div>
             <div id="admin-draw-panel" class="admin-inner-panel">
                 <div class="admin-section">
@@ -240,6 +247,12 @@
                     </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <button onclick="toggleEmergencySection('items')" class="admin-btn" style="background:#0277bd; width:100%; margin:0 0 6px;">🎒 Управление предметами игроков</button>
+                    <div id="admin-emergency-items-body" class="news-list" style="margin-bottom:8px;">
+                        <div id="admin-items-player-list" style="max-height:45vh; overflow:auto;"></div>
+                    </div>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
                     <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
                     <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ИГРУ</button>
@@ -250,7 +263,10 @@
 
         <div id="tab-rules" class="tab-content">
             <h1>📜 Правила битвы</h1>
-            <div class="admin-section" style="font-size: 13px; line-height: 1.5;">
+            <div class="admin-section" style="font-size: 13px; line-height: 1.5; background:linear-gradient(180deg,#fff8dc,#f7e7b5); border:1px solid #d4af37; color:#6b4f1d;">
+                <p><b>🐉 Покорми Мушу:</b> Общий сбор! Кликни по фрукту, чтобы накормить дракона. Если успеем дойти до цели вместе — все участники получат случайный дар (билеты или артефакты).</p>
+                <p><b>🎭 Плащ-невидимка:</b> Позволяет пропустить задание сейчас. В следующем раунде нужно сдать ДВЕ работы (за прошлый и текущий раунды), иначе сгорят оба билета.</p>
+                <hr style="border:0;border-top:1px dashed #d4af37; margin:10px 0;">
                 <p><b>1. Ход в раунде:</b> В каждом раунде ты можешь бросить кубик один раз. Тебе выпадет случайная клетка и задание.</p>
                 <p><b>2. Задания:</b> Выполни творческое задание и сдай его. Если задание выполнено — твой билет участвует в розыгрыше.</p>
                 <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание.</p>
@@ -325,7 +341,7 @@
         let epicPaintStrokesRef = null;
         let winnerHistoryRef = null;
         let drawScheduleRef = null;
-        let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
+        let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0 };
         let myInkChallenge = null;
         let myWandBlessing = null;
         let allSubmissions = [];
@@ -867,8 +883,14 @@
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
             inventoryRef.on('value', snap => {
-                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0 };
+                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
                 renderInventory();
+            });
+
+            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+                const v = snap.val() || {};
+                if (!v.text) return;
+                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
 
             if (challengeRef) challengeRef.off();
@@ -1221,6 +1243,25 @@
             const userState = userStateSnap.val() || {};
             if (userState.isParticipationBlocked || userState.eliminationReason === 'no_submission') return;
 
+            const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
+            const debt = debtSnap.val();
+            if (debt?.active && Number(currentRoundNum) > Number(debt.dueRound || 0)) {
+                const updates = {};
+                [Number(debt.round), Number(debt.dueRound)].forEach(r => {
+                    Object.entries(board).forEach(([idx, c]) => {
+                        if (!c || Number(c.userId) !== Number(currentUserId) || Number(c.round) !== Number(r)) return;
+                        updates[`board/${idx}/excluded`] = true;
+                        updates[`board/${idx}/ticketBurned`] = true;
+                        updates[`board/${idx}/invisibleMode`] = false;
+                    });
+                });
+                updates[`whitelist/${currentUserId}/debt/active`] = false;
+                updates[`whitelist/${currentUserId}/debt/failed`] = true;
+                await db.ref().update(updates);
+                await postNews(`🔥 ${players[myIndex].n} не закрыл(а) долг по Плащу-невидимке — оба билета сгорели.`);
+                return;
+            }
+
             const previousRound = currentRoundNum - 1;
             if (previousRound < 1) return;
             const hadPrevCell = Object.values(board).some(c => c && Number(c.userId) === Number(currentUserId) && c.round === previousRound);
@@ -1274,6 +1315,16 @@
             const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
             const cell = boardCellSnap.val();
             if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+
+            const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
+            const debt = debtSnap.val();
+            if (debt?.active) {
+                const mustRounds = [Number(debt.round), Number(debt.dueRound)].filter(n => Number.isInteger(n) && n > 0);
+                const selectedRound = Number(cell.round);
+                if (!mustRounds.includes(selectedRound)) {
+                    return alert('При активном Плаще-невидимке можно сдавать только задания долга: за прошлый и текущий раунды.');
+                }
+            }
             if (cell.excluded) return alert('По этому заданию ты уже сдался(ась), билетик не начисляется.');
 
             const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
@@ -1309,6 +1360,10 @@
                 updatedAt: Date.now()
             };
             await db.ref('submissions').push(payload);
+
+            if (cell.deferred || cell.invisibleMode) {
+                await db.ref(`board/${chosenCellIdx}`).update({ deferred: false });
+            }
 
             if (cell.isInkChallenge && challenge?.selectedOption === 4 && !challenge.isResolved) {
                 await db.ref(`board/${chosenCellIdx}/ticket`).set(challenge.pendingTicket || '');
@@ -1438,6 +1493,29 @@
             showCell(cellIdx, updated.val());
         }
 
+        async function activateCloak(cellIdx) {
+            const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
+            const cell = cellSnap.val();
+            if (!cell || Number(cell.userId) !== Number(currentUserId)) return alert('Плащ можно надеть только в своей карточке задания.');
+            if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
+            if ((myInventory.cloak || 0) <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
+            if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
+                return alert('Плащ можно надеть только на обычное задание.');
+            }
+
+            const consumed = await consumeInventoryItem('cloak', 1);
+            if (!consumed) return alert('Плащ уже израсходован.');
+
+            const debt = { cellIdx: Number(cellIdx), round: Number(currentRoundNum), dueRound: Number(currentRoundNum) + 1, active: true, acceptedRounds: {} };
+            await db.ref(`board/${cellIdx}`).update({ deferred: true, deferredAt: Date.now(), deferredRound: currentRoundNum, invisibleMode: true });
+            await db.ref(`whitelist/${currentUserId}/debt`).set(debt);
+
+            alert('🎭 Вы скрылись под плащом. Теперь вы обязаны сдать ЭТО задание и СЛЕДУЮЩЕЕ до конца следующего раунда, иначе сгорят оба билета');
+            await postNews(`🎭 ${players[myIndex].n} активировал(а) Плащ-невидимку и отложил(а) задание до следующего раунда.`);
+            const updated = await db.ref(`board/${cellIdx}`).once('value');
+            showCell(cellIdx, updated.val());
+        }
+
         function askForcedSurrenderExit() {
             return new Promise(resolve => {
                 const existing = document.getElementById('forced-surrender-dialog');
@@ -1493,12 +1571,86 @@
             toggleExpandablePanel('admin-emergency-body', 'admin-emergency-toggle-btn');
         }
 
+        function itemNameByKey(itemKey) {
+            return itemTypes?.[itemKey]?.name || ({ cloak: 'Плащ-невидимка', magnifier: 'Лупа', goldenPollen: 'Золотая пыльца' }[itemKey] || itemKey);
+        }
+
+        async function adminSetPlayerItem(targetUserId, itemKey, addMode) {
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return alert('Только администратор может управлять предметами.');
+            if (!targetUserId || !itemKey) return;
+            const invRef = db.ref(`whitelist/${targetUserId}/inventory/${itemKey}`);
+            if (addMode) {
+                await invRef.transaction(v => (Number(v) || 0) + 1);
+                alert(`Предмет ${itemNameByKey(itemKey)} успешно передан игроку ${targetUserId}`);
+                await db.ref(`system_notifications/${targetUserId}`).push({
+                    text: `✨ Волшебство! Админ передал вам предмет: ${itemNameByKey(itemKey)}`,
+                    createdAt: Date.now(),
+                    type: 'item_granted',
+                    itemKey,
+                    by: currentUserId
+                });
+            } else {
+                await invRef.transaction(v => Math.max(0, (Number(v) || 0) - 1));
+                alert(`Предмет ${itemNameByKey(itemKey)} изъят у игрока ${targetUserId}`);
+            }
+            await renderAdminItemsPlayersList();
+        }
+
+        async function adminGrantItemPrompt(targetUserId) {
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+            const choice = prompt('Выдать предмет\n1 — Плащ-невидимка\n2 — Лупа\n3 — Золотая пыльца', '1');
+            if (choice === null) return;
+            const map = { '1': 'cloak', '2': 'magnifier', '3': 'goldenPollen' };
+            const itemKey = map[String(choice).trim()];
+            if (!itemKey) return alert('Неверный выбор предмета.');
+            await adminSetPlayerItem(targetUserId, itemKey, true);
+        }
+
+        async function adminRevokeItemPrompt(targetUserId) {
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+            const choice = prompt('Изъять предмет\n1 — Плащ-невидимка\n2 — Лупа\n3 — Золотая пыльца', '1');
+            if (choice === null) return;
+            const map = { '1': 'cloak', '2': 'magnifier', '3': 'goldenPollen' };
+            const itemKey = map[String(choice).trim()];
+            if (!itemKey) return alert('Неверный выбор предмета.');
+            await adminSetPlayerItem(targetUserId, itemKey, false);
+        }
+
+        function renderInventoryIcons(inv = {}) {
+            const keys = ['cloak', 'magnifier', 'goldenPollen', 'inkSaboteur'];
+            const chips = keys.filter(k => Number(inv[k] || 0) > 0).map(k => `${itemTypes?.[k]?.emoji || '🎁'}x${Number(inv[k] || 0)}`);
+            return chips.length ? chips.join(' ') : 'Пусто';
+        }
+
+        async function renderAdminItemsPlayersList() {
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+            const wrap = document.getElementById('admin-items-player-list');
+            if (!wrap) return;
+            const snap = await db.ref('whitelist').once('value');
+            const rows = [];
+            snap.forEach(s => {
+                const v = s.val() || {};
+                if (!v.charIndex && v.charIndex !== 0) return;
+                rows.push({ uid: s.key, name: players[v.charIndex]?.n || `ID ${s.key}`, inv: v.inventory || {} });
+            });
+            rows.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+            wrap.innerHTML = rows.map(r => `<div style="border:1px solid #e3f2fd; border-radius:10px; background:#fff; padding:8px; margin-bottom:6px;">
+                <div><b>${r.name}</b> · ID: ${r.uid}</div>
+                <div style="font-size:12px; color:#555; margin:5px 0;">Инвентарь: ${renderInventoryIcons(r.inv)}</div>
+                <div style="display:flex; gap:6px;">
+                    <button onclick="adminGrantItemPrompt('${r.uid}')" class="admin-btn" style="margin:0; flex:1; background:#00897b;">🎁 Выдать</button>
+                    <button onclick="adminRevokeItemPrompt('${r.uid}')" class="admin-btn" style="margin:0; flex:1; background:#c62828;">🗑️ Изъять</button>
+                </div>
+            </div>`).join('') || '<div style="font-size:12px;color:#777;">Игроки не найдены.</div>';
+        }
+
         function toggleEmergencySection(sectionName) {
             const map = {
                 grant: 'admin-emergency-grant-body',
                 revoke: 'admin-emergency-revoke-body',
                 rename: 'admin-emergency-rename-body',
-                teleport: 'admin-emergency-teleport-body'
+                teleport: 'admin-emergency-teleport-body',
+                items: 'admin-emergency-items-body'
             };
             const targetId = map[sectionName];
             if (!targetId) return;
@@ -1507,6 +1659,9 @@
             body.classList.toggle('expanded');
             body.style.maxHeight = body.classList.contains('expanded') ? '65vh' : '0';
             body.style.overflowY = 'auto';
+            if (sectionName === 'items' && body.classList.contains('expanded')) {
+                renderAdminItemsPlayersList?.().catch(() => {});
+            }
         }
 
         function toggleExpandablePanel(listId, btnId) {
@@ -2313,7 +2468,7 @@
                     alert(`Я - это ты, ты - это я. Будь как ${sourceName}, рисуй то же самое`);
                     await postNews(`👯 ${players[myIndex].n} попал(а) на магнитную клетку и получил(а) задание игрока ${sourceName}.`);
                 }
-            } else if (itemType === 'magnifier') {
+            } else if (itemType === 'magnifier' || itemType === 'cloak') {
                 taskIdx = avail[Math.floor(Math.random()*avail.length)];
             } else if (itemType) {
                 // В предметной клетке нет обычного задания: либо предмет, либо механика, либо задание.
@@ -2328,6 +2483,9 @@
             if (itemType) {
                 if (itemType !== 'magicWand' && itemType !== 'inkSaboteur') {
                     await addInventoryItem(itemType, 1);
+                }
+                if (itemType === 'cloak') {
+                    alert('✨ Вы нашли Плащ-невидимку! Он позволит вам пройти одну клетку незамеченным');
                 }
                 await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
             }
@@ -2399,6 +2557,13 @@
                     h += `<button onclick="activateInkSaboteur(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#8e24aa;">🫧 Выбрать игрока для кляксы</button>`;
                 } else if (cell.itemType === 'magicWand') {
                     h += `<div style="padding:12px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:center; color:#5e35b1; font-weight:bold;">Ты просто прелесть! Твоё кодовое слово "Фея", рисуй что дорого твоему добродушному сердцу!</div>`;
+                } else if (cell.itemType === 'cloak') {
+                    h += `<div style="padding:12px; border:2px solid #8e24aa; border-radius:10px; background:#f8eaff; text-align:left; color:#4a148c; font-weight:600;">🎭 Ты нашёл(ла) Плащ-невидимку! Его можно надеть в любой карточке задания, чтобы отложить его на следующий раунд.</div>`;
+                    const t = tasks[cell.taskIdx];
+                    if (t) {
+                        if (t.img) h += `<img src="${t.img}" style="width:100%; border-radius:10px; margin:10px 0; box-shadow:0 4px 10px rgba(0,0,0,0.1);">`;
+                        h += `<p style="text-align:left; line-height:1.4; font-size:15px; color:#444;">${t.text}</p>`;
+                    }
                 } else if (cell.itemType === 'magnifier') {
                     h += `<div style="padding:12px; border:2px solid #3949ab; border-radius:10px; background:#eef2ff; text-align:left; color:#1a237e; font-weight:600;">🔎 Ты нашёл(ла) Лупу! Текущее задание на этой клетке уже открыто, а Лупа добавлена в рюкзак для другой клетки.</div>`;
                     const t = tasks[cell.taskIdx];
@@ -2453,7 +2618,10 @@
                 }
 
                 if (isOwner && !cell.excluded) {
-                    h += `<button onclick="surrenderCell(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#9e9e9e;">🏳️ Сдаюсь</button>`;
+                    h += `<button onclick="surrenderCell(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#9e9e9e;">🏳️ Сдаться</button>`;
+                    if ((myInventory.cloak || 0) > 0 && !cell.itemType) {
+                        h += `<button onclick="activateCloak(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#8e24aa;">🎭 Надеть плащ</button>`;
+                    }
                 }
 
                 if (cell.isMiniGame || (cell.isInkChallenge && myInkChallenge?.selectedOption === 1)) {
@@ -2952,7 +3120,7 @@
     const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
 
     const itemCells = {};
-    const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier'];
+    const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier', 'cloak'];
     for (const itemType of itemPool) {
         if (!free.length) break;
         const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
@@ -2983,7 +3151,7 @@
         itemCells
     });
 
-    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 4 клетки с предметами.`);
+    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 5 клеток с предметами.`);
 
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
@@ -3391,7 +3559,7 @@
 
             whitelistSnap.forEach(userSnap => {
                 const uid = userSnap.key;
-                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0 };
+                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0 };
                 updates[`whitelist/${uid}/magnifier_used_round`] = 0;
                 updates[`whitelist/${uid}/last_round`] = 0;
                 updates[`whitelist/${uid}/used_tasks`] = [];
@@ -3424,6 +3592,10 @@
             }
         }
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+        function openRulesScroll() {
+            const btn = document.querySelector('.nav-item[onclick*="tab-rules"]');
+            switchTab('tab-rules', btn);
+        }
 
 
         /* Inlined modules: items, tickets, events, admin, works */
@@ -3450,6 +3622,11 @@
                     emoji: '🔎',
                     name: 'Лупа',
                     description: 'Помогает в игровых механиках, где разрешено её использование.'
+                },
+                cloak: {
+                    emoji: '🎭',
+                    name: 'Плащ-невидимка',
+                    description: 'Позволяет отложить текущее задание до следующего раунда.'
                 }
             };
 
@@ -3499,7 +3676,8 @@
                 const next = {
                     goldenPollen: Number(current.goldenPollen || 0),
                     inkSaboteur: Number(current.inkSaboteur || 0),
-                    magnifier: Number(current.magnifier || 0)
+                    magnifier: Number(current.magnifier || 0),
+                    cloak: Number(current.cloak || 0)
                 };
                 next[itemKey] = Math.max(0, next[itemKey] + addAmount);
                 await ref.set(next);
@@ -3516,7 +3694,8 @@
                 const next = {
                     goldenPollen: Number(current.goldenPollen || 0),
                     inkSaboteur: Number(current.inkSaboteur || 0),
-                    magnifier: Number(current.magnifier || 0)
+                    magnifier: Number(current.magnifier || 0),
+                    cloak: Number(current.cloak || 0)
                 };
                 if (next[itemKey] < minusAmount) return false;
                 next[itemKey] -= minusAmount;
@@ -3653,6 +3832,11 @@
             window.activateGoldenPollen = activateGoldenPollen;
             window.activateMagnifier = activateMagnifier;
             window.activateInkSaboteur = activateInkSaboteur;
+            window.activateCloak = activateCloak;
+            window.adminGrantItemPrompt = adminGrantItemPrompt;
+            window.adminRevokeItemPrompt = adminRevokeItemPrompt;
+            window.renderAdminItemsPlayersList = renderAdminItemsPlayersList;
+
         })();
         // END items.js
 
@@ -3738,7 +3922,20 @@
                             const c = charColors[cell.owner];
                             d.style.background = c + "22";
                             d.style.borderColor = c;
-                            d.innerHTML = (cell.isTrap ? '💣' : (cell.isMagic ? '🔮' : (cell.isMiniGame ? '🎮' : (cell.isWordSketch ? '🧩' : (cell.isMagnet ? '👯' : (cell.isWandBlessing ? '🎆' : (cell.itemType === 'goldenPollen' ? '🎇' : (cell.itemType === 'inkSaboteur' ? '🫧' : (cell.itemType === 'magicWand' ? '🎆' : (cell.itemType === 'magnifier' ? '🔎' : (i + 1)))) ))))))) + `<span>🎟${cell.ticket}</span>`;
+                            const mark = cell.isTrap ? '💣'
+                                : cell.isMagic ? '🔮'
+                                : cell.isMiniGame ? '🎮'
+                                : cell.isWordSketch ? '🧩'
+                                : cell.isMagnet ? '👯'
+                                : cell.isWandBlessing ? '🎆'
+                                : cell.itemType === 'goldenPollen' ? '🎇'
+                                : cell.itemType === 'inkSaboteur' ? '🫧'
+                                : cell.itemType === 'magicWand' ? '🎆'
+                                : cell.itemType === 'magnifier' ? '🔎'
+                                : cell.itemType === 'cloak' ? '🎭'
+                                : (i + 1);
+                            d.innerHTML = `${mark}<span>🎟${cell.ticket}</span>`;
+                            d.style.opacity = cell.invisibleMode ? '0.5' : '1';
                             liveBoardTicketsData.push({ ...cell, cell: i + 1, cellIdx: i, isArchived: false });
                         } else {
                             d.innerHTML = (i + 1);
@@ -4373,6 +4570,7 @@
           let localFruit = null;
           let cupcakeDeadline = 0;
           let cupcakeTimer = null;
+          let mushuAutoShownStamp = 0;
 
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || '').trim();
@@ -4492,6 +4690,11 @@
             const modal = $('mushu-invite-modal');
             if (!modal) return;
             modal.style.display = isActive() ? 'flex' : 'none';
+            const stamp = Number(mushuState.startedAt || 0);
+            if (isActive() && stamp && stamp !== mushuAutoShownStamp) {
+              mushuAutoShownStamp = stamp;
+              openMushuOverlay();
+            }
           }
 
           function animateFruitFlight() {
@@ -4617,6 +4820,29 @@
           }
 
           window.initMushuEventSystem = () => attachMushuListeners().catch((e) => console.error('initMushuEventSystem failed', e));
+          window.adminStartMushuRandomEvent = async () => {
+            if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+            const db = await ensureDb();
+            const target = TARGET_POOL[Math.floor(Math.random() * TARGET_POOL.length)];
+            await db.ref(EVENT_PATH).set({
+              status: 'active',
+              current_satiety: 0,
+              target,
+              participants: {},
+              fed_users: {},
+              rewards: {},
+              rewarded_users: {},
+              feed_log: {},
+              startedAt: Date.now()
+            });
+            alert(`Ивент Мушу запущен. Цель: ${target}`);
+          };
+          window.adminStopMushuEvent = async () => {
+            if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+            const db = await ensureDb();
+            await db.ref(EVENT_PATH).set({ status: 'inactive', current_satiety: 0, target: 0, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {} });
+            alert('Ивент Мушу остановлен и очищен.');
+          };
         })();
         // END mushu_event.js
 
@@ -4698,7 +4924,7 @@
             const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
 
             const itemCells = {};
-            const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier'];
+            const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier', 'cloak'];
             for (const itemType of itemPool) {
               if (!free.length) break;
               const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
@@ -4724,7 +4950,7 @@
               itemCells
             });
 
-            await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 4 клетки с предметами.`);
+            await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 5 клеток с предметами.`);
             return newRoundNum;
           }
 
@@ -5295,6 +5521,16 @@
             });
             renderPlayerTicketsList().catch(() => {});
 
+            database.ref('mushu_event').on('value', (snap) => {
+              const v = snap.val() || {};
+              const el = document.getElementById('admin-mushu-status');
+              if (!el) return;
+              const cur = Number(v.current_satiety || 0);
+              const target = Number(v.target || 0);
+              el.innerText = `Статус: ${v.status || 'inactive'} · Прогресс: ${cur} / ${target}`;
+            });
+            renderAdminItemsPlayersList?.().catch(() => {});
+
             database.ref('.info/serverTimeOffset').on('value', snap => {
               adminServerOffsetMs = Number(snap.val()) || 0;
             });
@@ -5395,7 +5631,7 @@
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
             inventoryRef.on('value', snap => {
-                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0 };
+                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
                 renderInventory();
             });
 
@@ -5682,6 +5918,10 @@
             return allSubmissions.some(s => String(s.userId) === String(userId) && Number(s.round) === Number(roundNum) && s.beforeImageData && s.afterImageData);
         }
 
+        function hasAcceptedSubmissionForRound(roundNum, userId = currentUserId) {
+            return allSubmissions.some(s => String(s.userId) === String(userId) && Number(s.round) === Number(roundNum) && s.beforeImageData && s.afterImageData && String(s.status || '') === 'accepted');
+        }
+
         async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
             const boardSnap = await db.ref('board').once('value');
             const board = boardSnap.val() || {};
@@ -5733,6 +5973,25 @@
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
             if (userState.isParticipationBlocked || userState.eliminationReason === 'no_submission') return;
+
+            const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
+            const debt = debtSnap.val();
+            if (debt?.active && Number(currentRoundNum) > Number(debt.dueRound || 0)) {
+                const updates = {};
+                [Number(debt.round), Number(debt.dueRound)].forEach(r => {
+                    Object.entries(board).forEach(([idx, c]) => {
+                        if (!c || Number(c.userId) !== Number(currentUserId) || Number(c.round) !== Number(r)) return;
+                        updates[`board/${idx}/excluded`] = true;
+                        updates[`board/${idx}/ticketBurned`] = true;
+                        updates[`board/${idx}/invisibleMode`] = false;
+                    });
+                });
+                updates[`whitelist/${currentUserId}/debt/active`] = false;
+                updates[`whitelist/${currentUserId}/debt/failed`] = true;
+                await db.ref().update(updates);
+                await postNews(`🔥 ${players[myIndex].n} не закрыл(а) долг по Плащу-невидимке — оба билета сгорели.`);
+                return;
+            }
 
             const previousRound = currentRoundNum - 1;
             if (previousRound < 1) return;
@@ -5787,6 +6046,16 @@
             const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
             const cell = boardCellSnap.val();
             if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+
+            const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
+            const debt = debtSnap.val();
+            if (debt?.active) {
+                const mustRounds = [Number(debt.round), Number(debt.dueRound)].filter(n => Number.isInteger(n) && n > 0);
+                const selectedRound = Number(cell.round);
+                if (!mustRounds.includes(selectedRound)) {
+                    return alert('При активном Плаще-невидимке можно сдавать только задания долга: за прошлый и текущий раунды.');
+                }
+            }
             if (cell.excluded) return alert('По этому заданию ты уже сдался(ась), билетик не начисляется.');
             if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(cell.ticket)) {
                 return alert('Этот билетик вычеркнут из игры, загрузка работы для него недоступна.');
@@ -5832,6 +6101,10 @@
             };
             await db.ref('submissions').push(payload);
 
+            if (cell.deferred || cell.invisibleMode) {
+                await db.ref(`board/${chosenCellIdx}`).update({ deferred: false });
+            }
+
             if (cell.isInkChallenge && challenge?.selectedOption === 4 && !challenge.isResolved) {
                 await db.ref(`board/${chosenCellIdx}/ticket`).set(challenge.pendingTicket || '');
                 await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, submittedInTime: true });
@@ -5861,6 +6134,34 @@
                 patch.reviewComment = '';
             }
             await db.ref(refPath).update(patch);
+            if (status === 'accepted') {
+                const rowSnap = await db.ref(refPath).once('value');
+                const row = rowSnap.val() || {};
+                const uid = String(row.userId || '');
+                if (uid) {
+                    const debtSnap = await db.ref(`whitelist/${uid}/debt`).once('value');
+                    const debt = debtSnap.val();
+                    if (debt?.active) {
+                        const acceptedMap = debt.acceptedRounds || {};
+                        acceptedMap[String(row.round)] = true;
+                        const mustA = String(debt.round);
+                        const mustB = String(debt.dueRound);
+                        const closed = !!acceptedMap[mustA] && !!acceptedMap[mustB];
+                        const updates = { [`whitelist/${uid}/debt/acceptedRounds`]: acceptedMap };
+                        if (closed) {
+                            updates[`whitelist/${uid}/debt/active`] = false;
+                            updates[`whitelist/${uid}/debt/closedAt`] = Date.now();
+                            const boardSnap = await db.ref('board').once('value');
+                            const board = boardSnap.val() || {};
+                            Object.entries(board).forEach(([idx, c]) => {
+                                if (!c || Number(c.userId) !== Number(uid)) return;
+                                updates[`board/${idx}/invisibleMode`] = false;
+                            });
+                        }
+                        await db.ref().update(updates);
+                    }
+                }
+            }
         }
 
         window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
