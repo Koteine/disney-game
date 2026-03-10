@@ -158,8 +158,8 @@
             position: absolute;
             left: 0;
             top: 0;
-            width: var(--star-size, clamp(26px, 5.6vw, 34px));
-            height: var(--star-size, clamp(26px, 5.6vw, 34px));
+            width: var(--star-size, 30px);
+            height: var(--star-size, 30px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -177,22 +177,23 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 54%;
-            min-height: 54%;
+            min-width: 56%;
+            min-height: 56%;
             border-radius: 999px;
             padding: 2px;
-            color: #1b1232;
+            color: #000;
             font-weight: 900;
-            font-size: clamp(10px, 2.4vw, 14px);
+            font-size: 12px;
             line-height: 1;
-            letter-spacing: 0.1px;
-            background: rgba(255, 255, 255, 0.88);
+            letter-spacing: 0;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.92);
             box-shadow: 0 0 8px rgba(255,255,255,.5), inset 0 0 3px rgba(255,213,135,.75);
         }
-        .magic-ticket-star.size-2 { --star-size: clamp(32px, 7vw, 42px); }
+        .magic-ticket-star.size-2 { --star-size: 45px; }
         .magic-ticket-star.size-3 {
-            --star-size: clamp(38px, 8vw, 50px);
-            filter: drop-shadow(0 0 15px #fff);
+            --star-size: 60px;
+            filter: drop-shadow(0 0 10px gold);
         }
         .magic-ticket-star.is-converging {
             opacity: 0;
