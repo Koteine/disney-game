@@ -2199,7 +2199,8 @@
                 if (active.id === MUSHU_EVENT_ID) {
                     const failedAt = nowMs;
                     await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' });
-                    const failedLogTx = await db.ref('mushu_event/feed_result_posted/failed').transaction((v) => v || { at: failedAt, eventId: String(active.activatedAt || active.startAt || failedAt) });
+                    const failedEventId = String(active.activatedAt || active.startAt || failedAt);
+                    const failedLogTx = await db.ref(`mushu_event/feed_result_posted/${failedEventId}`).transaction((v) => v || { at: failedAt, eventId: failedEventId, status: 'failed' });
                     if (failedLogTx.committed) await postNews('🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟');
                 } else {
                     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
@@ -4755,9 +4756,25 @@
             if (!invite) return;
             if (!isActive()) {
               invite.style.display = 'none';
+              const topNotification = $('event-notification');
+              if (topNotification?.dataset?.eventType === MUSHU_EVENT_ID) {
+                topNotification.style.display = 'none';
+                topNotification.classList.remove('event-notification-pink');
+                topNotification.innerHTML = '';
+                delete topNotification.dataset.eventType;
+              }
               return;
             }
             invite.style.display = 'block';
+            const topNotification = $('event-notification');
+            if (topNotification) {
+              topNotification.style.display = 'block';
+              topNotification.classList.add('event-notification-pink');
+              topNotification.dataset.eventType = MUSHU_EVENT_ID;
+              topNotification.innerHTML = '<div class="event-notification-text">🔥 Начался ивент: Покорми Мушу!</div><button id="btn-join-mushu-event" class="event-notification-join">Перейти</button>';
+              const joinBtn = $('btn-join-mushu-event');
+              if (joinBtn) joinBtn.onclick = () => openMushuOverlay();
+            }
             if (isAdminUser()) {
               invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя: админ видит ход события, но не участвует.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Наблюдать</button>`;
               return;
@@ -4935,7 +4952,7 @@
             const eventId = getMushuEventRuntimeId();
             const logKey = `${status}:${eventId}`;
             if (lastFeedResultLogged === logKey) return;
-            const logTx = await db.ref(`${EVENT_PATH}/feed_result_posted/${status}`).transaction((v) => v || { at: getNow(), eventId });
+            const logTx = await db.ref(`${EVENT_PATH}/feed_result_posted/${eventId}`).transaction((v) => v || { at: getNow(), eventId, status });
             if (!logTx.committed) {
               lastFeedResultLogged = logKey;
               return;
