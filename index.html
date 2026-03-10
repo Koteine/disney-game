@@ -2145,12 +2145,30 @@
             if (tx.committed) {
                 if (due.id === MUSHU_EVENT_ID) {
                     const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+                    const usersSnap = await db.ref('users').once('value');
+                    const participantIds = [];
+                    usersSnap.forEach((row) => {
+                        const id = String(row.key || '').trim();
+                        if (id) participantIds.push(id);
+                    });
+                    const luckyCupcakeUid = participantIds.length ? participantIds[Math.floor(Math.random() * participantIds.length)] : null;
+                    const personalFruits = {};
+                    participantIds.forEach((id) => {
+                        if (id === luckyCupcakeUid) {
+                            personalFruits[id] = { id: 'golden_cupcake', pickedAt: Date.now() };
+                            return;
+                        }
+                        const base = ['apple', 'cherry', 'pear', 'plum'][Math.floor(Math.random() * 4)];
+                        personalFruits[id] = { id: base };
+                    });
                     await db.ref('mushu_event').set({
                         status: 'active',
                         current_satiety: 0,
                         target,
                         participants: {},
                         fed_users: {},
+                        personal_fruits: personalFruits,
+                        lucky_cupcake_uid: luckyCupcakeUid,
                         rewards: {},
                         rewarded_users: {},
                         feed_log: {},
@@ -2174,11 +2192,11 @@
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
                 if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 if (Date.now() < (ev.endAt || 0)) return ev;
-                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'Игроки не успели выполнить цель события' };
+                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'О нет! Магический фитиль догорел, а Мушу остался голодным... Дракончик ворчит, что на таком пайке великую империю не спасешь, и уходит ворчать в свой храм. Попробуем накормить его в следующий раз! 🥟🚫' };
             });
             if (tx.committed) {
                 if (active.id === MUSHU_EVENT_ID) {
-                    await db.ref('mushu_event').update({ status: 'failed', failedAt: Date.now() });
+                    await db.ref('mushu_event').update({ status: 'failed', failedAt: Date.now(), resultText: 'О нет! Магический фитиль догорел, а Мушу остался голодным... Дракончик ворчит, что на таком пайке великую империю не спасешь, и уходит ворчать в свой храм. Попробуем накормить его в следующий раз! 🥟🚫' });
                 } else {
                     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
                 }
@@ -4622,11 +4640,16 @@
           const GAME_EVENTS_PATH = 'game_events';
           const MUSHU_EVENT_ID = 'mushu_feast';
           const FEED_WINDOW_MS = 15 * 60 * 1000;
+          const GOLDEN_CUPCAKE_GRACE_MS = 5 * 60 * 1000;
           const FRUITS = [
             { id: 'apple', emoji: '🍎', label: 'Яблоко', satiety: 1 },
             { id: 'cherry', emoji: '🍒', label: 'Вишня', satiety: 1 },
-            { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 5 }
+            { id: 'pear', emoji: '🍐', label: 'Груша', satiety: 1 },
+            { id: 'plum', emoji: '🍑', label: 'Слива', satiety: 1 }
           ];
+          const GOLDEN_CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 6 };
+          const SUCCESS_TEXT = 'Р-р-рар! Мушу так наелся, что теперь готов раздавать магию направо и налево! Вы только посмотрите на эту довольную мордашку. Дракончик сыт, а ваши подарки уже летят в инвентарь! 🐲✨';
+          const FAILED_TEXT = 'О нет! Магический фитиль догорел, а Мушу остался голодным... Дракончик ворчит, что на таком пайке великую империю не спасешь, и уходит ворчать в свой храм. Попробуем накормить его в следующий раз! 🥟🚫';
 
           let mushuRef = null;
           let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
@@ -4634,6 +4657,7 @@
           let timerId = null;
           let smokeId = null;
           let dragState = null;
+          let statusToastShown = '';
 
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || '').trim();
@@ -4654,6 +4678,34 @@
             return pool[Math.floor(Math.random() * pool.length)];
           }
 
+          function getMyPersonalFruit() {
+            const me = uid();
+            if (!me) return null;
+            const personal = mushuState.personal_fruits?.[me] || null;
+            if (!personal?.id) return null;
+            if (personal.id === GOLDEN_CUPCAKE.id) {
+              const pickedAt = Number(personal.pickedAt || 0);
+              const graceLeft = Math.max(0, GOLDEN_CUPCAKE_GRACE_MS - (Date.now() - pickedAt));
+              if (pickedAt > 0 && graceLeft === 0) return { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
+              return { ...GOLDEN_CUPCAKE, graceLeftMs: graceLeft };
+            }
+            const fallback = FRUITS.find((f) => f.id === personal.id) || FRUITS[0];
+            return { ...fallback };
+          }
+
+          function getDragonMarkup() {
+            return `<div class="mushu-dragon-segment mushu-segment-1"></div>
+              <div class="mushu-dragon-segment mushu-segment-2"></div>
+              <div class="mushu-dragon-segment mushu-segment-3"></div>
+              <div class="mushu-tail"></div>
+              <div class="mushu-head"></div>
+              <div class="mushu-horn left"></div>
+              <div class="mushu-horn right"></div>
+              <div class="mushu-eye"></div>
+              <div class="mushu-whisker"></div>
+              <div class="mushu-whisker w2"></div>`;
+          }
+
           function ensureMushuUi() {
             if ($('mushu-overlay')) return;
             const overlay = document.createElement('div');
@@ -4664,7 +4716,7 @@
               <div class="mushu-progress-bar"><div id="mushu-progress-fill" class="mushu-progress-fill"></div></div>
               <div id="mushu-combo-text" style="margin-top:6px; font-size:12px; color:#ffe082;"></div>
               <div id="mushu-fuse-timer" class="mushu-fuse-timer"><div style="font-size:12px; margin-bottom:6px;">Магический фитиль: <b id="mushu-time-left">--:--</b></div><div class="mushu-fuse-track"><div id="mushu-fuse-burn" class="mushu-fuse-burn"><span class="mushu-fuse-spark"></span></div></div></div>
-              <div class="mushu-dragon-zone"><div id="mushu-dragon" class="mushu-dragon">🐉</div><div id="mushu-mouth-zone" class="mushu-mouth-zone"></div></div>
+              <div class="mushu-dragon-zone"><div id="mushu-dragon" class="mushu-dragon">${getDragonMarkup()}</div><div id="mushu-mouth-zone" class="mushu-mouth-zone"></div></div>
               <div id="mushu-fruit-panel" class="mushu-fruit-panel"></div>`;
             document.body.appendChild(overlay);
             $('mushu-back-btn')?.addEventListener('click', closeMushuOverlay);
@@ -4687,7 +4739,7 @@
               return;
             }
             invite.style.display = 'block';
-            invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи фрукт в пасть дракона и помоги команде.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Помочь Мушу</button>`;
+            invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи свой фрукт в пасть дракона и помоги команде.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Помочь Мушу</button>`;
           }
 
           function openMushuOverlay() {
@@ -4716,13 +4768,13 @@
               for (let i = 0; i < 2; i += 1) {
                 const p = document.createElement('span');
                 p.className = 'mushu-smoke';
-                p.style.left = `${rect.left + rect.width * 0.67 + (Math.random() * 10 - 5)}px`;
-                p.style.top = `${rect.top + rect.height * 0.34 + (Math.random() * 8 - 4)}px`;
-                p.style.setProperty('--sx', `${(Math.random() * 30) - 15}px`);
+                p.style.left = `${rect.left + rect.width * 0.84 + (Math.random() * 14 - 7)}px`;
+                p.style.top = `${rect.top + rect.height * 0.46 + (Math.random() * 10 - 5)}px`;
+                p.style.setProperty('--sx', `${(Math.random() * 34) - 17}px`);
                 document.body.appendChild(p);
                 setTimeout(() => p.remove(), 1800);
               }
-            }, 1300);
+            }, 4000);
           }
 
           function renderFruitPanel() {
@@ -4730,32 +4782,36 @@
             if (!panel) return;
             const me = uid();
             const alreadyFed = Boolean(mushuState.fed_users?.[me]);
-            if (!localFruit) localFruit = { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
+            localFruit = getMyPersonalFruit();
 
             if (alreadyFed) {
-              panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#c8e6c9;">Мушу благодарен! Жди завершения ивента.</div>';
+              panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#c8e6c9;">Твой шанс использован! Жди общий итог ивента.</div>';
               return;
             }
 
-            const fruitList = FRUITS.map((fruit) => `<div class="mushu-fruit-chip" data-fruit="${fruit.id}">${fruit.emoji}<br><span style="font-size:11px;">${fruit.label}</span></div>`).join('');
-            panel.innerHTML = `<div style="font-size:15px;">Выбери и перетащи фрукт в зону рта Мушу:</div><div class="mushu-fruit-list">${fruitList}</div>`;
-            panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => {
-              chip.addEventListener('pointerdown', onFruitPointerDown);
-            });
+            if (!localFruit) {
+              panel.innerHTML = '<div style="font-size:13px; color:#ffe082;">Твой фрукт еще не назначен. Обнови экран через пару секунд.</div>';
+              return;
+            }
+
+            const graceText = localFruit.id === GOLDEN_CUPCAKE.id && Number.isFinite(localFruit.graceLeftMs)
+              ? `<div style="margin-top:6px; font-size:12px; color:#fff176;">Эксклюзив! Кекс действует еще ${Math.ceil(localFruit.graceLeftMs / 1000)} сек., потом станет обычным фруктом.</div>`
+              : '';
+
+            panel.innerHTML = `<div style="font-size:15px;">У тебя один шанс за ивент — перетащи фрукт в зону рта Мушу:</div>
+              <div class="mushu-fruit-list"><div class="mushu-fruit-chip" data-fruit="${localFruit.id}">${localFruit.emoji}<br><span style="font-size:11px;">${localFruit.label}</span></div></div>${graceText}`;
+            panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => chip.addEventListener('pointerdown', onFruitPointerDown));
           }
 
           function onFruitPointerDown(ev) {
             const chip = ev.currentTarget;
-            const fruitId = chip?.dataset?.fruit;
-            const fruit = FRUITS.find((x) => x.id === fruitId);
-            if (!fruit) return;
-            localFruit = { ...fruit };
+            if (!localFruit) return;
             chip.classList.add('dragging');
             const ghost = document.createElement('div');
             ghost.className = 'mushu-fruit-ghost';
-            ghost.textContent = fruit.emoji;
+            ghost.textContent = localFruit.emoji;
             document.body.appendChild(ghost);
-            dragState = { chip, ghost, fruit };
+            dragState = { chip, ghost, fruit: { ...localFruit } };
             moveGhost(ev.clientX, ev.clientY);
             window.addEventListener('pointermove', onFruitPointerMove);
             window.addEventListener('pointerup', onFruitPointerUp, { once: true });
@@ -4797,6 +4853,7 @@
               const pct = Math.max(0, Math.min(100, (left / total) * 100));
               if (burn) burn.style.width = `${pct}%`;
               if (timer) timer.classList.toggle('mushu-time-critical', left <= 60000);
+              if (isActive() && localFruit?.id === GOLDEN_CUPCAKE.id) renderFruitPanel();
             }, 1000);
           }
 
@@ -4807,6 +4864,27 @@
             if ($('mushu-satiety-text')) $('mushu-satiety-text').textContent = `${current} / ${target}`;
             if ($('mushu-progress-fill')) $('mushu-progress-fill').style.width = `${pct}%`;
             if ($('mushu-combo-text')) $('mushu-combo-text').textContent = `Комбо за 15 минут: 5 кормлений = +5, 20 кормлений = +10`;
+          }
+
+          function showMushuResultIfNeeded() {
+            const status = String(mushuState.status || '');
+            if (!['completed', 'failed'].includes(status)) return;
+            if (statusToastShown === status) return;
+            statusToastShown = status;
+            closeMushuOverlay();
+            alert(status === 'completed' ? SUCCESS_TEXT : FAILED_TEXT);
+          }
+
+          function spawnEatSpark() {
+            const mouth = $('mushu-mouth-zone');
+            if (!mouth) return;
+            const rect = mouth.getBoundingClientRect();
+            const spark = document.createElement('span');
+            spark.className = 'mushu-eat-spark';
+            spark.style.left = `${rect.left + rect.width * 0.5}px`;
+            spark.style.top = `${rect.top + rect.height * 0.5}px`;
+            document.body.appendChild(spark);
+            setTimeout(() => spark.remove(), 560);
           }
 
           async function applyComboBonus(db, now) {
@@ -4848,17 +4926,20 @@
             const me = uid();
             if (!me) return;
             const db = await ensureDb();
-            const fedTx = await db.ref(`${EVENT_PATH}/fed_users/${me}`).transaction(v => v ? v : { at: Date.now(), fruit: localFruit?.id || 'apple' });
+            const fruit = getMyPersonalFruit();
+            if (!fruit) return;
+            const fedTx = await db.ref(`${EVENT_PATH}/fed_users/${me}`).transaction(v => v ? v : { at: Date.now(), fruit: fruit.id });
             if (!fedTx.committed) return;
 
             const dragon = $('mushu-dragon');
             dragon?.classList.add('mushu-chomp');
+            spawnEatSpark();
             setTimeout(() => dragon?.classList.remove('mushu-chomp'), 700);
 
             await db.ref(`${EVENT_PATH}/participants/${me}`).set(true);
-            const baseSatiety = Number(localFruit?.satiety || 1);
+            const baseSatiety = Number(fruit.satiety || 1);
             const now = Date.now();
-            await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: localFruit?.id || 'apple', satiety: baseSatiety, at: now });
+            await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: fruit.id, satiety: baseSatiety, at: now });
             await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + baseSatiety);
             await applyComboBonus(db, now);
             renderFruitPanel();
@@ -4878,10 +4959,11 @@
             Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
             await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
             await db.ref(`${EVENT_PATH}/completedAt`).set(Date.now());
+            await db.ref(`${EVENT_PATH}/resultText`).set(SUCCESS_TEXT);
 
             const activeKey = await findActiveMushuGameEventKey(db);
             if (activeKey) {
-              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({ status: 'completed', completedAt: Date.now(), resultText: 'Мушу накормлен!' });
+              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({ status: 'completed', completedAt: Date.now(), resultText: SUCCESS_TEXT });
             }
           }
 
@@ -4903,10 +4985,7 @@
             fx.className = 'mushu-breath';
             document.body.appendChild(fx);
             setTimeout(() => fx.remove(), 1400);
-            setTimeout(() => {
-              closeMushuOverlay();
-              alert(`🐉 Магический выдох Мушу! Твой приз: ${reward.label || reward.id}`);
-            }, 900);
+            setTimeout(() => alert(`🐉 Магический выдох Мушу! Твой приз: ${reward.label || reward.id}`), 900);
           }
 
           async function attachMushuListeners() {
@@ -4920,6 +4999,7 @@
               updateProgressUi();
               startEventTimer();
               renderFruitPanel();
+              showMushuResultIfNeeded();
               await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
             });
           }

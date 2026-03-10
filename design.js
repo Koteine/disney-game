@@ -533,21 +533,36 @@
         .mushu-fuse-burn { position:absolute; inset:0 auto 0 0; width:100%; background: linear-gradient(90deg,#ffca28,#ef6c00,#6d4c41); transition: width .9s linear; }
         .mushu-fuse-spark { position:absolute; top:50%; right:-8px; width:14px; height:14px; border-radius:50%; background:#ffd54f; box-shadow:0 0 10px #ffeb3b, 0 0 18px #ff9800; transform: translateY(-50%); animation:mushuSpark 0.7s infinite alternate; }
         .mushu-time-critical { animation: mushuTimerShake .4s infinite; color:#ff8a80; }
-        .mushu-dragon-zone { flex:1; min-height:44vh; display:flex; align-items:center; justify-content:center; position:relative; }
-        .mushu-dragon { font-size: min(48vw, 280px); line-height:1; filter: drop-shadow(0 0 24px rgba(255,183,77,.66)); animation: mushuBreathing 2.8s ease-in-out infinite; transform-origin: center; }
-        .mushu-dragon.mushu-chomp { animation: mushuChomp .35s ease-in-out 2; }
+        .mushu-dragon-zone { flex:1; min-height:50vh; display:flex; align-items:center; justify-content:center; position:relative; }
+        .mushu-dragon { width:min(78vw,640px); height:min(50vh,360px); position:relative; filter: drop-shadow(0 0 24px rgba(255,183,77,.66)); animation: mushuBreathing 3.1s ease-in-out infinite; transform-origin: center; }
+        .mushu-dragon.mushu-chomp { animation: mushuChomp .36s ease-in-out 2; }
+        .mushu-dragon-segment { position:absolute; border-radius:999px; background: linear-gradient(145deg, #ff8a65, #d32f2f 46%, #b71c1c); border:2px solid rgba(255,224,178,.35); }
+        .mushu-segment-1 { width:66%; height:24%; left:12%; top:38%; transform: rotate(-8deg); }
+        .mushu-segment-2 { width:55%; height:22%; left:30%; top:51%; transform: rotate(9deg); }
+        .mushu-segment-3 { width:44%; height:20%; left:45%; top:29%; transform: rotate(-13deg); }
+        .mushu-head { position:absolute; width:30%; height:34%; left:58%; top:19%; border-radius:45% 55% 50% 40%; background: linear-gradient(145deg, #ffab91, #e53935 55%, #bf360c); border:2px solid rgba(255,224,178,.45); }
+        .mushu-eye { position:absolute; width:12px; height:12px; border-radius:50%; background:#fffde7; top:34%; left:60%; box-shadow:0 0 0 3px rgba(121,85,72,.45) inset; }
+        .mushu-eye::after { content:''; position:absolute; width:4px; height:7px; background:#2e1a12; left:4px; top:2px; border-radius:99px; }
+        .mushu-horn { position:absolute; width:8px; height:42px; background:linear-gradient(180deg,#ffe082,#ffb300); border-radius:999px; top:-12px; }
+        .mushu-horn.left { left:70%; transform:rotate(-18deg); }
+        .mushu-horn.right { left:82%; transform:rotate(15deg); }
+        .mushu-whisker { position:absolute; width:72px; height:3px; background:linear-gradient(90deg,#ffe082,transparent); top:54%; left:85%; border-radius:999px; }
+        .mushu-whisker.w2 { top:60%; transform:rotate(12deg); }
+        .mushu-tail { position:absolute; width:24%; height:17%; left:2%; top:48%; border-radius:999px; background: linear-gradient(145deg,#ef5350,#b71c1c); transform: rotate(-14deg); border:2px solid rgba(255,224,178,.3); }
         .mushu-smoke { position:absolute; width:12px; height:12px; border-radius:50%; background: rgba(220,220,220,.7); animation: mushuSmokeUp 1.9s ease-out forwards; }
-        .mushu-mouth-zone { position:absolute; width:30%; height:20%; top:42%; left:56%; border:2px dashed rgba(255,224,178,.5); border-radius:999px; }
+        .mushu-mouth-zone { position:absolute; width:28%; height:22%; top:44%; left:62%; border:2px dashed rgba(255,224,178,.55); border-radius:999px; }
+        .mushu-eat-spark { position:absolute; width:18px; height:18px; border-radius:50%; background: radial-gradient(circle,#fff59d,#ffca28 50%,transparent 70%); box-shadow:0 0 14px #ffd54f; animation:mushuEatSpark 550ms ease-out forwards; pointer-events:none; }
         .mushu-fruit-panel { padding-bottom:10px; }
         .mushu-fruit-list { display:flex; gap:8px; margin-top:8px; }
         .mushu-fruit-chip { flex:1; border:1px solid #ffd54f; background: linear-gradient(160deg, #ffecb3, #ffb74d); color: #3e2723; border-radius: 14px; padding: 10px 8px; font-weight: 800; text-align:center; touch-action: none; user-select: none; }
         .mushu-fruit-chip.dragging { opacity:.45; }
         .mushu-fruit-ghost { position: fixed; z-index: 4300; pointer-events:none; font-size: 34px; transform: translate(-50%, -50%); }
         .mushu-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: mushuBreathFx 1400ms ease-out forwards; }
-        @keyframes mushuBreathing { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-8px) rotate(2deg); } }
-        @keyframes mushuChomp { 0%,100% { transform: translateX(0) scale(1); } 25% { transform: translateX(-6px) scale(1.03); } 75% { transform: translateX(6px) scale(0.99); } }
+        @keyframes mushuBreathing { 0%,100% { transform: translateY(0) rotate(-2deg) scale(1); } 50% { transform: translateY(-7px) rotate(2deg) scale(1.04); } }
+        @keyframes mushuChomp { 0%,100% { transform: translateX(0) scale(1); } 20% { transform: translateX(-10px) scale(1.04); } 40% { transform: translateX(9px) scale(.98); } 60% { transform: translateX(-6px) scale(1.02); } 80% { transform: translateX(5px) scale(.99);} }
         @keyframes mushuSmokeUp { 0% { opacity:.7; transform:translate(0,0) scale(.7);} 100% { opacity:0; transform:translate(var(--sx), -58px) scale(1.6);} }
         @keyframes mushuSpark { from{ transform: translateY(-50%) scale(.7);} to{ transform: translateY(-50%) scale(1.15);} }
+        @keyframes mushuEatSpark { 0% { opacity:1; transform: scale(.4);} 100% { opacity:0; transform: scale(1.8);} }
         @keyframes mushuTimerShake { 0%,100%{ transform:translateX(0);} 30%{ transform:translateX(-1px);} 60%{ transform:translateX(1px);} }
         @keyframes mushuBreathFx { 0% { opacity: 0; transform: scale(.45); } 22% { opacity: 1; } 100% { opacity: 0; transform: scale(1.45); } }
     `;
