@@ -16,26 +16,31 @@
 
   function getKarmaRank(points) {
     const p = Number(points) || 0;
-    if (p <= 20) return 'Зритель из Первого Ряда 👩‍🎤';
-    if (p <= 40) return 'Ценитель 🧐';
-    if (p <= 60) return '41-60 🖌️✨';
-    if (p <= 85) return 'Творец Миров 🌌';
-    return 'Бессмертный Мастер 👑';
+    if (p < 50) return 'Зритель 🎟️';
+    if (p < 120) return 'Ценитель 🏺';
+    if (p < 220) return 'Художник 🖌️';
+    if (p < 360) return 'Творец Миров 🌌';
+    return 'Легенда Сезона 🧧';
   }
 
   async function ensureSeasonProfile(db, userId, nickname, isAdmin) {
     if (!db || !userId || isAdmin) return;
     const ref = db.ref(`${SEASON_PATH}/${userId}`);
+    const safeNickname = String(nickname || '').trim() || 'Путешественник';
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user || {};
+    const avatarUrl = Number(tgUser.id) === Number(userId) ? String(tgUser.photo_url || '').trim() : '';
     await ref.transaction((row) => {
       if (row && typeof row === 'object') {
-        if (!row.nickname && nickname) row.nickname = nickname;
+        if (!row.nickname && safeNickname) row.nickname = safeNickname;
         if (typeof row.karma_points !== 'number') row.karma_points = Number(row.karma_points) || 0;
+        if (!row.avatar_url && avatarUrl) row.avatar_url = avatarUrl;
         return row;
       }
       return {
         userId: String(userId),
-        nickname: String(nickname || 'Игрок'),
+        nickname: safeNickname,
         karma_points: 0,
+        avatar_url: avatarUrl || '',
         updatedAt: Date.now()
       };
     });
@@ -710,9 +715,9 @@
     <h1 id="profile-main-title">👤 Профиль</h1>
     <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
         <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
-        <div id="profile-nickname" style="font-weight:800; font-size:16px;">Игрок</div>
+        <div id="profile-nickname" style="font-weight:800; font-size:16px;">Путешественник</div>
         <div style="margin-top:10px; text-align:left;">
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span>Карма сезона</span><span id="profile-karma-points">0 / 100</span></div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span>Карма сезона</span><span id="profile-karma-points">0 / 50</span></div>
             <div style="height:12px; border-radius:999px; background:#f1f1f1; overflow:hidden;"><div id="profile-karma-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#c0c0c0,#d4af37);"></div></div>
             <div id="profile-karma-rank" style="margin-top:6px; font-size:12px; color:#6a1b9a;">Зритель из Первого Ряда</div>
         </div>
@@ -891,7 +896,7 @@
                             <button onclick="runAdminTicketArchiveSearch()" class="admin-btn" style="margin:0; white-space:nowrap; background:#5e35b1;">Найти информацию</button>
                         </div>
                         <div id="admin-ticket-archive-search-result" style="margin-top:8px;"></div>
-                        <div id="admin-ticket-archive-grid" style="margin-top:8px; display:grid; grid-template-columns:repeat(auto-fill, minmax(46px, 1fr)); gap:6px;"></div>
+                        <div id="admin-ticket-archive-grid" style="display:none;"></div>
                     </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
@@ -1008,6 +1013,16 @@
         const ADMIN_ID = 341995937;
         const currentUserId = tg.initDataUnsafe?.user?.id || 0;
         const currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? "admin" : "player";
+        const telegramUser = tg.initDataUnsafe?.user || {};
+
+        function getTelegramDisplayName() {
+            const first = String(telegramUser.first_name || '').trim();
+            if (first) return first;
+            const username = String(telegramUser.username || '').trim();
+            if (username) return username.startsWith('@') ? username : `@${username}`;
+            return 'Путешественник';
+        }
+
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
 
         function generateBrightColors(count) {
@@ -4961,34 +4976,9 @@
                 `).join('');
             }
 
-            function renderAdminTicketArchive(expandedRows) {
+            function renderAdminTicketArchive() {
                 const grid = document.getElementById('admin-ticket-archive-grid');
-                if (!grid) return;
-                if (currentUserId !== ADMIN_ID) {
-                    grid.innerHTML = '';
-                    return;
-                }
-
-                const byNum = new Map();
-                expandedRows.forEach(row => byNum.set(String(row.ticketNum), row));
-                const maxTickets = Math.max(1, Number(MAX_TICKETS) || 100);
-
-                const html = [];
-                for (let i = 1; i <= maxTickets; i++) {
-                    const key = String(i);
-                    const row = byNum.get(key);
-                    const isUsed = !!(row && (row.isRevoked || row.excluded));
-                    const tileBg = isUsed ? '#e0e0e0' : '#ffffff';
-                    const tileBorder = isUsed ? '#bdbdbd' : '#dcdcdc';
-                    const tileColor = isUsed ? '#757575' : '#212121';
-                    html.push(`
-                        <button
-                            data-ticket-num="${key}"
-                            style="height:32px; border-radius:8px; border:1px solid ${tileBorder}; background:${tileBg}; color:${tileColor}; font-size:11px; padding:0; text-decoration:none;"
-                        >${key}</button>
-                    `);
-                }
-                grid.innerHTML = html.join('');
+                if (grid) grid.innerHTML = '';
             }
 
             function showTicketArchiveTooltip(ticketNum) {
@@ -5046,18 +5036,23 @@
                 const ownerId = String(row.userId || '—');
                 const status = (row.excluded || row.isRevoked) ? 'Вычеркнут' : 'Активен';
                 const grantedAt = Number(row.createdAt || row.ts || row.archivedAt || 0);
-                const revokedAt = Number(row.updatedAt || row.revokedAt || row.archivedAt || 0);
-                const reason = row.isManualRevoke ? 'Сдан админу' : ((row.excluded || row.isRevoked) ? 'Потрачен в галерее' : '—');
+                const updatedAt = Number(row.updatedAt || row.revokedAt || 0);
+                const archivedAt = Number(row.archivedAt || 0);
+                const reason = row.isManualRevoke ? 'Изъят администратором' : ((row.excluded || row.isRevoked) ? 'Потрачен/переведён в архив' : 'В игре');
+                const historyLines = [
+                    `Создан билет: ${formatTicketArchiveHistoryDate(grantedAt)} (${row.taskLabel || row.sourceLabel || 'без задания'})`,
+                    archivedAt ? `Перемещён в архив: ${formatTicketArchiveHistoryDate(archivedAt)}` : '',
+                    (row.excluded || row.isRevoked) ? `Изменение статуса: ${formatTicketArchiveHistoryDate(updatedAt || archivedAt)} (${reason})` : 'Статус не менялся, билет активен'
+                ].filter(Boolean);
 
                 resultEl.innerHTML = `
                     <div style="border:1px solid #e1bee7; border-radius:12px; padding:10px; background:#faf7ff; text-align:left;">
                         <div style="font-size:13px; margin-bottom:6px;"><b>🎟 Билет №${row.ticketNum}</b></div>
                         <div style="font-size:12px; margin-bottom:4px;"><b>Статус:</b> ${status}</div>
                         <div style="font-size:12px; margin-bottom:6px;"><b>Владелец:</b> ${ownerName} (ID: ${ownerId})</div>
-                        <div style="font-size:12px;"><b>История:</b></div>
+                        <div style="font-size:12px;"><b>История перемещений:</b></div>
                         <ul style="margin:4px 0 0 16px; padding:0; font-size:12px; line-height:1.4;">
-                            <li>Получен: ${formatTicketArchiveHistoryDate(grantedAt)} за задание ${row.taskLabel || row.taskIdx || '—'}</li>
-                            <li>Вычеркнут: ${(row.excluded || row.isRevoked) ? formatTicketArchiveHistoryDate(revokedAt) : '—'} (Причина: ${(row.excluded || row.isRevoked) ? reason : '—'})</li>
+                            ${historyLines.map(line => `<li>${line}</li>`).join('')}
                         </ul>
                     </div>
                 `;
@@ -7438,30 +7433,42 @@
         window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
 
         let seasonProfileRef = null;
-        let seasonProfileData = { karma_points: 0, nickname: '' };
+        let seasonKarmaRef = null;
+        let seasonProfileData = { karma_points: 0, nickname: '', avatar_url: '' };
 
-        function renderProfileAvatar(nickname) {
-            const avatarEl = document.getElementById('profile-avatar');
-            if (!avatarEl) return;
-            const photoUrl = tg?.initDataUnsafe?.user?.photo_url || '';
-            if (photoUrl) {
-                avatarEl.innerHTML = `<img src="${photoUrl}" alt="Аватар" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
-                avatarEl.style.background = '#f3e5ab';
-                return;
+        const KARMA_LEVEL_STEP = 50;
+        const KARMA_VISUAL_LEVELS = [
+            { min: 0, title: 'Зритель', icon: '🎟️', border: 'linear-gradient(135deg,#bdbdbd,#9e9e9e)' },
+            { min: 50, title: 'Ценитель', icon: '🏺', border: 'linear-gradient(135deg,#d7ccc8,#a1887f)' },
+            { min: 120, title: 'Художник', icon: '🖌️', border: 'linear-gradient(135deg,#90caf9,#5c6bc0)' },
+            { min: 220, title: 'Творец Миров', icon: '🌌', border: 'linear-gradient(135deg,#ce93d8,#7e57c2)' },
+            { min: 360, title: 'Легенда Сезона', icon: '🧧', border: 'linear-gradient(135deg,#ffe082,#ff7043)' }
+        ];
+
+        function getKarmaVisualMeta(points) {
+            const karma = Math.max(0, Number(points) || 0);
+            let found = KARMA_VISUAL_LEVELS[0];
+            for (const level of KARMA_VISUAL_LEVELS) {
+                if (karma >= level.min) found = level;
             }
-            const initial = String(nickname || 'И').trim().charAt(0).toUpperCase() || 'И';
-            avatarEl.textContent = initial;
-            avatarEl.style.background = 'linear-gradient(135deg,#f7d774,#d4af37)';
-            avatarEl.style.color = '#5a3e00';
-            avatarEl.style.fontWeight = '800';
+            return found;
         }
 
-        const KARMA_RANK_THRESHOLDS = [50, 120, 220, 360, 520];
-
-        function getNextKarmaGoal(points) {
-            const karma = Math.max(0, Number(points) || 0);
-            const next = KARMA_RANK_THRESHOLDS.find(goal => karma < goal);
-            return next || KARMA_RANK_THRESHOLDS[KARMA_RANK_THRESHOLDS.length - 1];
+        function renderProfileAvatar(nickname, avatarUrl, points) {
+            const avatarEl = document.getElementById('profile-avatar');
+            if (!avatarEl) return;
+            const meta = getKarmaVisualMeta(points);
+            avatarEl.style.boxShadow = `0 0 0 3px rgba(255,255,255,.9), 0 0 0 6px rgba(0,0,0,.05)`;
+            avatarEl.style.border = '2px solid #fff';
+            if (avatarUrl) {
+                avatarEl.innerHTML = `<img src="${avatarUrl}" alt="Аватар" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+            } else {
+                const initial = String(nickname || 'П').trim().charAt(0).toUpperCase() || 'П';
+                avatarEl.textContent = initial;
+                avatarEl.style.color = '#fff';
+                avatarEl.style.fontWeight = '800';
+            }
+            avatarEl.style.background = meta.border;
         }
 
         function updateProfileUI() {
@@ -7474,51 +7481,55 @@
             if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
             if (isAdminProfile) return;
 
-            const nickname = seasonProfileData.nickname || players[myIndex]?.n || (currentUserId === ADMIN_ID ? 'Администратор' : 'Игрок');
-            const karma = Number(seasonProfileData.karma_points) || 0;
+            const nickname = seasonProfileData.nickname || getTelegramDisplayName();
+            const karma = Math.max(0, Number(seasonProfileData.karma_points) || 0);
             const karmaText = document.getElementById('profile-karma-points');
             const karmaBar = document.getElementById('profile-karma-bar');
             const karmaRank = document.getElementById('profile-karma-rank');
             const nickEl = document.getElementById('profile-nickname');
-            if (nickEl) nickEl.textContent = nickname;
-            renderProfileAvatar(nickname);
-            const nextGoal = getNextKarmaGoal(karma);
-            const ratio = nextGoal > 0 ? (karma / nextGoal) : 0;
-            const width = karma > 0 ? Math.max(4, Math.min(100, ratio * 100)) : 0;
-            if (karmaText) karmaText.textContent = `${Math.max(0, karma)} / ${nextGoal}`;
+            const visual = getKarmaVisualMeta(karma);
+            if (nickEl) nickEl.textContent = `${visual.icon} ${nickname}`;
+            renderProfileAvatar(nickname, seasonProfileData.avatar_url || '', karma);
+            const width = Math.max(0, Math.min(100, (karma / KARMA_LEVEL_STEP) * 100));
+            if (karmaText) karmaText.textContent = `${karma} / ${KARMA_LEVEL_STEP}`;
             if (karmaBar) {
                 karmaBar.style.width = `${width}%`;
                 karmaBar.style.background = karma > 0
                     ? 'linear-gradient(90deg,#c0c0c0,#d4af37)'
                     : '#e0e0e0';
             }
-            if (karmaRank && window.karmaSystem) karmaRank.textContent = window.karmaSystem.getKarmaRank(karma);
+            if (karmaRank) karmaRank.textContent = `${visual.title} ${visual.icon}`;
         }
 
         async function syncSeasonProfile() {
             if (!currentUserId) return;
             if (String(currentUserId) === String(ADMIN_ID)) {
-                seasonProfileData = { karma_points: 0, nickname: 'Администратор' };
+                seasonProfileData = { karma_points: 0, nickname: 'Администратор', avatar_url: '' };
                 updateProfileUI();
                 return;
             }
-            const fallbackNickname = players[myIndex]?.n || 'Игрок';
+            const fallbackNickname = getTelegramDisplayName();
+            const fallbackAvatarUrl = String(telegramUser.photo_url || '').trim();
             const profileRef = db.ref(`player_season_status/${currentUserId}`);
-            const userStats = await profileRef.once('value');
-            if (!userStats.exists()) {
-                await profileRef.set({
-                    userId: String(currentUserId),
-                    nickname: String(fallbackNickname || 'Игрок'),
-                    karma_points: 0,
-                    updatedAt: Date.now()
-                });
-            } else if (window.karmaSystem) {
-                await window.karmaSystem.ensureSeasonProfile(db, currentUserId, fallbackNickname, false);
-            }
+            await window.karmaSystem.ensureSeasonProfile(db, currentUserId, fallbackNickname, false);
+
             if (seasonProfileRef) seasonProfileRef.off();
             seasonProfileRef = profileRef;
             seasonProfileRef.on('value', snap => {
-                seasonProfileData = snap.val() || { karma_points: 0, nickname: fallbackNickname };
+                const row = snap.val() || {};
+                seasonProfileData = {
+                    ...seasonProfileData,
+                    ...row,
+                    nickname: String(row.nickname || fallbackNickname),
+                    avatar_url: String(row.avatar_url || fallbackAvatarUrl || '')
+                };
+                updateProfileUI();
+            });
+
+            if (seasonKarmaRef) seasonKarmaRef.off();
+            seasonKarmaRef = db.ref(`player_season_status/${currentUserId}/karma_points`);
+            seasonKarmaRef.on('value', snap => {
+                seasonProfileData.karma_points = Math.max(0, Number(snap.val()) || 0);
                 updateProfileUI();
             });
         }
@@ -7634,7 +7645,7 @@
                 const fallbackSnap = await db.ref(`player_season_status/${uid}/karma_points`).once('value');
                 return Number(fallbackSnap.val()) || 0;
             }
-            const fallbackNickname = players[myIndex]?.n || 'Игрок';
+            const fallbackNickname = getTelegramDisplayName();
             await window.karmaSystem.ensureSeasonProfile(db, uid, fallbackNickname, false);
             return window.karmaSystem.addKarmaPoints(db, uid, delta, ADMIN_ID);
         }
@@ -7740,6 +7751,10 @@
             if (!selectedKarmaUserId) return alert('Сначала выбери игрока.');
             const amount = Math.max(1, Number(document.getElementById('admin-karma-amount')?.value || 0));
             const delta = (direction >= 0 ? 1 : -1) * amount;
+            const fallbackNickname = players[Number((window.cachedUsersData || {})[selectedKarmaUserId]?.charIndex)]?.n || `ID ${selectedKarmaUserId}`;
+            if (window.karmaSystem) {
+                await window.karmaSystem.ensureSeasonProfile(db, selectedKarmaUserId, fallbackNickname, false);
+            }
             await db.ref(`player_season_status/${selectedKarmaUserId}`).update({
                 karma_points: firebase.database.ServerValue.increment(delta),
                 updatedAt: Date.now(),
