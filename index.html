@@ -1009,12 +1009,16 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const tg = window.Telegram.WebApp;
-        tg.ready(); tg.expand();
-
         const ADMIN_ID = 341995937;
-        const currentUserId = tg.initDataUnsafe?.user?.id || 0;
-        const currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? "admin" : "player";
-        const telegramUser = tg.initDataUnsafe?.user || {};
+        let currentUserId = 0;
+        let currentUserRole = 'player';
+        let telegramUser = {};
+
+        function refreshTelegramContext() {
+            telegramUser = tg.initDataUnsafe?.user || {};
+            currentUserId = Number(telegramUser.id) || 0;
+            currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? 'admin' : 'player';
+        }
         const onValue = (ref, handler) => ref.on('value', handler);
         function adminUpdate(path, patch) {
             return db.ref(path).update(patch);
@@ -7463,6 +7467,7 @@
         let seasonProfileData = { karma_points: 0, nickname: '', avatar_url: '' };
 
         const KARMA_LEVEL_STEP = 100;
+        const MAX_RANK_KARMA = 360;
         const KARMA_VISUAL_LEVELS = [
             { min: 0, title: 'Зритель', icon: '🎟️', border: 'linear-gradient(135deg,#bdbdbd,#9e9e9e)' },
             { min: 50, title: 'Ценитель', icon: '🏺', border: 'linear-gradient(135deg,#d7ccc8,#a1887f)' },
@@ -7524,9 +7529,9 @@
             const visual = getKarmaVisualMeta(karma);
             if (nickEl) nickEl.textContent = nickname;
             renderProfileAvatar(nickname, seasonProfileData.avatar_url || seasonProfileData.photo_url || '', karma);
-            let progress = (karma / 100) * 100;
+            let progress = (karma / MAX_RANK_KARMA) * 100;
             progress = Math.max(0, Math.min(100, progress));
-            if (karmaText) karmaText.textContent = `${karma} / 100`;
+            if (karmaText) karmaText.textContent = `${karma} / ${MAX_RANK_KARMA}`;
             if (karmaBar) karmaBar.style.width = progress + '%';
             if (karmaRank) karmaRank.textContent = `${visual.title} ${visual.icon}`;
         }
@@ -7546,6 +7551,15 @@
             if (seasonProfileRef) seasonProfileRef.off();
             seasonProfileRef = profileRef;
             onValue(seasonProfileRef, snap => {
+                if (!snap.exists()) {
+                    seasonProfileData = {
+                        karma_points: 0,
+                        nickname: fallbackNickname || 'Путешественник',
+                        avatar_url: fallbackAvatarUrl || ''
+                    };
+                    updateProfileUI();
+                    return;
+                }
                 const data = snap.val() || {};
                 seasonProfileData = {
                     ...seasonProfileData,
@@ -7559,6 +7573,11 @@
             if (seasonKarmaRef) seasonKarmaRef.off();
             seasonKarmaRef = db.ref(`player_season_status/${currentUserId}/karma_points`);
             onValue(seasonKarmaRef, snap => {
+                if (!snap.exists()) {
+                    seasonProfileData.karma_points = 0;
+                    updateProfileUI();
+                    return;
+                }
                 seasonProfileData.karma_points = Math.max(0, Number(snap.val()) || 0);
                 updateProfileUI();
             });
@@ -7806,7 +7825,9 @@
 
         // END works.js
 
-
+        tg.ready();
+        tg.expand();
+        refreshTelegramContext();
         init();
     </script>
 </body>
