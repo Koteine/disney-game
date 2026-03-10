@@ -2549,17 +2549,17 @@
                 const elapsed = now - state.startAt;
                 stars.forEach((star) => {
                     if (mode === 'converge') {
-                        const t = Math.min(1, elapsed / 1200);
-                        star.x += (w / 2 - star.x) * (0.06 + t * 0.15);
-                        star.y += (h / 2 - star.y) * (0.06 + t * 0.15);
+                        const t = Math.min(1, elapsed / 2000);
+                        star.x += (w / 2 - star.x) * (0.03 + t * 0.11);
+                        star.y += (h / 2 - star.y) * (0.03 + t * 0.11);
                     } else {
                         star.x += star.vx;
                         star.y += star.vy;
                     }
-                    if (star.x < -36) star.x = w + 18;
-                    if (star.x > w + 36) star.x = -18;
-                    if (star.y < -36) star.y = h + 18;
-                    if (star.y > h + 36) star.y = -18;
+                    if (star.x < -50) star.x = w + 20;
+                    if (star.x > w + 50) star.x = -20;
+                    if (star.y < -50) star.y = h + 20;
+                    if (star.y > h + 50) star.y = -20;
                     star.el.style.transform = `translate(${star.x}px, ${star.y}px)`;
                 });
                 state.rafId = requestAnimationFrame(tick);
@@ -2572,15 +2572,21 @@
             const height = stage.clientHeight || 420;
             return tickets.map(ticket => {
                 const el = document.createElement('span');
-                el.className = 'magic-ticket-star';
-                el.textContent = String(ticket.num);
+                const len = String(ticket.num).length;
+                el.className = `magic-ticket-star size-${Math.min(len, 3)}`;
+                const mark = document.createElement('span');
+                mark.className = 'ticket-mark';
+                mark.textContent = String(ticket.num);
+                el.appendChild(mark);
+                el.style.setProperty('--so', (0.65 + Math.random() * 0.35).toFixed(2));
+                el.style.setProperty('--tw', `${2.2 + Math.random() * 2.8}s`);
                 stage.appendChild(el);
                 return {
                     el,
                     x: Math.random() * width,
                     y: Math.random() * height,
-                    vx: (Math.random() - 0.5) * 0.55,
-                    vy: (Math.random() - 0.5) * 0.45
+                    vx: (Math.random() - 0.5) * 0.34,
+                    vy: (Math.random() - 0.5) * 0.32
                 };
             });
         }
@@ -2598,17 +2604,17 @@
             animateDriftingStars(stars, stage, 'idle');
         }
 
-        function spawnMagicSparks(count = 44) {
+        function spawnMagicSparks(count = 44, spread = 26) {
             const layer = document.getElementById('magic-sparkle-layer');
             if (!layer) return;
             layer.innerHTML = '';
             for (let i = 0; i < count; i++) {
                 const spark = document.createElement('i');
                 spark.className = 'magic-spark';
-                spark.style.left = `${50 + (Math.random() - 0.5) * 26}%`;
-                spark.style.top = `${50 + (Math.random() - 0.5) * 26}%`;
-                spark.style.setProperty('--dx', `${(Math.random() - 0.5) * 340}px`);
-                spark.style.setProperty('--dy', `${(Math.random() - 0.5) * 280}px`);
+                spark.style.left = `${50 + (Math.random() - 0.5) * spread}%`;
+                spark.style.top = `${50 + (Math.random() - 0.5) * spread}%`;
+                spark.style.setProperty('--dx', `${(Math.random() - 0.5) * (280 + spread * 4)}px`);
+                spark.style.setProperty('--dy', `${(Math.random() - 0.5) * (220 + spread * 3)}px`);
                 layer.appendChild(spark);
             }
             setTimeout(() => { if (layer) layer.innerHTML = ''; }, 1500);
@@ -2623,8 +2629,8 @@
             stopMagicAnimationFrame();
             const state = {
                 startMs: performance.now(),
-                lastSpeedShiftMs: performance.now(),
-                speedFactor: 0.9 + Math.random() * 0.3,
+                lastChaosMs: performance.now(),
+                speedFactor: 1.35,
                 rafId: 0,
                 durationMs
             };
@@ -2636,21 +2642,27 @@
                     onFinish?.();
                     return;
                 }
-                if (now - state.lastSpeedShiftMs >= 10000) {
-                    state.speedFactor = 0.7 + Math.random() * 0.9;
-                    state.lastSpeedShiftMs = now;
+                if (now - state.lastChaosMs >= 900) {
+                    cards.forEach((card, idx) => {
+                        if (((idx + Math.floor(now / 240)) % 5) === 0) {
+                            card.style.zIndex = String(30 + Math.round(Math.random() * 40));
+                        }
+                    });
+                    state.speedFactor = 1 + Math.random() * 1.7;
+                    state.lastChaosMs = now;
                 }
                 const whirl = (elapsed / 1000) * state.speedFactor;
                 cards.forEach((card, idx) => {
-                    const base = card.dataset.baseRadius ? Number(card.dataset.baseRadius) : (80 + (idx % 8) * 14);
-                    const wobble = Math.sin((elapsed / 500) + idx) * 24;
-                    const radius = base + wobble;
-                    const angle = whirl * 2.1 + idx * 0.41;
-                    const tx = Math.cos(angle) * radius + Math.sin((elapsed / 700) + idx) * 26;
-                    const ty = Math.sin(angle * 1.12) * (radius * 0.72);
-                    const rot = (angle * 180 / Math.PI) + Math.sin(idx + elapsed / 420) * 18;
-                    const scale = 0.9 + (Math.sin(elapsed / 700 + idx) + 1) * 0.08;
-                    const z = 5 + Math.round((Math.sin(angle + idx * 0.8) + 1) * 22);
+                    const base = card.dataset.baseRadius ? Number(card.dataset.baseRadius) : (58 + (idx % 8) * 10);
+                    const stackTighten = 1 - Math.min(0.33, elapsed / (durationMs * 2));
+                    const radius = (base + Math.sin((elapsed / 450) + idx) * 14) * stackTighten;
+                    const angle = whirl * 2.7 + idx * 0.72;
+                    const burst = ((idx + Math.floor(elapsed / 620)) % 11 === 0) ? (28 + Math.random() * 34) : 0;
+                    const tx = Math.cos(angle) * (radius + burst) + Math.sin((elapsed / 280) + idx) * 12;
+                    const ty = Math.sin(angle * 1.18) * (radius * 0.62 + burst * 0.28);
+                    const rot = (angle * 180 / Math.PI) + Math.sin(idx + elapsed / 210) * 22;
+                    const scale = 0.9 + (Math.sin(elapsed / 340 + idx) + 1) * 0.06 + (burst ? 0.12 : 0);
+                    const z = 8 + Math.round((Math.sin(angle + idx * 0.52) + 1) * 16) + (burst ? 20 : 0);
                     card.style.zIndex = String(z);
                     card.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot}deg) scale(${scale})`;
                 });
@@ -2678,28 +2690,29 @@
 
             const stars = buildStarNodesFromTickets(stage, tickets);
             animateDriftingStars(stars, stage, 'idle');
-            await wait(700);
+            await wait(750);
             animateDriftingStars(stars, stage, 'converge');
             stars.forEach(star => star.el.classList.add('is-converging'));
-            await wait(1300);
+            await wait(2000);
             stopMagicStarField();
             stage.innerHTML = '';
 
-            const maxCards = Math.min(Math.max(tickets.length, 8), 60);
-            const cardsPool = [...tickets].sort(() => Math.random() - 0.5).slice(0, maxCards);
-            if (!cardsPool.find(t => String(t.num) === String(winner.num))) cardsPool[0] = winner;
+            const cardsPool = [...tickets];
+            if (!cardsPool.find(t => String(t.num) === String(winner.num))) cardsPool.push(winner);
             const cards = cardsPool.map(ticket => {
                 const card = createMagicCardMarkup(ticket, String(ticket.num) === String(winner.num));
-                card.dataset.baseRadius = String(80 + Math.random() * 120);
+                card.dataset.baseRadius = String(55 + Math.random() * 65);
                 stage.appendChild(card);
                 requestAnimationFrame(() => card.classList.add('is-visible'));
                 return card;
             });
 
-            await wait(220);
+            await wait(180);
+            const sparksInterval = setInterval(() => spawnMagicSparks(18, 18), 1600);
             await new Promise(resolve => {
                 animateMagicCards(cards, 60000, resolve);
             });
+            clearInterval(sparksInterval);
 
             stopMagicAnimationFrame();
             const winnerCard = cards.find(card => card.dataset.winner === '1');
@@ -2722,7 +2735,7 @@
                 winnerCard.classList.add('is-revealed');
             }
 
-            spawnMagicSparks();
+            spawnMagicSparks(72, 34);
             banner.classList.add('show');
             document.getElementById('winner-display').innerHTML = `🏆 Билет №${winner.num}: <b>${winnerName || winner.name}</b>`;
             showWinnerToast(`✨ Победитель: ${winnerName || winner.name} (билет №${winner.num})`);
@@ -2820,6 +2833,7 @@
                 const tickets = await getTicketsFromFirebaseDrawPool();
                 const winner = tickets.find(t => String(t.num) === String(winnerTicket)) || { num: winnerTicket, name: winnerName, userId: null };
                 await db.ref('current_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
+                await db.ref('last_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
                 await db.ref('winners_history').push({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
                 await db.ref('wheel_history').push({
                     drawId: doneAt,
@@ -2868,6 +2882,7 @@
             await Promise.all([
                 db.ref('wheel_draw').set(null),
                 db.ref('current_winner').set(null),
+                db.ref('last_winner').set(null),
                 db.ref('winners_history').set(null),
                 db.ref('wheel_history').set(null)
             ]);
@@ -3357,6 +3372,9 @@
                 wheel_event: null,
                 wheel_draw: null,
                 wheel_history: null,
+                current_winner: null,
+                last_winner: null,
+                winners_history: null,
                 current_round: {
                     number: 0,
                     endTime: 0,
