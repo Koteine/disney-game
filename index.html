@@ -52,7 +52,6 @@
             <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <div id="event-celebration-overlay"></div>
-            <button onclick="openRulesScroll()" class="admin-btn" style="background:#b08d57; margin:4px 0 0 0;">📜 Свиток правил</button>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
@@ -249,7 +248,14 @@
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="toggleEmergencySection('items')" class="admin-btn" style="background:#0277bd; width:100%; margin:0 0 6px;">🎒 Управление предметами игроков</button>
                     <div id="admin-emergency-items-body" class="news-list" style="margin-bottom:8px;">
-                        <div id="admin-items-player-list" style="max-height:45vh; overflow:auto;"></div>
+                        <input type="number" id="admin-items-user-id" placeholder="Айди игрока" class="admin-input">
+                        <select id="admin-items-action" class="admin-input">
+                            <option value="grant">Выдать предмет</option>
+                            <option value="revoke">Изъять предмет</option>
+                        </select>
+                        <select id="admin-items-item" class="admin-input"></select>
+                        <button onclick="adminApplyItemAction()" class="admin-btn" style="background:#0277bd; width:100%; margin:0;">✅ Применить</button>
+                        <div id="admin-items-player-list" style="max-height:35vh; overflow:auto; margin-top:8px;"></div>
                     </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
@@ -263,30 +269,39 @@
 
         <div id="tab-rules" class="tab-content">
             <h1>📜 Правила битвы</h1>
-            <div class="admin-section" style="font-size: 13px; line-height: 1.5; background:linear-gradient(180deg,#fff8dc,#f7e7b5); border:1px solid #d4af37; color:#6b4f1d;">
-                <p><b>🐉 Покорми Мушу:</b> Общий сбор! Кликни по фрукту, чтобы накормить дракона. Если успеем дойти до цели вместе — все участники получат случайный дар (билеты или артефакты).</p>
-                <p><b>🎭 Плащ-невидимка:</b> Позволяет пропустить задание сейчас. В следующем раунде нужно сдать ДВЕ работы (за прошлый и текущий раунды), иначе сгорят оба билета.</p>
-                <hr style="border:0;border-top:1px dashed #d4af37; margin:10px 0;">
-                <p><b>1. Ход в раунде:</b> В каждом раунде ты можешь бросить кубик один раз. Тебе выпадет случайная клетка и задание.</p>
-                <p><b>2. Задания:</b> Выполни творческое задание и сдай его. Если задание выполнено — твой билет участвует в розыгрыше.</p>
-                <p><b>3. 💣 Ловушки:</b> Осторожно! На поле скрыты ловушки. Если попадешь на неё — придется выполнять усложненное задание.</p>
-                <p><b>4. 👑 Золотая клетка:</b> Приносит сразу 2 билета на колесо!</p>
-                <p><b>5. 🔮 Магическая связь:</b> В каждом раунде есть 1 магическая клетка. Попав на неё, ты получаешь напарника и выбираешь совместное задание.</p>
-                <p><b>6. 👯 Тянет к тебе как магнитом:</b> В каждом раунде есть 1 такая клетка. Попав на неё, ты получаешь задание случайного игрока, который уже получил любое задание, кроме механики магической связи.</p>
-                <p><b>7. 🎮 Мини-игра:</b> В каждом раунде есть ровно 2 мини-игры на случайных клетках: пятнашки 5×5 и «Словесный скетч». В «Словесном скетче» нужно угадать слово из списка за 3 попытки.  При успехе вы получаете кодовое слово и билет; при ошибке после 3 попыток — без билета и с пропуском раунда.</p>
-                <p><b>8. 🎒 Предметные клетки:</b> В каждом раунде появляется <b>ровно 4 предметные клетки</b>: с <b>Золотой пыльцой</b>, <b>Кляксой-диверсантом</b>, <b>Волшебной палочкой 🎆</b> и <b>Лупой 🔎</b>.</p>
-                <p><b>9. 🎇 Золотая пыльца:</b> Можно использовать в любом раунде для переброса задания на уже открытой своей обычной клетке. Клетка не меняется, меняется только задание, предмет сгорает.</p>
-                <p><b>10. 💦 Клякса-диверсант:</b> После получения нужно сразу отправить усложнение игроку, который ещё не бросал кубик в этом раунде. Цель занимает случайную клетку, вместо обычного задания выбирает 1 из 4 клякс-усложнений и не бросает кубик в этом раунде.</p>
-                <p><b>11. 🎆 Волшебная палочка:</b> Получив палочку, выбери игрока, который ещё не бросал кубик — его задание станет проще.</p>
-                <p><b>12. 🔎 Лупа:</b> Даёт возможность один раз за раунд посмотреть задание в выбранной свободной обычной ячейке и решить: «Беру» (пересесть на новую клетку, освободив прежнюю) или «Не беру» (остаться на текущей клетке). В обоих случаях Лупа сгорает.</p>
-                <p><b>13. 🏳️ Сдаюсь:</b> В карточке задания есть кнопка "Сдаюсь". Можно сдаться не чаще <b>1 раза за каждые 3 раунда</b> (минимум 1 раз за игру). Если лимит исчерпан и снова нажать "Сдаюсь", можно подтвердить выход из игры: в текущем раунде билетик не начислится, а в следующих раундах участие будет недоступно.</p>
-                <p><b>14. 🎡 Розыгрыш:</b> В конце всех раундов администратор запускает Колесо. Чем больше у тебя выполненных клеток и билетиков, тем выше шанс забрать главный приз.</p>
-                <p><b>15. 🎨 Событие «Эпичный закрас»:</b> Это общее событие по таймеру. Все игроки вместе закрашивают единое полотно; если закрашено 95%+ до конца времени, все участники получают по 2 билетика.</p>
-
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
-                <p style="color: var(--p-pink); font-weight: bold; text-align: center;">Удачи, художник! ✨</p>
+            <div class="admin-section" style="font-size: 13px; line-height: 1.5;">
+                <div style="text-align:left; border:1px solid #f3d9a2; border-radius:10px; background:linear-gradient(180deg,#fffaf0,#fff3da); padding:10px; margin-bottom:10px;">
+                    <div style="font-weight:800; color:#8d6e63; margin-bottom:6px;">Суть игры</div>
+                    <p style="margin:0 0 6px;"><b>🎲 Бросок кубика:</b> раз в раунд открываешь одну клетку и получаешь задание.</p>
+                    <p style="margin:0 0 6px;"><b>📤 Сдача работ:</b> выполни задание и загрузи результат во вкладке «Работы».</p>
+                    <p style="margin:0 0 6px;"><b>🎫 Билетики:</b> принятая работа сохраняет билет в игре, некоторые механики дают доп. билеты.</p>
+                    <p style="margin:0;"><b>🃏 Розыгрыш:</b> в конце раунда участвуют все активные билетики и определяется победитель.</p>
+                </div>
+                <div class="admin-inner-tabs" style="margin:0;">
+                    <button id="rules-tab-items-btn" class="admin-inner-tab-btn active" onclick="switchRulesSubtab('items')">Предметы</button>
+                    <button id="rules-tab-events-btn" class="admin-inner-tab-btn" onclick="switchRulesSubtab('events')">События</button>
+                    <button id="rules-tab-cells-btn" class="admin-inner-tab-btn" onclick="switchRulesSubtab('cells')">Особые клетки</button>
+                </div>
+                <div id="rules-panel-items" class="admin-inner-panel active" style="display:block; text-align:left; margin-top:8px;">
+                    <p><b>🎭 Плащ-невидимка:</b> пропускает текущее задание, но в следующем раунде нужно сдать две работы.</p>
+                    <p><b>🎇 Золотая пыльца:</b> перебрасывает задание на уже открытой клетке.</p>
+                    <p><b>🔎 Лупа:</b> раз в раунд меняет текущее задание на случайное новое.</p>
+                    <p><b>🫧 Клякса-диверсант:</b> накладывает искажение на работу выбранного игрока.</p>
+                    <p><b>🎆 Волшебная палочка:</b> благословляет игрока и может удвоить его билет за раунд.</p>
+                </div>
+                <div id="rules-panel-events" class="admin-inner-panel" style="display:none; text-align:left; margin-top:8px;">
+                    <p><b>🎨 Эпичный закрас:</b> общий холст, который все закрашивают вместе до нужного процента.</p>
+                    <p><b>🐉 Покорми Мушу:</b> игроки кормят Мушу фруктами; при достижении цели участники получают награды.</p>
+                    <p><b>🛡️ Стенка на стенку:</b> командное событие, где победа команды приносит бонусные билеты.</p>
+                </div>
+                <div id="rules-panel-cells" class="admin-inner-panel" style="display:none; text-align:left; margin-top:8px;">
+                    <p><b>🔮 Магическая связь:</b> выдает парное задание с другим игроком или сольный магический квест.</p>
+                    <p><b>🫧 Капля:</b> специальная клетка с диверсией — задание усложняется и требует особого условия.</p>
+                    <p><b>🎆 Волшебная палочка:</b> клетка-дар, дающая эффект усиления для выбранного игрока.</p>
+                </div>
             </div>
         </div>
+</div>
 
         <nav class="nav-bar">
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
@@ -1596,24 +1611,27 @@
             await renderAdminItemsPlayersList();
         }
 
-        async function adminGrantItemPrompt(targetUserId) {
-            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
-            const choice = prompt('Выдать предмет\n1 — Плащ-невидимка\n2 — Лупа\n3 — Золотая пыльца', '1');
-            if (choice === null) return;
-            const map = { '1': 'cloak', '2': 'magnifier', '3': 'goldenPollen' };
-            const itemKey = map[String(choice).trim()];
-            if (!itemKey) return alert('Неверный выбор предмета.');
-            await adminSetPlayerItem(targetUserId, itemKey, true);
+        function getAdminItemOptions() {
+            return ['cloak', 'magnifier', 'goldenPollen', 'inkSaboteur', 'magicWand']
+                .filter(k => itemTypes?.[k])
+                .map(k => ({ key: k, label: `${itemTypes[k].emoji || '🎁'} ${itemTypes[k].name || k}` }));
         }
 
-        async function adminRevokeItemPrompt(targetUserId) {
+        function fillAdminItemsFormDefaults() {
+            const select = document.getElementById('admin-items-item');
+            if (!select) return;
+            const options = getAdminItemOptions();
+            select.innerHTML = options.map(o => `<option value="${o.key}">${o.label}</option>`).join('');
+        }
+
+        async function adminApplyItemAction() {
             if (Number(currentUserId) !== Number(ADMIN_ID)) return;
-            const choice = prompt('Изъять предмет\n1 — Плащ-невидимка\n2 — Лупа\n3 — Золотая пыльца', '1');
-            if (choice === null) return;
-            const map = { '1': 'cloak', '2': 'magnifier', '3': 'goldenPollen' };
-            const itemKey = map[String(choice).trim()];
-            if (!itemKey) return alert('Неверный выбор предмета.');
-            await adminSetPlayerItem(targetUserId, itemKey, false);
+            const targetUserId = String(document.getElementById('admin-items-user-id')?.value || '').trim();
+            const action = String(document.getElementById('admin-items-action')?.value || 'grant');
+            const itemKey = String(document.getElementById('admin-items-item')?.value || '').trim();
+            if (!/^\d+$/.test(targetUserId)) return alert('Укажи корректный айди игрока.');
+            if (!itemKey) return alert('Выбери предмет.');
+            await adminSetPlayerItem(targetUserId, itemKey, action === 'grant');
         }
 
         function renderInventoryIcons(inv = {}) {
@@ -1638,8 +1656,8 @@
                 <div><b>${r.name}</b> · ID: ${r.uid}</div>
                 <div style="font-size:12px; color:#555; margin:5px 0;">Инвентарь: ${renderInventoryIcons(r.inv)}</div>
                 <div style="display:flex; gap:6px;">
-                    <button onclick="adminGrantItemPrompt('${r.uid}')" class="admin-btn" style="margin:0; flex:1; background:#00897b;">🎁 Выдать</button>
-                    <button onclick="adminRevokeItemPrompt('${r.uid}')" class="admin-btn" style="margin:0; flex:1; background:#c62828;">🗑️ Изъять</button>
+                    <button onclick="document.getElementById('admin-items-user-id').value='${r.uid}'; document.getElementById('admin-items-action').value='grant';" class="admin-btn" style="margin:0; flex:1; background:#00897b;">🎁 Выдать</button>
+                    <button onclick="document.getElementById('admin-items-user-id').value='${r.uid}'; document.getElementById('admin-items-action').value='revoke';" class="admin-btn" style="margin:0; flex:1; background:#c62828;">🗑️ Изъять</button>
                 </div>
             </div>`).join('') || '<div style="font-size:12px;color:#777;">Игроки не найдены.</div>';
         }
@@ -1660,7 +1678,8 @@
             body.style.maxHeight = body.classList.contains('expanded') ? '65vh' : '0';
             body.style.overflowY = 'auto';
             if (sectionName === 'items' && body.classList.contains('expanded')) {
-                renderAdminItemsPlayersList?.().catch(() => {});
+                fillAdminItemsFormDefaults?.();
+            renderAdminItemsPlayersList?.().catch(() => {});
             }
         }
 
@@ -3597,6 +3616,18 @@
             switchTab('tab-rules', btn);
         }
 
+        function switchRulesSubtab(tabName) {
+            const tabs = ['items', 'events', 'cells'];
+            tabs.forEach(name => {
+                const btn = document.getElementById(`rules-tab-${name}-btn`);
+                const panel = document.getElementById(`rules-panel-${name}`);
+                const active = name === tabName;
+                btn?.classList.toggle('active', active);
+                panel?.classList.toggle('active', active);
+                if (panel) panel.style.display = active ? 'block' : 'none';
+            });
+        }
+
 
         /* Inlined modules: items, tickets, events, admin, works */
 
@@ -3833,8 +3864,8 @@
             window.activateMagnifier = activateMagnifier;
             window.activateInkSaboteur = activateInkSaboteur;
             window.activateCloak = activateCloak;
-            window.adminGrantItemPrompt = adminGrantItemPrompt;
-            window.adminRevokeItemPrompt = adminRevokeItemPrompt;
+            window.adminApplyItemAction = adminApplyItemAction;
+            window.fillAdminItemsFormDefaults = fillAdminItemsFormDefaults;
             window.renderAdminItemsPlayersList = renderAdminItemsPlayersList;
 
         })();
@@ -4111,7 +4142,7 @@
                         <div style="text-align:left;">
                             <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
                             <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
-                            <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
+                            <button onclick="openTicketTaskDetails('${t.ticketNum}')" style="margin-top:4px; border:1px solid #ddd; background:#fff; border-radius:8px; padding:2px 8px; font-size:14px;">👀</button>
                         </div>
                         <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
                             ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
@@ -4156,7 +4187,7 @@
                             <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                             <td>
                                 <div style="font-size:11px;">${t.sourceLabel}</div>
-                                <div style="font-size:11px; color:#444;">${t.taskLabel}</div>
+                                <button onclick="openTicketTaskDetails('${t.ticketNum}')" style="margin-top:4px; border:1px solid #ddd; background:#fff; border-radius:8px; padding:2px 8px; font-size:14px;">👀</button>
                                 ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
                                 ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                             </td>
@@ -4166,6 +4197,19 @@
                 if (isAdmin) {
                     renderAdminPlayerTickets(expandedRows);
                 }
+            }
+
+            function openTicketTaskDetails(ticketNum) {
+                const row = expandTicketsRows(allTicketsData).find(t => String(t.ticketNum) === String(ticketNum));
+                if (!row) return alert('Данные по билету не найдены.');
+                const task = Number.isInteger(row.taskIdx) && row.taskIdx >= 0 ? tasks[row.taskIdx] : null;
+                let body = `<div style="text-align:left;"><div style="font-size:12px; color:#666;">🎟 Билет #${row.ticketNum}</div><div style="margin-top:8px; font-size:14px;">${row.taskLabel || 'Описание задания отсутствует'}</div>`;
+                if (task?.img) body += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-top:10px; border:1px solid #eee;">`;
+                body += '</div>';
+                document.getElementById('mTitle').innerText = 'Задание билета';
+                document.getElementById('mText').innerHTML = body;
+                document.getElementById('overlay').style.display = 'block';
+                document.getElementById('modal').style.display = 'block';
             }
 
             function viewTaskDetails(cellIdx) {
@@ -4190,6 +4234,7 @@
             window.toggleTicketRevocation = toggleTicketRevocation;
             window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
             window.selectAdminTicketUser = selectAdminTicketUser;
+            window.openTicketTaskDetails = openTicketTaskDetails;
         })();
         // END Tickets.js
 
@@ -4529,7 +4574,7 @@
           async function adminLaunchEpicPaintEvent() {
             try {
               const db = await getDbReady();
-              if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+              if (Number(currentUserId) !== Number(ADMIN_ID)) return;
               await db.ref(EVENT_PATH).set({
                 status: ACTIVE_STATUS,
                 type: EVENT_TYPE,
@@ -4821,7 +4866,7 @@
 
           window.initMushuEventSystem = () => attachMushuListeners().catch((e) => console.error('initMushuEventSystem failed', e));
           window.adminStartMushuRandomEvent = async () => {
-            if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
             const db = await ensureDb();
             const target = TARGET_POOL[Math.floor(Math.random() * TARGET_POOL.length)];
             await db.ref(EVENT_PATH).set({
@@ -4838,7 +4883,7 @@
             alert(`Ивент Мушу запущен. Цель: ${target}`);
           };
           window.adminStopMushuEvent = async () => {
-            if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
+            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
             const db = await ensureDb();
             await db.ref(EVENT_PATH).set({ status: 'inactive', current_satiety: 0, target: 0, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {} });
             alert('Ивент Мушу остановлен и очищен.');
