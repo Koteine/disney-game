@@ -3382,6 +3382,7 @@
             const karmaVisual = getKarmaVisualByPoints(ownerKarma);
             const karmaRank = window.karmaSystem?.getKarmaRank ? window.karmaSystem.getKarmaRank(ownerKarma) : 'Зритель из Первого Ряда 👩‍🎤';
             const ownerAvatar = players[cell.owner]?.n?.trim()?.charAt(0)?.toUpperCase() || '🎨';
+            const ownerAvatarUrl = String(ownerSeason.avatar_url || ownerSeason.photo_url || '').trim();
             const ownerName = players[cell.owner]?.n || 'Игрок';
             const magicPartnerName = (() => {
                 const partnerUserId = String(cell.magic_link?.partner_user_id || cell.magicLinkPartnerUserId || '').trim();
@@ -3395,7 +3396,7 @@
             let h = `
                 <div style="text-align:left; margin-bottom:15px; border:1px solid #ede7f6; border-radius:14px; background:linear-gradient(135deg,#fff,#f9f5ff); padding:10px;">
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <div style="width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; background:linear-gradient(135deg,${charColors[cell.owner]},#ec407a); border:3px solid ${karmaVisual.border}; box-shadow:0 0 0 4px ${karmaVisual.glow};">${ownerAvatar}</div>
+                        <div style="width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; background:linear-gradient(135deg,${charColors[cell.owner]},#ec407a); border:3px solid ${karmaVisual.border}; box-shadow:0 0 0 4px ${karmaVisual.glow}; overflow:hidden;">${ownerAvatarUrl ? `<img src="${ownerAvatarUrl}" alt="Аватар ${ownerName}" style="width:100%; height:100%; object-fit:cover;">` : ownerAvatar}</div>
                         <div style="flex:1; min-width:0;">
                             <div style="font-size:16px; font-weight:800; color:${charColors[cell.owner]}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${ownerName}${userTgId}</div>
                             <div style="display:inline-flex; margin-top:4px; font-size:12px; padding:3px 8px; border-radius:999px; background:#f3e5f5; color:#6a1b9a; border:1px solid #e1bee7;">${karmaRank}</div>
