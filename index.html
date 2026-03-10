@@ -2192,11 +2192,20 @@
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
                 if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
                 if (Date.now() < (ev.endAt || 0)) return ev;
-                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: 'О нет! Магический фитиль догорел, а Мушу остался голодным... Дракончик ворчит, что на таком пайке великую империю не спасешь, и уходит ворчать в свой храм. Попробуем накормить его в следующий раз! 🥟🚫' };
+                return { ...ev, status: 'failed', failedAt: Date.now(), resultText: '🚫 Время вышло: Мушу остался голодным О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!' };
             });
             if (tx.committed) {
                 if (active.id === MUSHU_EVENT_ID) {
-                    await db.ref('mushu_event').update({ status: 'failed', failedAt: Date.now(), resultText: 'О нет! Магический фитиль догорел, а Мушу остался голодным... Дракончик ворчит, что на таком пайке великую империю не спасешь, и уходит ворчать в свой храм. Попробуем накормить его в следующий раз! 🥟🚫' });
+                    const failedAt = Date.now();
+                    await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло: Мушу остался голодным О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!' });
+                    await db.ref('events/feed').push({
+                        type: MUSHU_EVENT_ID,
+                        eventId: String(active.activatedAt || active.startAt || failedAt),
+                        status: 'failed',
+                        title: '🚫 Время вышло: Мушу остался голодным',
+                        text: 'О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!',
+                        createdAt: failedAt
+                    });
                 } else {
                     await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: Date.now(), activatedAt: active.activatedAt || active.startAt }, false, 0);
                 }
@@ -4648,8 +4657,10 @@
             { id: 'plum', emoji: '🍑', label: 'Слива', satiety: 1 }
           ];
           const GOLDEN_CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 6 };
-          const SUCCESS_TEXT = 'Р-р-рар! Мушу так наелся, что теперь готов раздавать магию направо и налево! Вы только посмотрите на эту довольную мордашку. Дракончик сыт, а ваши подарки уже летят в инвентарь! 🐲✨';
-          const FAILED_TEXT = 'О нет! Магический фитиль догорел, а Мушу остался голодным... Дракончик ворчит, что на таком пайке великую империю не спасешь, и уходит ворчать в свой храм. Попробуем накормить его в следующий раз! 🥟🚫';
+          const SUCCESS_TITLE = '✨ Мушу сыт и доволен!';
+          const SUCCESS_TEXT = 'Р-р-рар! Игроки накормили дракончика! Магия активирована, ждем следующего появления. Молодцы!';
+          const FAILED_TITLE = '🚫 Время вышло: Мушу остался голодным';
+          const FAILED_TEXT = 'О нет! Магический фитиль догорел, а еды не хватило... Мушу ушел ворчать в свой храм. Попробуем накормить его в следующий раз!';
 
           let mushuRef = null;
           let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
@@ -4657,6 +4668,7 @@
           let timerId = null;
           let dragState = null;
           let statusToastShown = '';
+          let lastFeedResultLogged = '';
 
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || '').trim();
@@ -4693,7 +4705,7 @@
           }
 
           function getDragonMarkup() {
-            return '<div class="mushu-container"></div>';
+            return '<div id="mushu-container" class="mushu-container"><span class="smoke-particle left"></span><span class="smoke-particle right"></span></div>';
           }
 
           function ensureMushuUi() {
@@ -4852,13 +4864,55 @@
             if ($('mushu-combo-text')) $('mushu-combo-text').textContent = `Комбо за 15 минут: 5 кормлений = +5, 20 кормлений = +10`;
           }
 
-          function showMushuResultIfNeeded() {
+          function getMushuEventRuntimeId() {
+            return String(mushuState.instanceId || mushuState.startedAt || mushuState.completedAt || mushuState.failedAt || 'mushu_ID_1');
+          }
+
+          async function pushMushuResultToFeed(db, status) {
+            const eventId = getMushuEventRuntimeId();
+            const logKey = `${status}:${eventId}`;
+            if (lastFeedResultLogged === logKey) return;
+            const logTx = await db.ref(`${EVENT_PATH}/feed_result_posted/${status}`).transaction((v) => v || { at: Date.now(), eventId });
+            if (!logTx.committed) {
+              lastFeedResultLogged = logKey;
+              return;
+            }
+            const payload = status === 'completed'
+              ? { title: SUCCESS_TITLE, text: SUCCESS_TEXT }
+              : { title: FAILED_TITLE, text: FAILED_TEXT };
+            await db.ref('events/feed').push({
+              type: MUSHU_EVENT_ID,
+              eventId,
+              status,
+              title: payload.title,
+              text: payload.text,
+              createdAt: Date.now()
+            });
+            lastFeedResultLogged = logKey;
+          }
+
+          async function showMushuResultIfNeeded() {
             const status = String(mushuState.status || '');
             if (!['completed', 'failed'].includes(status)) return;
             if (statusToastShown === status) return;
+            const me = uid();
+            if (!me) return;
+            const db = await ensureDb();
+            const eventId = getMushuEventRuntimeId();
+            const seenKey = `seenMushu_${eventId}`;
+            const seenRef = db.ref(`users/${me}/seenEvents/${seenKey}`);
+            const tx = await seenRef.transaction((v) => v || true);
+            if (!tx.committed) {
+              statusToastShown = status;
+              return;
+            }
             statusToastShown = status;
             closeMushuOverlay();
-            alert(status === 'completed' ? SUCCESS_TEXT : FAILED_TEXT);
+            const title = status === 'completed' ? SUCCESS_TITLE : FAILED_TITLE;
+            const text = status === 'completed' ? SUCCESS_TEXT : FAILED_TEXT;
+            alert(`${title}
+
+${text}`);
           }
 
           function spawnEatSpark() {
@@ -4918,9 +4972,9 @@
             if (!fedTx.committed) return;
 
             const dragon = $('mushu-dragon');
-            dragon?.classList.add('mushu-happy');
+            dragon?.classList.add('mushu-chew');
             spawnEatSpark();
-            setTimeout(() => dragon?.classList.remove('mushu-happy'), 1000);
+            setTimeout(() => dragon?.classList.remove('mushu-chew'), 1000);
 
             await db.ref(`${EVENT_PATH}/participants/${me}`).set(true);
             const baseSatiety = Number(fruit.satiety || 1);
@@ -4945,7 +4999,8 @@
             Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
             await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
             await db.ref(`${EVENT_PATH}/completedAt`).set(Date.now());
-            await db.ref(`${EVENT_PATH}/resultText`).set(SUCCESS_TEXT);
+            await db.ref(`${EVENT_PATH}/resultText`).set(`${SUCCESS_TITLE} ${SUCCESS_TEXT}`);
+            await pushMushuResultToFeed(db, 'completed');
 
             const activeKey = await findActiveMushuGameEventKey(db);
             if (activeKey) {
@@ -4981,11 +5036,12 @@
             mushuRef = db.ref(EVENT_PATH);
             mushuRef.on('value', async (snap) => {
               mushuState = snap.val() || { status: 'idle' };
+              if (!['completed', 'failed'].includes(String(mushuState.status || ''))) statusToastShown = '';
               updateInlineInvite();
               updateProgressUi();
               startEventTimer();
               await renderFruitPanel();
-              showMushuResultIfNeeded();
+              await showMushuResultIfNeeded().catch((e) => console.error('showMushuResultIfNeeded failed', e));
               await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
             });
           }
