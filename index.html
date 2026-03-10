@@ -397,6 +397,9 @@
         let pendingMagicLinkCleanupRound = null;
         let magicStarFieldState = null;
         let raffleServerOffsetMs = 0;
+        let seasonProfilesRef = null;
+        let seasonProfilesByUserId = {};
+        let lastMagicLinksRound = null;
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
         const WALL_BATTLE_EVENT_ID = 'wall_battle';
@@ -922,6 +925,22 @@
             inventoryRef.on('value', snap => {
                 myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
                 renderInventory();
+            });
+
+            if (seasonProfilesRef) seasonProfilesRef.off();
+            seasonProfilesRef = db.ref('player_season_status');
+            seasonProfilesRef.on('value', snap => {
+                seasonProfilesByUserId = snap.val() || {};
+            });
+
+            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+                const v = snap.val() || {};
+                if (!v.text) return;
+                if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
+                    db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
+                    return;
+                }
+                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
 
             db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
@@ -1602,6 +1621,31 @@
 
         function toggleNewsPanel() {
             toggleExpandablePanel('news-list', 'news-toggle-btn');
+        }
+
+        function getKarmaVisualByPoints(points) {
+            const p = Number(points) || 0;
+            if (p <= 20) return { border: '#b0bec5', glow: 'rgba(176,190,197,0.55)' };
+            if (p <= 40) return { border: '#4db6ac', glow: 'rgba(77,182,172,0.55)' };
+            if (p <= 60) return { border: '#ab47bc', glow: 'rgba(171,71,188,0.55)' };
+            if (p <= 85) return { border: '#5c6bc0', glow: 'rgba(92,107,192,0.6)' };
+            return { border: '#fbc02d', glow: 'rgba(251,192,45,0.65)' };
+        }
+
+        async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded) {
+            if (!currentUserId || !cellOwnerUserId) return alert('Не удалось определить владельца клетки.');
+            if (String(cellOwnerUserId) === String(currentUserId)) return alert('Себе импульс отправлять нельзя ✨');
+            const text = `✨ Тебе пришёл импульс по клетке №${Number(cellIndex) + 1} от ${players[myIndex]?.n || 'Игрок'}.`;
+            await db.ref(`system_notifications/${cellOwnerUserId}`).push({
+                text,
+                createdAt: Date.now(),
+                expiresAt: Date.now() + (2 * 60 * 60 * 1000),
+                type: 'cell_impulse',
+                fromUserId: String(currentUserId),
+                cellIndex: Number(cellIndex)
+            });
+            const ownerName = decodeURIComponent(String(ownerNameEncoded || ''));
+            alert(`Импульс отправлен игроку ${ownerName || 'Игрок'} ✨`);
         }
 
         function toggleAdminEmergencyActions() {
@@ -2603,12 +2647,36 @@
             document.getElementById('mTitle').innerText = cell.isTrap ? '💣 КЛЕТКА С ЛОВУШКОЙ' : (cell.isGold ? '👑 ЗОЛОТАЯ КЛЕТКА' : (cell.isMagic ? '🔮 МАГИЧЕСКАЯ СВЯЗЬ' : (cell.isMiniGame ? '🎮 КЛЕТКА-МИНИ-ИГРА' : (cell.isWordSketch ? '🧩 КЛЕТКА-МИНИ-ИГРА' : (cell.isMagnet ? '👯 ТЯНЕТ К ТЕБЕ КАК МАГНИТОМ' : (cell.isInkChallenge ? '🫧 КЛЯКСА-ДИВЕРСАНТ' : (cell.isWandBlessing ? '🎆 ВОЛШЕБНАЯ ПАЛОЧКА' : (cell.itemType ? '🎁 ПРЕДМЕТНАЯ КЛЕТКА' : ('КЛЕТКА №' + (i + 1))))))))));
             const userTgId = isAdmin ? `<br><small style="color:#888;">TG ID: ${cell.userId || '—'}</small>` : "";
 
+            const ownerUserId = String(cell.userId || '').trim();
+            const ownerSeason = seasonProfilesByUserId[ownerUserId] || {};
+            const ownerKarma = Number(ownerSeason.karma_points) || 0;
+            const karmaVisual = getKarmaVisualByPoints(ownerKarma);
+            const karmaRank = window.karmaSystem?.getKarmaRank ? window.karmaSystem.getKarmaRank(ownerKarma) : 'Зритель из Первого Ряда 👩‍🎤';
+            const ownerAvatar = players[cell.owner]?.n?.trim()?.charAt(0)?.toUpperCase() || '🎨';
+            const ownerName = players[cell.owner]?.n || 'Игрок';
+            const magicPartnerName = (() => {
+                const partnerUserId = String(cell.magic_link?.partner_user_id || cell.magicLinkPartnerUserId || '').trim();
+                if (!partnerUserId) return '';
+                const p = Object.values(seasonProfilesByUserId || {}).find(v => String(v?.userId || '') === partnerUserId);
+                if (p?.nickname) return p.nickname;
+                const pCell = Object.values(gridState || {}).find(c => c && String(c.userId || '') === partnerUserId);
+                return pCell ? (players[pCell.owner]?.n || 'Связанный игрок') : 'Связанный игрок';
+            })();
+
             let h = `
-                <div style="text-align:center; margin-bottom:15px;">
-                    <div style="font-size:16px;">Художник: <b style="color:${charColors[cell.owner]}">${players[cell.owner].n}</b>${userTgId}</div>
-                    <div style="font-size:14px; margin-top:5px;">Билет: <span style="background:var(--p-pink); color:white; padding:2px 8px; border-radius:10px;">${cell.ticket || '—'}</span></div>
-                    ${cell.itemType ? `<div style="font-size:12px; margin-top:6px; color:#6a1b9a;">🎁 Предмет: ${itemTypes[cell.itemType]?.emoji || '🎁'} ${itemTypes[cell.itemType]?.name || cell.itemType}</div>` : ''}
+                <div style="text-align:left; margin-bottom:15px; border:1px solid #ede7f6; border-radius:14px; background:linear-gradient(135deg,#fff,#f9f5ff); padding:10px;">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <div style="width:56px; height:56px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#fff; background:linear-gradient(135deg,${charColors[cell.owner]},#ec407a); border:3px solid ${karmaVisual.border}; box-shadow:0 0 0 4px ${karmaVisual.glow};">${ownerAvatar}</div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:16px; font-weight:800; color:${charColors[cell.owner]}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${ownerName}${userTgId}</div>
+                            <div style="display:inline-flex; margin-top:4px; font-size:12px; padding:3px 8px; border-radius:999px; background:#f3e5f5; color:#6a1b9a; border:1px solid #e1bee7;">${karmaRank}</div>
+                        </div>
+                    </div>
                 </div>
+                <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:8px; font-size:13px;"><span>📍 Клетка №${i + 1}</span><span>🎟 Билет: <b>${cell.ticket || '—'}</b></span></div>
+                ${cell.itemType ? `<div style="font-size:12px; margin:0 0 8px; color:#6a1b9a;">${itemTypes[cell.itemType]?.emoji || '🎁'} Предмет: <b>${itemTypes[cell.itemType]?.name || cell.itemType}</b></div>` : ''}
+                ${(cell.magic_link?.active || cell.magicLinkActive || (cell.isMagic && (cell.magicLinkId || cell.magic_link?.id))) ? `<div style="font-size:12px; margin:0 0 8px; color:#5e35b1;">🔗 Магическая связь: <b>${magicPartnerName || 'ожидается напарник'}</b></div>` : ''}
+                ${(!isOwner && !isAdmin && ownerUserId) ? `<button onclick="sendCellImpulseToOwner(${i}, '${ownerUserId}', '${encodeURIComponent(ownerName)}')" class="admin-btn" style="margin:0 0 10px; width:100%; background:#8e24aa;">✨ Отправить импульс</button>` : ''}
                 <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
             `;
 
@@ -2719,9 +2787,9 @@
                 }
             } else {
                 if (cell.itemType) {
-                    h += `<div style="padding:12px; border:1px solid #e1bee7; border-radius:10px; background:#faf5ff; text-align:left;"><b>${players[cell.owner]?.n || 'Игрок'}</b> получил(а) предмет: ${itemTypes[cell.itemType]?.emoji || '🎁'} ${itemTypes[cell.itemType]?.name || cell.itemType}.<br><span style="font-size:12px; color:#777;">Задание по этой клетке скрыто для других игроков.</span></div>`;
+                    h += `<div style="padding:12px; border:1px solid #e1bee7; border-radius:10px; background:#faf5ff; text-align:left;"><b>${players[cell.owner]?.n || 'Игрок'}</b> получил(а) предмет: ${itemTypes[cell.itemType]?.emoji || '🎁'} ${itemTypes[cell.itemType]?.name || cell.itemType}.<br><span style="font-size:12px; color:#777;">Описание задания скрыто для других игроков.</span></div>`;
                 } else {
-                    h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Задание скрыто.<br>Его видит только автор и админ.</p></div>`;
+                    h += `<div style="padding:30px 10px; text-align:center; color:#999;"><span style="font-size:40px;">🔒</span><p>Описание задания скрыто.</p></div>`;
                 }
             }
 
@@ -6002,22 +6070,37 @@
                 document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
                 updateTimerDisplay();
 
+                if (lastMagicLinksRound !== currentRoundNum) {
+                    shownMagicLinks = {};
+                    lastMagicLinksRound = currentRoundNum;
+                }
                 if (magicLinksRef) magicLinksRef.off();
-                shownMagicLinks = {};
                 magicLinksRef = db.ref(`magic_links/${currentRoundNum}`);
                 magicLinksRef.on('value', linksSnap => {
                     if (!linksSnap.exists()) return;
 
                     linksSnap.forEach(linkSnap => {
                         const link = linkSnap.val();
-                        if (!link || shownMagicLinks[linkSnap.key]) return;
+                        if (!link) return;
 
-                        const related = link.playerA?.userId === currentUserId || link.playerB?.userId === currentUserId;
+                        const meA = Number(link.playerA?.userId) === Number(currentUserId);
+                        const meB = Number(link.playerB?.userId) === Number(currentUserId);
+                        const related = meA || meB;
                         if (!related) return;
 
-                        shownMagicLinks[linkSnap.key] = true;
-                        const partner = (link.playerA?.userId === currentUserId) ? link.playerB : link.playerA;
-                        alert(`✨ Магическая связь активна!\nТвой напарник: ${partner?.name || 'Неизвестный'}\nВыберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                        const shownKey = `${linkSnap.key}:${link.status || 'unknown'}`;
+                        if (shownMagicLinks[shownKey]) return;
+
+                        if (link.status === 'paired') {
+                            shownMagicLinks[shownKey] = true;
+                            const partner = meA ? link.playerB : link.playerA;
+                            alert(`✨ Магическая связь активна!
+Твой напарник: ${partner?.name || 'Неизвестный'}
+Выберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                        } else if (link.status === 'expired_single' && meA) {
+                            shownMagicLinks[shownKey] = true;
+                            alert('Упс! Магическая связь не нашла пару, выполняй задание в одиночку');
+                        }
                     });
                 });
             });
@@ -6029,6 +6112,23 @@
             inventoryRef.on('value', snap => {
                 myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
                 renderInventory();
+            });
+
+
+            if (seasonProfilesRef) seasonProfilesRef.off();
+            seasonProfilesRef = db.ref('player_season_status');
+            seasonProfilesRef.on('value', snap => {
+                seasonProfilesByUserId = snap.val() || {};
+            });
+
+            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+                const v = snap.val() || {};
+                if (!v.text) return;
+                if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
+                    db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
+                    return;
+                }
+                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
 
             if (challengeRef) challengeRef.off();
@@ -6639,7 +6739,9 @@
 
         async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
             if (!currentUserId || currentUserId === ADMIN_ID) return alert('Админ не начисляет карму.');
-            if (String(ownerUserId) === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
+            const targetOwnerUserId = String(ownerUserId || '').trim();
+            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
+            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
             const map = { clap: { cost: 0, points: 1, emoji: '👏' }, heart: { cost: 1, points: 3, emoji: '❤️' }, sun: { cost: 2, points: 5, emoji: '🌞' } };
             const cfg = map[type];
             if (!cfg) return;
@@ -6653,7 +6755,7 @@
                 return alert('Недостаточно билетиков для этого комплимента.');
             }
 
-            await window.karmaSystem.addKarmaPoints(db, ownerUserId, cfg.points, ADMIN_ID);
+            await window.karmaSystem.addKarmaPoints(db, targetOwnerUserId, cfg.points, ADMIN_ID);
             const fx = document.getElementById('gallery-fx');
             if (fx) {
                 fx.textContent = cfg.emoji.repeat(6);
@@ -6673,7 +6775,8 @@
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Твое место в истории пустует... Будь первым, чью работу увидят все!</p><button class="admin-btn" onclick="switchTab('tab-works', document.querySelector('.nav-item[onclick*=\"tab-works\"]'))" style="margin:0; width:100%;">Перейти к заданиям</button></div>`;
                 return;
             }
-            const exhibitId = `${picked.userId}_${picked.id}_${Math.floor(Date.now() / (3 * 60 * 60 * 1000))}`;
+            const ownerUserId = String(picked.userId || allTicketsData.find(t => Number(t.owner) === Number(picked.owner) && t.userId)?.userId || '').trim();
+            const exhibitId = `${ownerUserId || 'unknown'}_${picked.id}_${Math.floor(Date.now() / (3 * 60 * 60 * 1000))}`;
             const img = picked.afterImageData || picked.imageData;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
@@ -6682,9 +6785,9 @@
                     <img src="${img}" class="gallery-image" alt="Выставленная работа">
                     <div style="font-size:12px; margin-top:6px;">Автор: <b>${picked.ownerName || players[picked.owner]?.n || 'Художник'}</b></div>
                     <div style="display:flex; gap:6px; margin-top:8px;">
-                        <button class="admin-btn compliment-btn clap" style="margin:0;" onclick="sendGalleryCompliment('clap','${exhibitId}','${picked.userId}')">👏 Аплодисменты</button>
-                        <button class="admin-btn compliment-btn heart" style="margin:0;" onclick="sendGalleryCompliment('heart','${exhibitId}','${picked.userId}')">❤️ Сердце (1)</button>
-                        <button class="admin-btn compliment-btn sun" style="margin:0;" onclick="sendGalleryCompliment('sun','${exhibitId}','${picked.userId}')">🌞 Солнце (2)</button>
+                        <button class="admin-btn compliment-btn clap" style="margin:0;" onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏 Аплодисменты</button>
+                        <button class="admin-btn compliment-btn heart" style="margin:0;" onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️ Сердце (1)</button>
+                        <button class="admin-btn compliment-btn sun" style="margin:0;" onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞 Солнце (2)</button>
                     </div>
                 </div>`;
         }

@@ -3,11 +3,11 @@
 
   function getKarmaRank(points) {
     const p = Number(points) || 0;
-    if (p <= 20) return 'Зритель из Первого Ряда';
-    if (p <= 40) return 'Ценитель';
-    if (p <= 60) return 'Золотая Кисть';
-    if (p <= 85) return 'Творец Миров';
-    return 'Бессмертный Мастер';
+    if (p <= 20) return 'Зритель из Первого Ряда 👩‍🎤';
+    if (p <= 40) return 'Ценитель 🧐';
+    if (p <= 60) return '41-60 🖌️✨';
+    if (p <= 85) return 'Творец Миров 🌌';
+    return 'Бессмертный Мастер 👑';
   }
 
   async function ensureSeasonProfile(db, userId, nickname, isAdmin) {
