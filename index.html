@@ -570,6 +570,20 @@
         }
         #event-done-message { color: #9cffb2; margin-top: 4px; }
         .event-overlay[style*="display: flex"] { display:flex !important; }
+        .epic-paint-timer {
+            font-size: 13px;
+            font-weight: 700;
+            color: #6a1b9a;
+            margin: 0 0 8px 0;
+        }
+        #epic-paint-canvas {
+            width: 100%;
+            max-width: 100%;
+            display: block;
+            background: #fff;
+            border-radius: 10px;
+            touch-action: none;
+        }
         .magic-ticket-star.size-1 { --star-size: 36px; }
 
         .mushu-inline-invite {
@@ -724,6 +738,7 @@
             <h1>🎨 Событие</h1>
             <div class="works-card">
                 <div id="event-space-title" style="font-weight:700; color:#6a1b9a; margin-bottom:8px;">Событие не активно</div>
+                <div id="epic-paint-timer" class="epic-paint-timer">⏳ До конца: —</div>
                 <button onclick="backToGameFromEvent()" class="admin-btn" style="margin:0 0 8px 0; background:#607D8B;">⬅️ Назад к полю</button>
                 <canvas id="epic-paint-canvas" width="1000" height="2000"></canvas>
                 <div id="epic-paint-progress">Закрашено: 0%</div>
@@ -1464,6 +1479,9 @@
                 await initializeTelegramSeasonUser();
                 if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
                 setupEpicPaintCanvas();
+                resizeEpicPaintCanvasForPhone();
+                window.addEventListener('resize', resizeEpicPaintCanvasForPhone);
+                window.addEventListener('orientationchange', resizeEpicPaintCanvasForPhone);
                 document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
                 checkAccess();
                 syncData();
@@ -3036,6 +3054,36 @@
             return remMins ? `${hours} ч ${remMins} мин` : `${hours} ч`;
         }
 
+        function formatCountdownMs(ms) {
+            const totalSeconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function resizeEpicPaintCanvasForPhone() {
+            const canvas = document.getElementById('epic-paint-canvas');
+            if (!canvas) return;
+            const controlsReserve = 290;
+            const availableHeight = Math.max(220, window.innerHeight - controlsReserve);
+            canvas.style.width = '100%';
+            canvas.style.height = `${availableHeight}px`;
+        }
+
+        function updateEpicPaintTimerDisplay() {
+            const timerEl = document.getElementById('epic-paint-timer');
+            if (!timerEl) return;
+            const isActive = currentGameEvent && currentGameEvent.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
+            if (!isActive) {
+                timerEl.textContent = '⏳ До конца: —';
+                return;
+            }
+            const leftMs = Number(currentGameEvent.endAt || 0) - Date.now();
+            timerEl.textContent = `⏳ До конца: ${formatCountdownMs(leftMs)}`;
+        }
+
         async function postEpicEventSummary(eventData, isSuccess, rewardedPlayersCount) {
             if (!eventData) return;
             const startAt = eventData.activatedAt || eventData.startAt || Date.now();
@@ -3188,6 +3236,8 @@
 
             if (navEventBtn) navEventBtn.style.display = isActive ? 'flex' : 'none';
             if (eventTitle) eventTitle.innerText = isActive ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
+            updateEpicPaintTimerDisplay();
+            resizeEpicPaintCanvasForPhone();
 
             if (isActive) {
                 startAlert.style.display = 'block';
@@ -3352,6 +3402,22 @@
             const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id));
             if (!active?.key) return;
             if (nowMs < (active.endAt || 0)) return;
+
+            if ([EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(active.id)) {
+                const canvas = document.getElementById('epic-paint-canvas');
+                if (canvas) {
+                    const coverage = calculateEpicPaintCoverage(canvas);
+                    const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
+                    const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
+                    if (active.id === WALL_BATTLE_EVENT_ID) {
+                        await maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
+                    } else {
+                        await maybeFinalizeEpicPaintSuccess(coverage);
+                    }
+                    const stillActiveSnap = await db.ref(`game_events/${active.key}/status`).once('value');
+                    if (stillActiveSnap.val() !== 'active') return;
+                }
+            }
 
             const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
                 if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
