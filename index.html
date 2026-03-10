@@ -4878,7 +4878,10 @@
             panel.innerHTML = `<div style="font-size:15px;">У тебя один шанс за ивент — перетащи фрукт в зону рта Мушу:</div>
               <div class="mushu-fruit-list"><div class="mushu-fruit-chip" data-fruit="${localFruit.id}">${localFruit.emoji}<br><span style="font-size:11px;">${localFruit.label}</span></div></div>${graceText}`;
             panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => {
-              chip.addEventListener('pointerdown', onFruitPointerDown);
+              if (window.PointerEvent) {
+                chip.addEventListener('pointerdown', onFruitPointerDown);
+                return;
+              }
               chip.addEventListener('touchstart', onFruitTouchStart, { passive: false });
             });
           }
@@ -5102,7 +5105,7 @@
             await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + baseSatiety);
             await applyComboBonus(db, now);
             await renderFruitPanel();
-            await maybeFinalizeEvent(db);
+            await finalizeMushuByTimer(db);
           }
 
 
@@ -5139,28 +5142,6 @@
                 [success ? 'completedAt' : 'failedAt']: now,
                 resultText: success ? SUCCESS_TEXT : FAILED_TEXT
               });
-            }
-          }
-
-          async function maybeFinalizeEvent(db) {
-            const evSnap = await db.ref(EVENT_PATH).once('value');
-            const ev = evSnap.val() || {};
-            if (String(ev.status || '') !== 'active') return;
-            if (Number(ev.current_satiety || 0) < Number(ev.target || 1)) return;
-            const tx = await db.ref(`${EVENT_PATH}/status`).transaction(v => v === 'active' ? 'completed' : v);
-            if (!tx.committed) return;
-
-            const participants = ev.participants || {};
-            const rewards = {};
-            Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
-            await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
-            await db.ref(`${EVENT_PATH}/completedAt`).set(getNow());
-            await db.ref(`${EVENT_PATH}/resultText`).set(`${SUCCESS_TITLE} ${SUCCESS_TEXT}`);
-            await pushMushuResultToFeed(db, 'completed');
-
-            const activeKey = await findActiveMushuGameEventKey(db);
-            if (activeKey) {
-              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({ status: 'completed', completedAt: getNow(), resultText: SUCCESS_TEXT });
             }
           }
 
