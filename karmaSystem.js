@@ -41,7 +41,11 @@
       updatedAt: Date.now()
     });
     const snap = await db.ref(`${SEASON_PATH}/${userId}/karma_points`).once('value');
-    return Number(snap.val()) || 0;
+    const nextValue = Number(snap.val()) || 0;
+    if (Number(adminId)) {
+      console.info(`[KARMA][ADMIN] userId=${userId}, delta=${value}, total=${nextValue}`);
+    }
+    return nextValue;
   }
 
   window.karmaSystem = {
