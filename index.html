@@ -4672,7 +4672,7 @@
           let lastFeedResultLogged = '';
 
           const $ = (id) => document.getElementById(id);
-          const uid = () => String(window.currentUserId || '').trim();
+          const uid = () => String(window.currentUserId || currentUserId || '').trim();
           const isActive = () => String(mushuState.status || '') === 'active';
           const isKnownFruitId = (id) => id === GOLDEN_CUPCAKE.id || FRUITS.some((fruit) => fruit.id === id);
           const resolveFruitIdFromEntry = (entry) => {
