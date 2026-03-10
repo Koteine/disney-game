@@ -556,6 +556,12 @@
         @keyframes mushuTimerShake { 0%,100%{ transform:translateX(0);} 30%{ transform:translateX(-1px);} 60%{ transform:translateX(1px);} }
         @keyframes mushuBreathFx { 0% { opacity: 0; transform: scale(.45); } 22% { opacity: 1; } 100% { opacity: 0; transform: scale(1.45); } }
 
+
+        .gallery-rotation-scroll { margin: 6px 8px 10px; padding:10px 12px; border:1px solid #d7b98e; border-radius:12px; background:linear-gradient(180deg,#fff8e8,#f8ead2); color:#6d4c41; font-size:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.4); }
+        .gallery-compliments { display:flex; gap:6px; }
+        .compliment-option { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+        .compliment-option small { font-size:10px; color:#795548; text-align:center; line-height:1.2; min-height:24px; }
+        .compliment-btn[disabled] { cursor:not-allowed; }
         .gallery-pedestal { text-align:center; padding:10px; border-radius:14px; background:linear-gradient(180deg,#fffaf0,#fff3da); border:1px solid #f3d9a2; box-shadow: 0 0 20px rgba(212, 175, 55, 0.5); position:relative; overflow:hidden; }
         .gallery-image { width:100%; border-radius:10px; border:2px solid #d4af37; max-height:52vh; object-fit:cover; }
         .gallery-frame-empty { width:100%; height:220px; border:6px solid #d4af37; border-radius:10px; background:#fff; margin-bottom:8px; }

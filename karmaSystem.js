@@ -31,13 +31,17 @@
   async function addKarmaPoints(db, userId, delta, adminId) {
     if (!db || !userId) return 0;
     if (Number(userId) === Number(adminId)) return 0;
-    const ref = db.ref(`${SEASON_PATH}/${userId}`);
-    const tx = await ref.transaction((row) => {
-      const current = row && typeof row === 'object' ? row : { userId: String(userId), nickname: 'Игрок', karma_points: 0 };
-      const next = Math.max(0, Math.min(100, (Number(current.karma_points) || 0) + Number(delta || 0)));
-      return { ...current, karma_points: next, updatedAt: Date.now() };
+    const value = Number(delta) || 0;
+    if (!value) {
+      const snap = await db.ref(`${SEASON_PATH}/${userId}/karma_points`).once('value');
+      return Number(snap.val()) || 0;
+    }
+    await db.ref(`${SEASON_PATH}/${userId}`).update({
+      karma_points: firebase.database.ServerValue.increment(value),
+      updatedAt: Date.now()
     });
-    return Number(tx.snapshot.val()?.karma_points) || 0;
+    const snap = await db.ref(`${SEASON_PATH}/${userId}/karma_points`).once('value');
+    return Number(snap.val()) || 0;
   }
 
   window.karmaSystem = {
