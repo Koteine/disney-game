@@ -1179,6 +1179,7 @@
         ];
         const IMPULSE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
         const DUEL_PATH = 'calligraphy_duels';
+        const DUEL_REWARD_ITEMS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
 
         const magicBondTasks = [
             "Тема «Время и Эволюция»: один человек рисует персонажа в детстве, другой — в зрелости/старости.",
@@ -2559,9 +2560,21 @@
         async function finishCalligraphyDuel(duelKey) {
             if (!duelKey) return;
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
-            const snap = await ref.once('value');
-            const duel = snap.val();
-            if (!duel || duel.status === 'done') return;
+            const lockTx = await ref.transaction(row => {
+                if (!row) return row;
+                const now = Date.now();
+                const lockAge = now - Number(row.resolvingAt || 0);
+                const canTakeOverStaleLock = row.status === 'resolving' && lockAge > 30000;
+                if (row.status !== 'active' && !canTakeOverStaleLock) return row;
+                row.status = 'resolving';
+                row.resolvingAt = now;
+                row.resolvingBy = String(currentUserId || 'system');
+                return row;
+            });
+            if (!lockTx.committed) return;
+
+            const duel = lockTx.snapshot.val();
+            if (!duel) return;
             const symbolChar = duel.symbol?.char || '永';
             const reference = createReferencePointsFromSymbol(symbolChar);
             const participants = Object.keys(duel.players || {});
@@ -2576,12 +2589,14 @@
             const loserId = participants.find(uid => String(uid) !== String(winnerId)) || '';
             const winnerName = duel.players?.[winnerId]?.nickname || 'Игрок';
 
-            await ref.update({ status: 'done', finishedAt: Date.now(), scores, winnerId, loserId });
             if (winnerId) {
-                await db.ref(`whitelist/${winnerId}/inventory/duelRelic`).transaction(v => (Number(v) || 0) + 1);
+                const rewardItemKey = DUEL_REWARD_ITEMS[Math.floor(Math.random() * DUEL_REWARD_ITEMS.length)];
+                const rewardMeta = window.itemTypes?.[rewardItemKey] || { emoji: '🎁', name: 'Случайный предмет' };
+                await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction(v => (Number(v) || 0) + 1);
                 const ticket = await claimSequentialTickets(1);
                 if (ticket?.length) {
-                    const owner = Number((window.cachedUsersData || {})[winnerId]?.charIndex);
+                    const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
+                    const owner = Number(winnerStateSnap.val()?.charIndex);
                     if (Number.isInteger(owner)) {
                         await db.ref('tickets_archive').push({
                             owner,
@@ -2600,7 +2615,7 @@
                     }
                 }
                 await db.ref(`system_notifications/${winnerId}`).push({
-                    text: `🏆 Дуэль каллиграфов выиграна! +1 билет и случайный предмет в инвентарь.`,
+                    text: `🏆 Дуэль каллиграфов выиграна! +1 билет и ${rewardMeta.emoji} ${rewardMeta.name} в рюкзак.`,
                     createdAt: Date.now(),
                     type: 'calligraphy_duel_result'
                 });
@@ -2616,6 +2631,7 @@
                     type: 'calligraphy_duel_result'
                 });
             }
+            await ref.update({ status: 'done', finishedAt: Date.now(), scores, winnerId, loserId });
             await postNews(`🖌️ Дуэль каллиграфов завершена. Победитель: ${winnerName}.`);
         }
 
