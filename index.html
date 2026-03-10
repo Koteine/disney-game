@@ -4674,6 +4674,7 @@
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || '').trim();
           const isActive = () => String(mushuState.status || '') === 'active';
+          const isKnownFruitId = (id) => id === GOLDEN_CUPCAKE.id || FRUITS.some((fruit) => fruit.id === id);
           const ensureDb = async () => {
             if (window.db && typeof window.db.ref === 'function') return window.db;
             if (typeof window.waitForDbReady === 'function') return window.waitForDbReady();
@@ -4764,7 +4765,7 @@
             if (!me || !isActive()) return getMyPersonalFruit();
 
             const existing = mushuState.personal_fruits?.[me]?.id || mushuState.participants?.[me]?.item?.id;
-            if (existing) {
+            if (existing && isKnownFruitId(existing)) {
               if (!mushuState.personal_fruits?.[me]?.id && mushuState.participants?.[me]?.item?.id) {
                 mushuState.personal_fruits = mushuState.personal_fruits || {};
                 mushuState.personal_fruits[me] = { ...mushuState.participants[me].item };
@@ -4777,10 +4778,18 @@
             const fruitId = luckyUid && luckyUid === me
               ? GOLDEN_CUPCAKE.id
               : (FRUITS[Math.floor(Math.random() * FRUITS.length)] || FRUITS[0]).id;
+            const fallbackAssigned = { id: fruitId, pickedAt: Date.now() };
 
-            const tx = await db.ref(`${EVENT_PATH}/participants/${me}/item`).transaction((v) => v || { id: fruitId, pickedAt: Date.now() });
-            const assigned = tx.snapshot?.val() || { id: fruitId, pickedAt: Date.now() };
-            await db.ref(`${EVENT_PATH}/personal_fruits/${me}`).transaction((v) => v || assigned);
+            const tx = await db.ref(`${EVENT_PATH}/participants/${me}/item`).transaction((v) => {
+              if (v?.id && isKnownFruitId(v.id)) return v;
+              return fallbackAssigned;
+            });
+            const txAssigned = tx.snapshot?.val();
+            const assigned = txAssigned?.id && isKnownFruitId(txAssigned.id) ? txAssigned : fallbackAssigned;
+            await db.ref(`${EVENT_PATH}/personal_fruits/${me}`).transaction((v) => {
+              if (v?.id && isKnownFruitId(v.id)) return v;
+              return assigned;
+            });
 
             mushuState.personal_fruits = mushuState.personal_fruits || {};
             mushuState.personal_fruits[me] = assigned;
