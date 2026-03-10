@@ -348,6 +348,7 @@
         let activeMagicDrawId = null;
         let pendingMagicLinkCleanupRound = null;
         let magicStarFieldState = null;
+        let raffleServerOffsetMs = 0;
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
         const WALL_BATTLE_EVENT_ID = 'wall_battle';
@@ -787,7 +788,7 @@
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="adminResetRaffleState()" class="admin-btn" style="background:#546e7a;">♻️ Сброс</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
                 syncAdminList();
                 fillAdminNickOptions();
                 ensureDateTimeInputDefault('event-start-at');
@@ -2499,6 +2500,10 @@
             toast.style.display = 'block';
         }
 
+        function getServerNowMs() {
+            return Date.now() + (Number(raffleServerOffsetMs) || 0);
+        }
+
         async function getTicketsFromFirebaseDrawPool() {
             const snap = await db.ref('tickets').once('value');
             const allTickets = snap.val() || {};
@@ -2528,38 +2533,27 @@
             return card;
         }
 
-        function wait(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
         function stopMagicStarField() {
             if (magicStarFieldState?.rafId) cancelAnimationFrame(magicStarFieldState.rafId);
             magicStarFieldState = null;
         }
 
-        function animateDriftingStars(stars, stage, mode = 'idle') {
+        function animateDriftingStars(stars, stage) {
             stopMagicStarField();
             const rect = stage.getBoundingClientRect();
-            const state = { stars, stage, mode, startAt: performance.now(), rafId: 0 };
+            const state = { stars, stage, rafId: 0 };
             magicStarFieldState = state;
-            const tick = (now) => {
+            const tick = () => {
                 if (!magicStarFieldState || magicStarFieldState !== state) return;
                 const w = stage.clientWidth || rect.width || 620;
                 const h = stage.clientHeight || rect.height || 420;
-                const elapsed = now - state.startAt;
                 stars.forEach((star) => {
-                    if (mode === 'converge') {
-                        const t = Math.min(1, elapsed / 2000);
-                        star.x += (w / 2 - star.x) * (0.03 + t * 0.11);
-                        star.y += (h / 2 - star.y) * (0.03 + t * 0.11);
-                    } else {
-                        star.x += star.vx;
-                        star.y += star.vy;
-                    }
-                    if (star.x < -50) star.x = w + 20;
-                    if (star.x > w + 50) star.x = -20;
-                    if (star.y < -50) star.y = h + 20;
-                    if (star.y > h + 50) star.y = -20;
+                    star.x += star.vx;
+                    star.y += star.vy;
+                    if (star.x < -70) star.x = w + 30;
+                    if (star.x > w + 70) star.x = -30;
+                    if (star.y < -70) star.y = h + 30;
+                    if (star.y > h + 70) star.y = -30;
                     star.el.style.transform = `translate(${star.x}px, ${star.y}px)`;
                 });
                 state.rafId = requestAnimationFrame(tick);
@@ -2578,15 +2572,15 @@
                 mark.className = 'ticket-mark';
                 mark.textContent = String(ticket.num);
                 el.appendChild(mark);
-                el.style.setProperty('--so', (0.65 + Math.random() * 0.35).toFixed(2));
-                el.style.setProperty('--tw', `${2.2 + Math.random() * 2.8}s`);
+                el.style.setProperty('--so', (0.68 + Math.random() * 0.28).toFixed(2));
+                el.style.setProperty('--tw', `${5.5 + Math.random() * 5.5}s`);
                 stage.appendChild(el);
                 return {
                     el,
                     x: Math.random() * width,
                     y: Math.random() * height,
-                    vx: (Math.random() - 0.5) * 0.34,
-                    vy: (Math.random() - 0.5) * 0.32
+                    vx: (Math.random() - 0.5) * 0.2,
+                    vy: (Math.random() - 0.5) * 0.18
                 };
             });
         }
@@ -2601,23 +2595,7 @@
                 return;
             }
             const stars = buildStarNodesFromTickets(stage, tickets);
-            animateDriftingStars(stars, stage, 'idle');
-        }
-
-        function spawnMagicSparks(count = 44, spread = 26) {
-            const layer = document.getElementById('magic-sparkle-layer');
-            if (!layer) return;
-            layer.innerHTML = '';
-            for (let i = 0; i < count; i++) {
-                const spark = document.createElement('i');
-                spark.className = 'magic-spark';
-                spark.style.left = `${50 + (Math.random() - 0.5) * spread}%`;
-                spark.style.top = `${50 + (Math.random() - 0.5) * spread}%`;
-                spark.style.setProperty('--dx', `${(Math.random() - 0.5) * (280 + spread * 4)}px`);
-                spark.style.setProperty('--dy', `${(Math.random() - 0.5) * (220 + spread * 3)}px`);
-                layer.appendChild(spark);
-            }
-            setTimeout(() => { if (layer) layer.innerHTML = ''; }, 1500);
+            animateDriftingStars(stars, stage);
         }
 
         function stopMagicAnimationFrame() {
@@ -2625,122 +2603,133 @@
             magicDrawAnimationState = null;
         }
 
-        function animateMagicCards(cards, durationMs, onFinish) {
-            stopMagicAnimationFrame();
-            const state = {
-                startMs: performance.now(),
-                lastChaosMs: performance.now(),
-                speedFactor: 1.35,
-                rafId: 0,
-                durationMs
-            };
-            magicDrawAnimationState = state;
-            const frame = (now) => {
-                if (!magicDrawAnimationState || magicDrawAnimationState !== state) return;
-                const elapsed = now - state.startMs;
-                if (elapsed >= state.durationMs) {
-                    onFinish?.();
-                    return;
-                }
-                if (now - state.lastChaosMs >= 900) {
-                    cards.forEach((card, idx) => {
-                        if (((idx + Math.floor(now / 240)) % 5) === 0) {
-                            card.style.zIndex = String(30 + Math.round(Math.random() * 40));
-                        }
-                    });
-                    state.speedFactor = 1 + Math.random() * 1.7;
-                    state.lastChaosMs = now;
-                }
-                const whirl = (elapsed / 1000) * state.speedFactor;
-                cards.forEach((card, idx) => {
-                    const base = card.dataset.baseRadius ? Number(card.dataset.baseRadius) : (58 + (idx % 8) * 10);
-                    const stackTighten = 1 - Math.min(0.33, elapsed / (durationMs * 2));
-                    const radius = (base + Math.sin((elapsed / 450) + idx) * 14) * stackTighten;
-                    const angle = whirl * 2.7 + idx * 0.72;
-                    const burst = ((idx + Math.floor(elapsed / 620)) % 11 === 0) ? (28 + Math.random() * 34) : 0;
-                    const tx = Math.cos(angle) * (radius + burst) + Math.sin((elapsed / 280) + idx) * 12;
-                    const ty = Math.sin(angle * 1.18) * (radius * 0.62 + burst * 0.28);
-                    const rot = (angle * 180 / Math.PI) + Math.sin(idx + elapsed / 210) * 22;
-                    const scale = 0.9 + (Math.sin(elapsed / 340 + idx) + 1) * 0.06 + (burst ? 0.12 : 0);
-                    const z = 8 + Math.round((Math.sin(angle + idx * 0.52) + 1) * 16) + (burst ? 20 : 0);
-                    card.style.zIndex = String(z);
-                    card.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot}deg) scale(${scale})`;
-                });
-                state.rafId = requestAnimationFrame(frame);
-            };
-            state.rafId = requestAnimationFrame(frame);
-        }
-
-        async function runMagicCardsReveal(winnerTicket, winnerName, drawId = Date.now()) {
+        function runSyncedRaffleAnimation(drawPayload) {
             const stage = document.getElementById('magic-cards-stage');
             const banner = document.getElementById('magic-winner-banner');
             if (!stage || !banner) return;
+            const drawId = Number(drawPayload?.startTime || drawPayload?.createdAt || 0);
+            if (!drawId || activeMagicDrawId === drawId) return;
             activeMagicDrawId = drawId;
-
-            const tickets = await getTicketsFromFirebaseDrawPool();
-            if (!tickets.length) {
-                stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нет билетов в Firebase /tickets</div>';
-                return;
-            }
-
-            const winner = tickets.find(t => String(t.num) === String(winnerTicket)) || tickets[0];
             banner.classList.remove('show');
-            stage.innerHTML = '';
-            stopMagicStarField();
 
-            const stars = buildStarNodesFromTickets(stage, tickets);
-            animateDriftingStars(stars, stage, 'idle');
-            await wait(750);
-            animateDriftingStars(stars, stage, 'converge');
-            stars.forEach(star => star.el.classList.add('is-converging'));
-            await wait(2000);
-            stopMagicStarField();
-            stage.innerHTML = '';
+            const winnerTicket = String(drawPayload?.winnerId || '');
+            if (!winnerTicket) return;
 
-            const cardsPool = [...tickets];
-            if (!cardsPool.find(t => String(t.num) === String(winner.num))) cardsPool.push(winner);
-            const cards = cardsPool.map(ticket => {
-                const card = createMagicCardMarkup(ticket, String(ticket.num) === String(winner.num));
-                card.dataset.baseRadius = String(55 + Math.random() * 65);
-                stage.appendChild(card);
-                requestAnimationFrame(() => card.classList.add('is-visible'));
-                return card;
-            });
-
-            await wait(180);
-            const sparksInterval = setInterval(() => spawnMagicSparks(18, 18), 1600);
-            await new Promise(resolve => {
-                animateMagicCards(cards, 60000, resolve);
-            });
-            clearInterval(sparksInterval);
-
-            stopMagicAnimationFrame();
-            const winnerCard = cards.find(card => card.dataset.winner === '1');
-            cards.forEach(card => {
-                if (card !== winnerCard) {
-                    const blastX = (Math.random() - 0.5) * 820;
-                    const blastY = (Math.random() - 0.5) * 620;
-                    card.classList.add('is-vanishing');
-                    card.style.transform = `translate(calc(-50% + ${blastX}px), calc(-50% + ${blastY}px)) rotate(${(Math.random() - 0.5) * 360}deg) scale(0.18)`;
+            getTicketsFromFirebaseDrawPool().then((tickets) => {
+                if (!tickets.length) {
+                    stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нет билетов в Firebase /tickets</div>';
+                    return;
                 }
+
+                const winner = tickets.find(t => String(t.num) === winnerTicket) || tickets[0];
+                stage.innerHTML = '';
+                stopMagicStarField();
+                stopMagicAnimationFrame();
+
+                const stars = buildStarNodesFromTickets(stage, tickets);
+                const startServerMs = Number(drawPayload.startTime || 0);
+                const totalMs = 60000;
+                const gatherMs = 2000;
+                const nowServer = getServerNowMs();
+                const elapsed = Math.max(0, nowServer - startServerMs);
+
+                const state = {
+                    rafId: 0,
+                    stars,
+                    startServerMs,
+                    totalMs,
+                    gatherMs,
+                    winner,
+                    winnerShown: false,
+                    cards: []
+                };
+                magicDrawAnimationState = state;
+
+                const makeCards = () => {
+                    if (state.cards.length) return;
+                    stage.innerHTML = '';
+                    state.cards = tickets.map(ticket => {
+                        const card = createMagicCardMarkup(ticket, String(ticket.num) === String(winner.num));
+                        card.dataset.baseRadius = String(50 + Math.random() * 70);
+                        stage.appendChild(card);
+                        requestAnimationFrame(() => card.classList.add('is-visible'));
+                        return card;
+                    });
+                };
+
+                const revealWinner = () => {
+                    if (state.winnerShown) return;
+                    state.winnerShown = true;
+                    const winnerCard = state.cards.find(card => card.dataset.winner === '1');
+                    state.cards.forEach(card => {
+                        if (card !== winnerCard) {
+                            const blastX = (Math.random() - 0.5) * 820;
+                            const blastY = (Math.random() - 0.5) * 620;
+                            card.classList.add('is-vanishing');
+                            card.style.transform = `translate(calc(-50% + ${blastX}px), calc(-50% + ${blastY}px)) rotate(${(Math.random() - 0.5) * 360}deg) scale(0.18)`;
+                        }
+                    });
+                    if (winnerCard) {
+                        winnerCard.classList.add('is-focused');
+                        winnerCard.style.left = '50%';
+                        winnerCard.style.top = '50%';
+                        winnerCard.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(0deg)';
+                        setTimeout(() => winnerCard.classList.add('is-revealed'), 500);
+                    }
+                    banner.classList.add('show');
+                    document.getElementById('winner-display').innerHTML = `🏆 Билет №${winner.num}: <b>${winner.name}</b>`;
+                    showWinnerToast(`✨ Победитель: ${winner.name} (билет №${winner.num})`);
+                    launchCelebrationFireworks();
+                    playFireworksSound();
+                };
+
+                const tick = () => {
+                    if (!magicDrawAnimationState || magicDrawAnimationState !== state) return;
+                    const serverNow = getServerNowMs();
+                    const t = Math.max(0, serverNow - state.startServerMs);
+
+                    if (t < state.gatherMs) {
+                        const width = stage.clientWidth || 620;
+                        const height = stage.clientHeight || 420;
+                        const k = Math.min(1, t / state.gatherMs);
+                        state.stars.forEach((star) => {
+                            star.x += (width / 2 - star.x) * (0.04 + k * 0.12);
+                            star.y += (height / 2 - star.y) * (0.04 + k * 0.12);
+                            star.el.style.transform = `translate(${star.x}px, ${star.y}px)`;
+                            star.el.style.opacity = String(1 - k * 0.2);
+                        });
+                    } else if (t < state.totalMs) {
+                        makeCards();
+                        const spinT = (t - state.gatherMs);
+                        const whirl = (spinT / 1000) * 2.9;
+                        state.cards.forEach((card, idx) => {
+                            const base = card.dataset.baseRadius ? Number(card.dataset.baseRadius) : (58 + (idx % 8) * 10);
+                            const radius = (base + Math.sin((spinT / 420) + idx) * 14) * 0.78;
+                            const angle = whirl + idx * 0.8;
+                            const tx = Math.cos(angle) * radius + Math.sin((spinT / 260) + idx) * 10;
+                            const ty = Math.sin(angle * 1.22) * (radius * 0.62);
+                            const rot = (angle * 180 / Math.PI);
+                            const scale = 0.92 + (Math.sin(spinT / 330 + idx) + 1) * 0.07;
+                            card.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot}deg) scale(${scale})`;
+                        });
+                    } else {
+                        makeCards();
+                        revealWinner();
+                        return;
+                    }
+
+                    state.rafId = requestAnimationFrame(tick);
+                };
+
+                if (elapsed >= totalMs) {
+                    makeCards();
+                    revealWinner();
+                    return;
+                }
+                state.rafId = requestAnimationFrame(tick);
+            }).catch((err) => {
+                console.error('runSyncedRaffleAnimation failed:', err);
             });
-            await wait(760);
-
-            if (winnerCard) {
-                winnerCard.classList.add('is-focused');
-                winnerCard.style.left = '50%';
-                winnerCard.style.top = '50%';
-                winnerCard.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(0deg)';
-                await wait(720);
-                winnerCard.classList.add('is-revealed');
-            }
-
-            spawnMagicSparks(72, 34);
-            banner.classList.add('show');
-            document.getElementById('winner-display').innerHTML = `🏆 Билет №${winner.num}: <b>${winnerName || winner.name}</b>`;
-            showWinnerToast(`✨ Победитель: ${winnerName || winner.name} (билет №${winner.num})`);
-            launchCelebrationFireworks();
-            playFireworksSound();
         }
 
         async function adminPickWinnerNow() {
@@ -2750,37 +2739,44 @@
                 alert('В папке /tickets Firebase нет активных билетов.');
                 return;
             }
-            const randomIdx = Math.floor(Math.random() * tickets.length);
-            const winner = tickets[randomIdx];
-            const now = Date.now();
-
-            await db.ref('wheel_draw').set({
-                status: 'spinning',
-                startedAt: now,
-                durationMs: 60000,
-                winnerTicket: String(winner.num),
-                winnerName: winner.name,
-                randomIdx,
-                createdAt: now,
+            const keys = Object.keys(tickets.reduce((acc, ticket) => {
+                acc[String(ticket.num)] = true;
+                return acc;
+            }, {}));
+            const randomIdx = Math.floor(Math.random() * keys.length);
+            const winnerId = String(keys[randomIdx]);
+            await db.ref('raffle_state').set({
+                status: 'started',
+                startTime: firebase.database.ServerValue.TIMESTAMP,
+                winnerId,
+                createdAt: firebase.database.ServerValue.TIMESTAMP,
                 createdBy: currentUserId
             });
         }
 
-        function startContinuousWheelSpin() {
-            if (!currentDrawSchedule || currentDrawSchedule.status !== 'spinning') return;
-            const drawId = currentDrawSchedule.startedAt || currentDrawSchedule.createdAt || 0;
-            if (activeMagicDrawId === drawId) return;
-            activeMagicDrawId = drawId;
-            runMagicCardsReveal(currentDrawSchedule.winnerTicket, currentDrawSchedule.winnerName, drawId);
+        async function adminResetRaffleState() {
+            if (currentUserId !== ADMIN_ID) return;
+            await db.ref('raffle_state').set({
+                status: 'ready',
+                resetAt: firebase.database.ServerValue.TIMESTAMP,
+                resetBy: currentUserId
+            });
+            activeMagicDrawId = null;
+            stopMagicStarField();
+            stopMagicAnimationFrame();
+            closeWinnerToast();
+            document.getElementById('winner-display').innerHTML = 'Готовы к магическому розыгрышу?';
+            renderIdleMagicSky().catch(err => console.error('renderIdleMagicSky failed:', err));
         }
 
+        function startContinuousWheelSpin() {}
         function stopContinuousWheelSpin() {
             stopMagicAnimationFrame();
+            stopMagicStarField();
         }
 
         async function runWheelStopAnimationAndShowWinner(winnerTicket, winnerName, drawId) {
-            if (activeMagicDrawId === drawId) return;
-            await runMagicCardsReveal(winnerTicket, winnerName, drawId);
+            runSyncedRaffleAnimation({ status: 'started', startTime: drawId, winnerId: winnerTicket, winnerName });
         }
 
         function renderWinnerHistory() {
@@ -2801,91 +2797,34 @@
             toggleExpandablePanel('winner-history-list', 'winner-history-toggle-btn');
         }
 
-        async function maybeActivateScheduledDraw() {
-            if (!currentDrawSchedule || currentDrawSchedule.status !== 'scheduled') return;
-            if (Date.now() < (currentDrawSchedule.startAt || 0)) return;
-            const tickets = await getTicketsFromFirebaseDrawPool();
-            if (!tickets.length) return;
-            const randomIdx = Math.floor(Math.random() * tickets.length);
-            const winner = tickets[randomIdx];
-            await db.ref('wheel_draw').transaction(v => {
-                if (!v || v.status !== 'scheduled') return v;
-                if (Date.now() < (v.startAt || 0)) return v;
-                return { ...v, status: 'spinning', startedAt: Date.now(), durationMs: 60000, winnerTicket: String(winner.num), winnerName: winner.name, randomIdx };
-            });
-        }
-
-        async function maybeFinalizeScheduledDraw() {
-            if (!currentDrawSchedule || currentDrawSchedule.status !== 'spinning') return;
-            const finishAt = (currentDrawSchedule.startedAt || 0) + 60000;
-            if (Date.now() < finishAt) return;
-
-            const winnerTicket = currentDrawSchedule.winnerTicket;
-            const winnerName = currentDrawSchedule.winnerName;
-            if (!winnerTicket || !winnerName) return;
-
-            const tx = await db.ref('wheel_draw').transaction(v => {
-                if (!v || v.status !== 'spinning') return v;
-                return { ...v, status: 'completed', completedAt: Date.now(), durationMs: 60000 };
-            });
-            if (tx.committed) {
-                const doneAt = tx.snapshot.val()?.completedAt || Date.now();
-                const tickets = await getTicketsFromFirebaseDrawPool();
-                const winner = tickets.find(t => String(t.num) === String(winnerTicket)) || { num: winnerTicket, name: winnerName, userId: null };
-                await db.ref('current_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
-                await db.ref('last_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
-                await db.ref('winners_history').push({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
-                await db.ref('wheel_history').push({
-                    drawId: doneAt,
-                    ticket: String(winner.num),
-                    winnerName: winner.name,
-                    createdAt: Date.now()
-                });
-            }
-        }
+        async function maybeActivateScheduledDraw() {}
+        async function maybeFinalizeScheduledDraw() {}
 
         function updateAdminDrawStatus() {
             const el = document.getElementById('admin-draw-status');
             if (!el) return;
-            if (!currentDrawSchedule) {
-                el.innerText = 'Розыгрыш не запланирован.';
-                return;
-            }
-            const start = currentDrawSchedule.startAt ? new Date(currentDrawSchedule.startAt).toLocaleString('ru-RU') : '—';
-            const state = currentDrawSchedule.status || '—';
-            const mins = Math.max(1, Math.round((currentDrawSchedule.durationMs || 60000) / 60000));
-            el.innerText = `Статус: ${state}. Старт: ${start}. Длительность крутки: ${mins} мин.`;
+            const state = currentDrawSchedule?.status || 'ready';
+            const start = currentDrawSchedule?.startTime ? new Date(currentDrawSchedule.startTime).toLocaleString('ru-RU') : '—';
+            el.innerText = `Статус: ${state}. Синхронизация: raffle_state. Старт (сервер): ${start}.`;
         }
 
         async function adminScheduleDraw() {
-            if (currentUserId !== ADMIN_ID) return;
-            const startRaw = document.getElementById('draw-start-at')?.value;
-            if (!startRaw) return alert('Выбери дату и время старта розыгрыша.');
-            const startAt = new Date(startRaw).getTime();
-            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
-
-            await db.ref('wheel_draw').set({
-                status: 'scheduled',
-                startAt,
-                durationMs: 60000,
-                createdAt: Date.now(),
-                createdBy: currentUserId
-            });
-            alert('Розыгрыш запланирован.');
+            return alert('Запланированный запуск отключён. Используй кнопку «Начать магию» — запуск идёт через raffle_state для всех одновременно.');
         }
-
 
         async function adminAnnulDrawResults() {
             if (currentUserId !== ADMIN_ID) return;
-            const ok = confirm('Точно аннулировать результаты розыгрыша? Это очистит текущего победителя и историю победителей.');
+            const ok = confirm('Точно сбросить розыгрыш и историю победителей?');
             if (!ok) return;
             await Promise.all([
-                db.ref('wheel_draw').set(null),
+                db.ref('raffle_state').set({ status: 'ready', resetAt: firebase.database.ServerValue.TIMESTAMP, resetBy: currentUserId }),
                 db.ref('current_winner').set(null),
                 db.ref('last_winner').set(null),
                 db.ref('winners_history').set(null),
                 db.ref('wheel_history').set(null)
             ]);
+            winnerHistoryItems = [];
+            renderWinnerHistory();
             activeMagicDrawId = null;
             stopContinuousWheelSpin();
             drawWheel();
@@ -2895,6 +2834,10 @@
         }
 
         function syncWheelSystems() {
+            db.ref('.info/serverTimeOffset').on('value', snap => {
+                raffleServerOffsetMs = Number(snap.val()) || 0;
+            });
+
             if (winnerHistoryRef) winnerHistoryRef.off();
             winnerHistoryRef = db.ref('wheel_history').limitToLast(100);
             winnerHistoryRef.on('value', snap => {
@@ -2905,30 +2848,47 @@
             });
 
             if (drawScheduleRef) drawScheduleRef.off();
-            drawScheduleRef = db.ref('wheel_draw');
-            drawScheduleRef.on('value', snap => {
-                currentDrawSchedule = snap.val() || null;
+            drawScheduleRef = db.ref('raffle_state');
+            drawScheduleRef.on('value', async (snap) => {
+                currentDrawSchedule = snap.val() || { status: 'ready' };
                 updateAdminDrawStatus();
-                if (!currentDrawSchedule) {
-                    stopContinuousWheelSpin();
+
+                if (currentDrawSchedule.status === 'started' && currentDrawSchedule.startTime && currentDrawSchedule.winnerId) {
+                    runSyncedRaffleAnimation(currentDrawSchedule);
+                    const finishAt = Number(currentDrawSchedule.startTime) + 60000;
+                    if (getServerNowMs() >= finishAt && !currentDrawSchedule.completedAt) {
+                        const tx = await db.ref('raffle_state').transaction(v => {
+                            if (!v || v.status !== 'started' || v.completedAt) return v;
+                            return { ...v, status: 'completed', completedAt: firebase.database.ServerValue.TIMESTAMP };
+                        });
+                        if (tx.committed) {
+                            const finalState = tx.snapshot.val() || {};
+                            const tickets = await getTicketsFromFirebaseDrawPool();
+                            const winnerTicket = String(finalState.winnerId || '');
+                            const winner = tickets.find(t => String(t.num) === winnerTicket) || { num: winnerTicket, name: 'Игрок', userId: null };
+                            const doneAt = Number(finalState.completedAt) || Date.now();
+                            await db.ref('current_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' });
+                            await db.ref('last_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' });
+                            await db.ref('winners_history').push({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' });
+                            await db.ref('wheel_history').push({
+                                drawId: Number(finalState.startTime) || doneAt,
+                                ticket: String(winner.num),
+                                winnerName: winner.name,
+                                createdAt: doneAt
+                            });
+                        }
+                    }
                     return;
                 }
-                if (currentDrawSchedule.status === 'spinning') {
-                    startContinuousWheelSpin();
-                } else if (currentDrawSchedule.status === 'completed') {
+
+                if (currentDrawSchedule.status === 'ready') {
+                    activeMagicDrawId = null;
                     stopContinuousWheelSpin();
-                    if (currentDrawSchedule.winnerTicket && currentDrawSchedule.winnerName && currentDrawSchedule.completedAt && window.lastHandledDrawCompletedAt !== currentDrawSchedule.completedAt) {
-                        window.lastHandledDrawCompletedAt = currentDrawSchedule.completedAt;
-                        runWheelStopAnimationAndShowWinner(currentDrawSchedule.winnerTicket, currentDrawSchedule.winnerName, currentDrawSchedule.completedAt);
-                    }
+                    closeWinnerToast();
+                    document.getElementById('winner-display').innerHTML = 'Готовы к магическому розыгрышу?';
+                    renderIdleMagicSky().catch(err => console.error('renderIdleMagicSky failed:', err));
                 }
             });
-
-            if (wheelSystemInterval) clearInterval(wheelSystemInterval);
-            wheelSystemInterval = setInterval(async () => {
-                await maybeActivateScheduledDraw();
-                await maybeFinalizeScheduledDraw();
-            }, 1000);
         }
 
         async function adminStartNewRound() {
@@ -3371,6 +3331,7 @@
                 ticket_counter: 0,
                 wheel_event: null,
                 wheel_draw: null,
+                raffle_state: { status: 'ready' },
                 wheel_history: null,
                 current_winner: null,
                 last_winner: null,
@@ -3407,14 +3368,7 @@
         }
         function adminFullReset() { if(confirm("Точно сбросить?")) db.ref().remove(); }
         async function adminTriggerSpin() {
-            if (allTicketsData.filter(t=>!t.excluded).length < 1) return alert("Нет активных билетиков для розыгрыша.");
-            await db.ref('wheel_draw').set({
-                status: 'scheduled',
-                startAt: Date.now() + 1000,
-                durationMs: 30000,
-                createdAt: Date.now(),
-                createdBy: currentUserId
-            });
+            await adminPickWinnerNow();
         }
 
         function switchTab(id, el) {
@@ -5073,7 +5027,7 @@
         function checkAccess() {
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="adminResetRaffleState()" class="admin-btn" style="background:#546e7a;">♻️ Сброс</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
                 syncAdminList();
                 fillAdminNickOptions();
                 ensureDateTimeInputDefault('event-start-at');
