@@ -533,7 +533,7 @@
         .mushu-fuse-burn { position:absolute; inset:0 auto 0 0; width:100%; background: linear-gradient(90deg,#ffca28,#ef6c00,#6d4c41); transition: width .9s linear; }
         .mushu-fuse-spark { position:absolute; top:50%; right:-8px; width:14px; height:14px; border-radius:50%; background:#ffd54f; box-shadow:0 0 10px #ffeb3b, 0 0 18px #ff9800; transform: translateY(-50%); animation:mushuSpark 0.7s infinite alternate; }
         .mushu-time-critical { animation: mushuTimerShake .4s infinite; color:#ff8a80; }
-        .mushu-dragon-zone { flex:1; min-height:56vh; display:flex; align-items:center; justify-content:center; position:relative; padding: 0 0 8px; }
+        .mushu-dragon-zone { flex:1; min-height:56vh; display:flex; align-items:center; justify-content:center; position:relative; padding: 0 0 8px; overflow: hidden; }
         .mushu-dragon { width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; }
         #mushu-container.mushu-container { background-image: url('mushu.png'); width: 100vh; height: 100vh; margin: 0 auto; position: absolute; top: 45%; left: 50%; display:flex; justify-content:center; align-items:center; background-size: contain; background-repeat: no-repeat; background-position:center center; transform-origin: center center; animation: mushu-breathe 6s ease-in-out infinite; filter: drop-shadow(0 8px 26px rgba(255,183,77,.42)); max-width:min(96vw,880px); max-height:min(92vh,880px); z-index:10; }
         .mushu-dragon.mushu-chew #mushu-container { animation: mushu-chew .9s ease; }
@@ -542,7 +542,7 @@
         .smoke-particle.right { left: 53%; top: 35%; animation-delay: 1.1s; }
         .mushu-mouth-zone { position:absolute; width:24%; height:19%; top:35%; left:50%; transform:translateX(-50%); border:none; border-radius:999px; background: rgba(255,255,255,.05); z-index:11; }
         .mushu-spark { position:absolute; width:18px; height:18px; border-radius:50%; background: radial-gradient(circle,#fff59d,#ffca28 50%,transparent 70%); box-shadow:0 0 14px #ffd54f; animation:mushuSparkFly 550ms ease-out forwards; pointer-events:none; }
-        .mushu-fruit-panel { padding-bottom:10px; }
+        .mushu-fruit-panel { position: relative; z-index: 30; padding-bottom:10px; }
         .mushu-fruit-list { display:flex; gap:8px; margin-top:8px; }
         .mushu-fruit-chip { flex:1; border:1px solid #ffd54f; background: linear-gradient(160deg, #ffecb3, #ffb74d); color: #3e2723; border-radius: 14px; padding: 10px 8px; font-weight: 800; text-align:center; touch-action: none; user-select: none; }
         .mushu-fruit-chip.dragging { opacity:.45; }
