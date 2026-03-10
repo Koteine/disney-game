@@ -4342,10 +4342,13 @@
                     const key = String(i);
                     const row = byNum.get(key);
                     const isUsed = !!(row && (row.isRevoked || row.excluded));
+                    const tileBg = isUsed ? '#e0e0e0' : '#ffffff';
+                    const tileBorder = isUsed ? '#bdbdbd' : '#dcdcdc';
+                    const tileColor = isUsed ? '#757575' : '#212121';
                     html.push(`
                         <button
                             data-ticket-num="${key}"
-                            style="height:32px; border-radius:8px; border:1px solid ${isUsed ? '#ef9a9a' : '#e0e0e0'}; background:${isUsed ? '#ffebee' : '#fff'}; color:${isUsed ? '#b71c1c' : '#333'}; font-size:11px; padding:0; text-decoration:${isUsed ? 'line-through' : 'none'};"
+                            style="height:32px; border-radius:8px; border:1px solid ${tileBorder}; background:${tileBg}; color:${tileColor}; font-size:11px; padding:0; text-decoration:none;"
                         >${key}</button>
                     `);
                 }
@@ -4405,10 +4408,10 @@
 
                 const ownerName = players[row.owner]?.n || 'Неизвестный игрок';
                 const ownerId = String(row.userId || '—');
-                const status = (row.excluded || row.isRevoked) ? 'Вычеркнут' : 'В игре';
+                const status = (row.excluded || row.isRevoked) ? 'Вычеркнут' : 'Активен';
                 const grantedAt = Number(row.createdAt || row.ts || row.archivedAt || 0);
                 const revokedAt = Number(row.updatedAt || row.revokedAt || row.archivedAt || 0);
-                const reason = row.isManualRevoke ? 'Сдан админу' : ((row.excluded || row.isRevoked) ? 'Сгорел на выставке' : '—');
+                const reason = row.isManualRevoke ? 'Сдан админу' : ((row.excluded || row.isRevoked) ? 'Потрачен в галерее' : '—');
 
                 resultEl.innerHTML = `
                     <div style="border:1px solid #e1bee7; border-radius:12px; padding:10px; background:#faf7ff; text-align:left;">
@@ -4417,7 +4420,7 @@
                         <div style="font-size:12px; margin-bottom:6px;"><b>Владелец:</b> ${ownerName} (ID: ${ownerId})</div>
                         <div style="font-size:12px;"><b>История:</b></div>
                         <ul style="margin:4px 0 0 16px; padding:0; font-size:12px; line-height:1.4;">
-                            <li>Получен: ${formatTicketArchiveHistoryDate(grantedAt)} за задание ${row.taskIdx ?? '—'}</li>
+                            <li>Получен: ${formatTicketArchiveHistoryDate(grantedAt)} за задание ${row.taskLabel || row.taskIdx || '—'}</li>
                             <li>Вычеркнут: ${(row.excluded || row.isRevoked) ? formatTicketArchiveHistoryDate(revokedAt) : '—'} (Причина: ${(row.excluded || row.isRevoked) ? reason : '—'})</li>
                         </ul>
                     </div>
@@ -6817,12 +6820,21 @@
             avatarEl.style.fontWeight = '800';
         }
 
+        const KARMA_RANK_THRESHOLDS = [50, 120, 220, 360, 520];
+
+        function getNextKarmaGoal(points) {
+            const karma = Math.max(0, Number(points) || 0);
+            const next = KARMA_RANK_THRESHOLDS.find(goal => karma < goal);
+            return next || KARMA_RANK_THRESHOLDS[KARMA_RANK_THRESHOLDS.length - 1];
+        }
+
         function updateProfileUI() {
-            const isAdminProfile = currentUserRole === 'admin';
+            const isAdminProfile = String(currentUserId) === String(ADMIN_ID);
             const adminModeEl = document.getElementById('profile-admin-mode');
             const playerBlockEl = document.getElementById('profile-player-block');
             const playerTicketsEl = document.getElementById('profile-player-tickets-block');
             if (adminModeEl) adminModeEl.style.display = isAdminProfile ? 'block' : 'none';
+            if (adminModeEl) adminModeEl.innerHTML = '<div style="font-weight:800; font-size:16px; color:#6a1b9a;">Панель управления администратора. Игровой профиль отключен</div>';
             if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
             if (isAdminProfile) return;
@@ -6835,22 +6847,41 @@
             const nickEl = document.getElementById('profile-nickname');
             if (nickEl) nickEl.textContent = nickname;
             renderProfileAvatar(nickname);
-            if (karmaText) karmaText.textContent = `${Math.max(0, Math.min(100, karma))} / 100`;
-            if (karmaBar) karmaBar.style.width = `${Math.max(0, Math.min(100, karma))}%`;
+            const nextGoal = getNextKarmaGoal(karma);
+            const ratio = nextGoal > 0 ? (karma / nextGoal) : 0;
+            const width = karma > 0 ? Math.max(4, Math.min(100, ratio * 100)) : 0;
+            if (karmaText) karmaText.textContent = `${Math.max(0, karma)} / ${nextGoal}`;
+            if (karmaBar) {
+                karmaBar.style.width = `${width}%`;
+                karmaBar.style.background = karma > 0
+                    ? 'linear-gradient(90deg,#c0c0c0,#d4af37)'
+                    : '#e0e0e0';
+            }
             if (karmaRank && window.karmaSystem) karmaRank.textContent = window.karmaSystem.getKarmaRank(karma);
         }
 
         async function syncSeasonProfile() {
             if (!currentUserId) return;
-            if (currentUserId === ADMIN_ID) {
+            if (String(currentUserId) === String(ADMIN_ID)) {
                 seasonProfileData = { karma_points: 0, nickname: 'Администратор' };
                 updateProfileUI();
                 return;
             }
             const fallbackNickname = players[myIndex]?.n || 'Игрок';
-            await window.karmaSystem.ensureSeasonProfile(db, currentUserId, fallbackNickname, false);
+            const profileRef = db.ref(`player_season_status/${currentUserId}`);
+            const userStats = await profileRef.once('value');
+            if (!userStats.exists()) {
+                await profileRef.set({
+                    userId: String(currentUserId),
+                    nickname: String(fallbackNickname || 'Игрок'),
+                    karma_points: 0,
+                    updatedAt: Date.now()
+                });
+            } else if (window.karmaSystem) {
+                await window.karmaSystem.ensureSeasonProfile(db, currentUserId, fallbackNickname, false);
+            }
             if (seasonProfileRef) seasonProfileRef.off();
-            seasonProfileRef = db.ref(`player_season_status/${currentUserId}`);
+            seasonProfileRef = profileRef;
             seasonProfileRef.on('value', snap => {
                 seasonProfileData = snap.val() || { karma_points: 0, nickname: fallbackNickname };
                 updateProfileUI();
@@ -6955,6 +6986,24 @@
             frame();
         }
 
+
+        async function updateKarma(targetUserId, amount) {
+            const uid = String(targetUserId || '').trim();
+            const delta = Number(amount) || 0;
+            if (!uid) return 0;
+            if (!window.karmaSystem || typeof window.karmaSystem.addKarmaPoints !== 'function') {
+                await db.ref(`player_season_status/${uid}`).update({
+                    karma_points: firebase.database.ServerValue.increment(delta),
+                    updatedAt: Date.now()
+                });
+                const fallbackSnap = await db.ref(`player_season_status/${uid}/karma_points`).once('value');
+                return Number(fallbackSnap.val()) || 0;
+            }
+            const fallbackNickname = players[myIndex]?.n || 'Игрок';
+            await window.karmaSystem.ensureSeasonProfile(db, uid, fallbackNickname, false);
+            return window.karmaSystem.addKarmaPoints(db, uid, delta, ADMIN_ID);
+        }
+
         async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
             if (currentUserRole === 'admin') return alert('Админ не может участвовать в голосовании');
             if (!currentUserId || currentUserId === ADMIN_ID) return alert('Админ не может участвовать в голосовании');
@@ -6974,15 +7023,13 @@
                 return alert('Недостаточно билетиков для этого комплимента.');
             }
 
-            await db.ref(`player_season_status/${currentUserId}/karma_points`).transaction(v => (Number(v) || 0) + Number(cfg.points || 0));
+            const nextKarma = await updateKarma(currentUserId, cfg.points || 0);
             await db.ref(`player_season_status/${currentUserId}`).update({
                 updatedAt: Date.now(),
                 lastGalleryComplimentAt: Date.now(),
                 lastGalleryComplimentType: String(type || ''),
                 lastGalleryComplimentExhibitId: String(exhibitId || '')
             });
-            const karmaSnap = await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value');
-            const nextKarma = Number(karmaSnap.val()) || 0;
             if (currentUserRole === 'admin') {
                 console.info(`[KARMA][ADMIN] Комплимент ${cfg.emoji}: userId=${currentUserId}, delta=${cfg.points}, total=${nextKarma}`);
             }
