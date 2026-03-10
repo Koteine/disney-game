@@ -128,11 +128,12 @@
             <div id="works-upload-card" class="works-card">
                 <b>Загрузить новую работу</b>
                 <select id="work-task-select" class="admin-input" style="margin-top:8px;"></select>
-                <label style="font-size:12px; color:#777;">Фото «До» (не раскрашенная)</label>
+                <label id="work-before-label" style="font-size:12px; color:#777;">Фото «До» (не раскрашенная)</label>
                 <input type="file" id="work-image-before-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
-                <label style="font-size:12px; color:#777;">Фото «После» (раскрашенная)</label>
+                <label id="work-after-label" style="font-size:12px; color:#777;">Фото «После» (раскрашенная)</label>
                 <input type="file" id="work-image-after-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
-                <button onclick="submitWork()" class="admin-btn" style="margin:0; width:100%;">📸 Загрузить работу</button>
+                <button id="work-submit-btn" onclick="submitWork()" class="admin-btn" style="margin:0; width:100%;">📸 Загрузить работу</button>
+                <div id="work-upload-status" style="font-size:12px; margin-top:6px; color:#6a1b9a;"></div>
                 <div style="font-size:11px; color:#888; margin-top:6px;">Игроки видят только свои работы. Админ видит все работы и может менять статус.</div>
                 <div id="ink-deadline-hint" style="font-size:11px; color:#d84315; margin-top:6px;"></div>
             </div>
@@ -345,12 +346,15 @@
         let currentDrawSchedule = null;
         let magicDrawAnimationState = null;
         let activeMagicDrawId = null;
+        let pendingMagicLinkCleanupRound = null;
+        let magicStarFieldState = null;
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
         const WALL_BATTLE_EVENT_ID = 'wall_battle';
         const EPIC_PAINT_COVERAGE_TARGET = 95;
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
+        const MAGIC_LINK_WAIT_WINDOW_MS = 2 * 60 * 60 * 1000;
         // Предметы вынесены в items.js (window.itemTypes).
 
         const wandBlessingTasks = [
@@ -641,6 +645,7 @@
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
                 setupEpicPaintCanvas();
+                document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
                 checkAccess();
                 syncData();
                 syncGameEvents();
@@ -821,6 +826,8 @@
 
                 if (magicLinksRef) magicLinksRef.off();
                 shownMagicLinks = {};
+                pendingMagicLinkCleanupRound = currentRoundNum;
+                expireStaleMagicLinksForRound(currentRoundNum, 'app_enter').catch(err => console.error('expireStaleMagicLinksForRound failed:', err));
                 magicLinksRef = db.ref(`magic_links/${currentRoundNum}`);
                 magicLinksRef.on('value', linksSnap => {
                     if (!linksSnap.exists()) return;
@@ -829,12 +836,26 @@
                         const link = linkSnap.val();
                         if (!link || shownMagicLinks[linkSnap.key]) return;
 
-                        const related = link.playerA?.userId === currentUserId || link.playerB?.userId === currentUserId;
+                        const related = Number(link.playerA?.userId) === Number(currentUserId) || Number(link.playerB?.userId) === Number(currentUserId);
                         if (!related) return;
 
-                        shownMagicLinks[linkSnap.key] = true;
-                        const partner = (link.playerA?.userId === currentUserId) ? link.playerB : link.playerA;
-                        alert(`✨ Магическая связь активна!\nТвой напарник: ${partner?.name || 'Неизвестный'}\nВыберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                        if (link.status === 'paired') {
+                            shownMagicLinks[linkSnap.key] = true;
+                            if (Number(link.playerB?.userId) === Number(currentUserId)) {
+                                alert(`✨ Ты в Магической связи с ${link.playerA?.name || 'Неизвестный игрок'}! Вот ваш список кооперативных заданий в карточке клетки 🔮`);
+                            } else {
+                                const partner = link.playerB;
+                                alert(`✨ Магическая связь активна!
+Твой напарник: ${partner?.name || 'Неизвестный'}
+Выберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                            }
+                            return;
+                        }
+
+                        if (link.status === 'expired_single' && Number(link.playerA?.userId) === Number(currentUserId)) {
+                            shownMagicLinks[linkSnap.key] = true;
+                            alert('Упс! Магическая связь не нашла пару, выполняй задание в одиночку');
+                        }
                     });
                 });
             });
@@ -903,6 +924,7 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
+            if (cell.isMagic && cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) return `🔮 Магическая связь: одиночное задание — ${tasks[cell.taskIdx]?.text || 'Обычное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
             if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
             if (cell.isWordSketch) return '🧩 Словесный скетч: мини-игра без дополнительного задания';
@@ -920,6 +942,83 @@
             return { text: 'На проверке', className: 'status-pending' };
         }
 
+
+        function getLatestSubmissionForCell(roundNum, cellIdx, userId = currentUserId) {
+            const filtered = allSubmissions
+                .filter(item => String(item.userId || '') === String(userId || '')
+                    && Number(item.round) === Number(roundNum)
+                    && Number(item.cellIdx) === Number(cellIdx))
+                .sort((a, b) => (Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0)));
+            return filtered[0] || null;
+        }
+
+        function refreshUploadStateForSelectedTask() {
+            const select = document.getElementById('work-task-select');
+            const submitBtn = document.getElementById('work-submit-btn');
+            const statusEl = document.getElementById('work-upload-status');
+            const beforeInput = document.getElementById('work-image-before-input');
+            const afterInput = document.getElementById('work-image-after-input');
+            const beforeLabel = document.getElementById('work-before-label');
+            const afterLabel = document.getElementById('work-after-label');
+            if (!select || !submitBtn || !statusEl) return;
+
+            const setUploadVisibility = (visible) => {
+                [beforeInput, afterInput, beforeLabel, afterLabel, submitBtn].forEach(el => {
+                    if (!el) return;
+                    el.style.display = visible ? '' : 'none';
+                });
+            };
+
+            if (select.disabled || !select.value) {
+                submitBtn.disabled = true;
+                setUploadVisibility(true);
+                statusEl.innerText = 'Сначала выбери клетку с заданием.';
+                statusEl.style.color = '#6a1b9a';
+                return;
+            }
+
+            const cellIdx = Number(select.value);
+            const myCell = allTicketsData.find(t => Number(t.cellIdx) === cellIdx && (Number(t.userId) === Number(currentUserId) || Number(t.owner) === Number(myIndex)));
+            const latest = getLatestSubmissionForCell(myCell?.round, cellIdx);
+
+            if (!latest) {
+                submitBtn.disabled = false;
+                setUploadVisibility(true);
+                statusEl.innerText = 'Можно загрузить работу по выбранной клетке.';
+                statusEl.style.color = '#2e7d32';
+                return;
+            }
+
+            if (latest.status === 'pending') {
+                submitBtn.disabled = true;
+                setUploadVisibility(false);
+                statusEl.innerText = 'Работа на проверке';
+                statusEl.style.color = '#6a1b9a';
+                return;
+            }
+
+            if (latest.status === 'accepted') {
+                submitBtn.disabled = true;
+                setUploadVisibility(false);
+                statusEl.innerText = '✅ Принято';
+                statusEl.style.color = '#2e7d32';
+                return;
+            }
+
+            if (latest.status === 'rejected') {
+                submitBtn.disabled = false;
+                setUploadVisibility(true);
+                const reason = latest.reviewComment || latest.rejectReason || latest.adminComment || latest.reviewNote || '';
+                statusEl.innerText = reason ? `❌ Не принято: ${reason}` : '❌ Не принято. Можно загрузить заново.';
+                statusEl.style.color = '#b71c1c';
+                return;
+            }
+
+            submitBtn.disabled = false;
+            setUploadVisibility(true);
+            statusEl.innerText = 'Можно загрузить работу по выбранной клетке.';
+            statusEl.style.color = '#2e7d32';
+        }
 
         function updateInkDeadlineHint() {
             const el = document.getElementById('ink-deadline-hint');
@@ -954,15 +1053,29 @@
             if (!myCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
+                refreshUploadStateForSelectedTask();
                 return;
             }
 
+            const selectable = myCells.filter(cell => {
+                const latest = getLatestSubmissionForCell(cell.round, cell.cellIdx);
+                return !latest || latest.status !== 'pending';
+            });
+
             updateInkDeadlineHint();
+            if (!selectable.length) {
+                select.disabled = true;
+                select.innerHTML = '<option value="">Все доступные клетки уже на проверке</option>';
+                refreshUploadStateForSelectedTask();
+                return;
+            }
+
             select.disabled = false;
-            select.innerHTML = myCells.map(cell => {
+            select.innerHTML = selectable.map(cell => {
                 const shortTask = getTaskLabelByCell(cell).slice(0, 90);
                 return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
             }).join('');
+            refreshUploadStateForSelectedTask();
         }
 
         function renderSubmissions() {
@@ -996,6 +1109,7 @@
                         </div>
                         <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
                         <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
+                        ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
 
                         <div class="work-stage-block">
                             <div class="collapse-head" onclick="toggleCollapse('${beforeBodyId}', this)">
@@ -2046,6 +2160,74 @@
             }, 1000);
         }
 
+        async function expireStaleMagicLinksForRound(roundNum, reason = 'manual_check') {
+            if (!Number.isInteger(roundNum) || roundNum <= 0) return;
+            const linksSnap = await db.ref(`magic_links/${roundNum}`).once('value');
+            if (!linksSnap.exists()) return;
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const now = Date.now();
+            const updates = {};
+            const expiredNames = [];
+
+            linksSnap.forEach(linkSnap => {
+                const link = linkSnap.val() || {};
+                if (link.status !== 'waiting_for_partner') return;
+                const waitingSince = Number(link.waitingSince || link.createdAt || 0);
+                if (!waitingSince || (now - waitingSince) < MAGIC_LINK_WAIT_WINDOW_MS) return;
+                updates[`magic_links/${roundNum}/${linkSnap.key}/status`] = 'expired_single';
+                updates[`magic_links/${roundNum}/${linkSnap.key}/expiredAt`] = now;
+                updates[`magic_links/${roundNum}/${linkSnap.key}/resolvedBy`] = reason;
+                updates[`magic_links/${roundNum}/${linkSnap.key}/soloFallbackNotice`] = 'Упс! Магическая связь не нашла пару, выполняй задание в одиночку';
+
+                const boardEntry = Object.entries(board).find(([_, c]) => c && c.round === roundNum && c.isMagic && String(c.magicLinkId || '') === String(linkSnap.key));
+                if (boardEntry) {
+                    const [cellIdx, cell] = boardEntry;
+                    const fallbackTaskIdx = Number.isInteger(cell.magicSoloTaskIdx) && cell.magicSoloTaskIdx >= 0
+                        ? cell.magicSoloTaskIdx
+                        : Math.floor(Math.random() * Math.max(1, tasks.length));
+                    updates[`board/${cellIdx}/isMagicSolo`] = true;
+                    updates[`board/${cellIdx}/taskIdx`] = fallbackTaskIdx;
+                    updates[`board/${cellIdx}/magicExpiredAt`] = now;
+                }
+                if (link.playerA?.name) expiredNames.push(link.playerA.name);
+            });
+
+            if (!Object.keys(updates).length) return;
+            await db.ref().update(updates);
+            if (expiredNames.length) {
+                await postNews(`🔮 Магическая связь не нашла пару вовремя: ${expiredNames.join(', ')} выполняет(ют) задание в одиночку.`);
+            }
+        }
+
+        async function resolveMagicPartnerAfterRoll(roundNum, currentRollUserId) {
+            if (!Number.isInteger(roundNum) || roundNum <= 0) return;
+            const linksRef = db.ref(`magic_links/${roundNum}`);
+            const linksSnap = await linksRef.once('value');
+            if (!linksSnap.exists()) return;
+
+            const waiting = [];
+            const now = Date.now();
+            linksSnap.forEach(linkSnap => {
+                const link = linkSnap.val() || {};
+                if (link.status !== 'waiting_for_partner') return;
+                const waitingSince = Number(link.waitingSince || link.createdAt || 0);
+                if (!waitingSince || (now - waitingSince) >= MAGIC_LINK_WAIT_WINDOW_MS) return;
+                if (Number(link.playerA?.userId) === Number(currentRollUserId)) return;
+                waiting.push({ key: linkSnap.key, ...link });
+            });
+            if (!waiting.length) return;
+
+            waiting.sort((a, b) => Number(a.waitingSince || 0) - Number(b.waitingSince || 0));
+            const selected = waiting[0];
+            await linksRef.child(selected.key).update({
+                status: 'paired',
+                pairedAt: now,
+                playerB: { userId: currentRollUserId, charIndex: myIndex, name: players[myIndex]?.n || 'Игрок' }
+            });
+            await postNews(`🔮 ${selected.playerA?.name || 'Игрок'} нашёл(ла) магическую пару: ${players[myIndex]?.n || 'Игрок'}.`);
+        }
+
         async function roll() {
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
@@ -2082,37 +2264,25 @@
             const pendingItemTicket = (itemType === 'inkSaboteur') ? tStr : '';
             if (itemType === 'inkSaboteur') tStr = '';
 
+            await resolveMagicPartnerAfterRoll(currentRoundNum, currentUserId);
+
             let taskIdx = -1;
             let trapText = "";
             let magicLinkId = null;
+            let magicSoloTaskIdx = -1;
             if (isMagic) {
-                const whiteSnap = await db.ref('whitelist').once('value');
-                const candidates = [];
-                whiteSnap.forEach(s => {
-                    const uid = Number(s.key);
-                    const playerState = s.val() || {};
-                    const cIdx = playerState.charIndex;
-                    if (uid !== currentUserId && Number.isInteger(cIdx) && players[cIdx] && !playerState.isEliminated && !playerState.isParticipationBlocked) {
-                        candidates.push({ userId: uid, charIndex: cIdx, name: players[cIdx].n });
-                    }
+                magicSoloTaskIdx = avail[Math.floor(Math.random()*avail.length)];
+                const linkRef = db.ref(`magic_links/${currentRoundNum}`).push();
+                await linkRef.set({
+                    createdAt: Date.now(),
+                    waitingSince: Date.now(),
+                    status: 'waiting_for_partner',
+                    playerA: { userId: currentUserId, charIndex: myIndex, name: players[myIndex].n },
+                    tasks: magicBondTasks
                 });
-
-                if (candidates.length) {
-                    const partner = candidates[Math.floor(Math.random() * candidates.length)];
-                    const linkRef = db.ref(`magic_links/${currentRoundNum}`).push();
-                    await linkRef.set({
-                        createdAt: Date.now(),
-                        playerA: { userId: currentUserId, charIndex: myIndex, name: players[myIndex].n },
-                        playerB: partner,
-                        tasks: magicBondTasks
-                    });
-                    magicLinkId = linkRef.key;
-                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и связался(ась) с ${partner.name}.`);
-                    alert(`Вау! Это Магические узы! Свяжись с игроком ${partner.name}.`);
-                } else {
-                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и ждёт связи с напарником.`);
-                    alert("Вау! Это Магические узы! Пока нет второго доступного игрока для связи.");
-                }
+                magicLinkId = linkRef.key;
+                await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и ждёт пару до 2 часов.`);
+                alert('Вау! Это Магические узы! Ждём следующего игрока, который бросит кубик в течение 2 часов.');
             } else if (isTrap) {
                 const traps = [
                     "Детка, это ловушка Капитана Крюка! Чтобы освободиться, рисуй своей не ведущей рукой! Смотри не мухлюй, злой пират всё видит и порвет твой счастливый билетик у тебя на глазах!",
@@ -2160,7 +2330,7 @@
                 await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, magicSoloTaskIdx, isMagicSolo: false, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
@@ -2200,7 +2370,14 @@
                 if (cell.isTrap) {
                     h += `<div style="padding:15px; border:2px dashed red; border-radius:10px; background:#fff0f0; color:#ff4444; font-weight:bold; text-align:center;">${cell.trapText}</div>`;
                 } else if (cell.isMagic) {
-                    h += `
+                    if (cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) {
+                        const soloTask = tasks[cell.taskIdx];
+                        h += `<div style="padding:15px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:left;">
+                            <div style="font-weight:bold; color:#5e35b1; margin-bottom:8px;">Упс! Магическая связь не нашла пару, выполняй задание в одиночку.</div>
+                            <div style="font-size:14px; color:#333; line-height:1.4;">${soloTask?.text || 'Обычное задание'}</div>
+                        </div>`;
+                    } else {
+                        h += `
                     <div style="padding:15px; border:2px solid #7e57c2; border-radius:10px; background:#f5efff; text-align:left;">
                         <div style="font-weight:bold; color:#5e35b1; margin-bottom:8px;">Вау! Это Магические узы! Выберите одно совместное задание:</div>
                         <ol style="margin:0 0 10px 18px; padding:0; line-height:1.4; font-size:14px; color:#333;">
@@ -2211,6 +2388,7 @@
                             🎫 Если не договорились, но выполнили свою часть задания — <b>по 1 билетику</b> каждому.
                         </div>
                     </div>`;
+                    }
                 } else if (cell.isGold) {
                     h += `<div style="padding:15px; border:2px solid #fbc02d; border-radius:10px; background:#fff9c4; text-align:center;">✨ Твое задание: Рисуй на любую свободную тему!</div>`;
                 } else if (cell.itemType === 'inkSaboteur') {
@@ -2304,7 +2482,7 @@
             if (!stage || !banner) return;
             banner.classList.remove('show');
             if (!stage.children.length) {
-                stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нажми «Начать магию», чтобы запустить ночной розыгрыш ✨</div>';
+                renderIdleMagicSky().catch(err => console.error('renderIdleMagicSky failed:', err));
             }
         }
 
@@ -2352,6 +2530,72 @@
 
         function wait(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function stopMagicStarField() {
+            if (magicStarFieldState?.rafId) cancelAnimationFrame(magicStarFieldState.rafId);
+            magicStarFieldState = null;
+        }
+
+        function animateDriftingStars(stars, stage, mode = 'idle') {
+            stopMagicStarField();
+            const rect = stage.getBoundingClientRect();
+            const state = { stars, stage, mode, startAt: performance.now(), rafId: 0 };
+            magicStarFieldState = state;
+            const tick = (now) => {
+                if (!magicStarFieldState || magicStarFieldState !== state) return;
+                const w = stage.clientWidth || rect.width || 620;
+                const h = stage.clientHeight || rect.height || 420;
+                const elapsed = now - state.startAt;
+                stars.forEach((star) => {
+                    if (mode === 'converge') {
+                        const t = Math.min(1, elapsed / 1200);
+                        star.x += (w / 2 - star.x) * (0.06 + t * 0.15);
+                        star.y += (h / 2 - star.y) * (0.06 + t * 0.15);
+                    } else {
+                        star.x += star.vx;
+                        star.y += star.vy;
+                    }
+                    if (star.x < -36) star.x = w + 18;
+                    if (star.x > w + 36) star.x = -18;
+                    if (star.y < -36) star.y = h + 18;
+                    if (star.y > h + 36) star.y = -18;
+                    star.el.style.transform = `translate(${star.x}px, ${star.y}px)`;
+                });
+                state.rafId = requestAnimationFrame(tick);
+            };
+            state.rafId = requestAnimationFrame(tick);
+        }
+
+        function buildStarNodesFromTickets(stage, tickets) {
+            const width = stage.clientWidth || 620;
+            const height = stage.clientHeight || 420;
+            return tickets.map(ticket => {
+                const el = document.createElement('span');
+                el.className = 'magic-ticket-star';
+                el.textContent = String(ticket.num);
+                stage.appendChild(el);
+                return {
+                    el,
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    vx: (Math.random() - 0.5) * 0.55,
+                    vy: (Math.random() - 0.5) * 0.45
+                };
+            });
+        }
+
+        async function renderIdleMagicSky() {
+            const stage = document.getElementById('magic-cards-stage');
+            if (!stage) return;
+            const tickets = await getTicketsFromFirebaseDrawPool();
+            stage.innerHTML = '';
+            if (!tickets.length) {
+                stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нет активных билетов для звёздного неба</div>';
+                return;
+            }
+            const stars = buildStarNodesFromTickets(stage, tickets);
+            animateDriftingStars(stars, stage, 'idle');
         }
 
         function spawnMagicSparks(count = 44) {
@@ -2430,28 +2674,16 @@
             const winner = tickets.find(t => String(t.num) === String(winnerTicket)) || tickets[0];
             banner.classList.remove('show');
             stage.innerHTML = '';
+            stopMagicStarField();
 
-            const stars = tickets.map((ticket, idx) => {
-                const star = document.createElement('span');
-                star.className = 'magic-ticket-star';
-                star.textContent = `№${ticket.num}`;
-                const spreadX = (Math.random() - 0.5) * 520;
-                const spreadY = (Math.random() - 0.5) * 320;
-                star.style.setProperty('--sx', `${spreadX}px`);
-                star.style.setProperty('--sy', `${spreadY}px`);
-                star.style.setProperty('--cx', `${(Math.random() - 0.5) * 36}px`);
-                star.style.setProperty('--cy', `${(Math.random() - 0.5) * 30}px`);
-                star.style.setProperty('--so', `${(0.3 + Math.random() * 0.5).toFixed(2)}`);
-                star.style.setProperty('--sf', `${10 + Math.random() * 13}px`);
-                star.style.setProperty('--tw', `${2 + Math.random() * 3.3}s`);
-                star.style.transitionDelay = `${idx * 4}ms`;
-                stage.appendChild(star);
-                return star;
-            });
-
-            await wait(120);
-            stars.forEach(star => star.classList.add('is-converging'));
+            const stars = buildStarNodesFromTickets(stage, tickets);
+            animateDriftingStars(stars, stage, 'idle');
+            await wait(700);
+            animateDriftingStars(stars, stage, 'converge');
+            stars.forEach(star => star.el.classList.add('is-converging'));
             await wait(1300);
+            stopMagicStarField();
+            stage.innerHTML = '';
 
             const maxCards = Math.min(Math.max(tickets.length, 8), 60);
             const cardsPool = [...tickets].sort(() => Math.random() - 0.5).slice(0, maxCards);
@@ -4984,6 +5216,7 @@
             if (!cell) return 'Неизвестное задание';
             if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
+            if (cell.isMagic && cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) return `🔮 Магическая связь: одиночное задание — ${tasks[cell.taskIdx]?.text || 'Обычное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
             if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
             if (cell.isWordSketch) return '🧩 Словесный скетч: мини-игра без дополнительного задания';
@@ -5082,6 +5315,7 @@
                         </div>
                         <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
                         <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
+                        ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
 
                         <div class="work-stage-block">
                             <div class="collapse-head" onclick="toggleCollapse('${beforeBodyId}', this)">
@@ -5280,6 +5514,12 @@
                 return alert('Этот билетик вычеркнут из игры, загрузка работы для него недоступна.');
             }
 
+            const existing = getLatestSubmissionForCell(cell.round, chosenCellIdx);
+            if (existing?.status === 'pending' || existing?.status === 'accepted') {
+                refreshUploadStateForSelectedTask();
+                return alert(existing.status === 'pending' ? 'Работа уже на проверке. Дождись модерации.' : 'Эта работа уже принята. Повторная загрузка заблокирована.');
+            }
+
             const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
             const challenge = challengeSnap.val();
             if (cell.isWandBlessing) {
@@ -5329,11 +5569,20 @@
             if (Number(currentUserId) !== Number(ADMIN_ID)) return;
             if (!['accepted', 'rejected'].includes(status)) return;
             const refPath = sourcePrefix === 'works' ? `works/${dbPath || submissionId}` : `submissions/${dbPath || submissionId}`;
-            await db.ref(refPath).update({
+            const patch = {
                 status,
                 reviewedBy: currentUserId,
                 updatedAt: Date.now()
-            });
+            };
+            if (status === 'rejected') {
+                const reason = prompt('Укажи причину отказа (игрок увидит это сообщение):', '');
+                if (reason === null) return;
+                patch.reviewComment = reason.trim();
+            }
+            if (status === 'accepted') {
+                patch.reviewComment = '';
+            }
+            await db.ref(refPath).update(patch);
         }
 
         window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;

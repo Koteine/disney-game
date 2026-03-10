@@ -127,8 +127,10 @@
             border-radius: 20px;
             overflow: hidden;
             border: 1px solid rgba(255, 215, 120, 0.35);
-            background: radial-gradient(circle at 50% 48%, rgba(95, 138, 255, 0.24), transparent 36%), linear-gradient(180deg, #040919 0%, #070f2f 55%, #030714 100%);
-            box-shadow: inset 0 0 55px rgba(114, 169, 255, 0.18), inset 0 -18px 40px rgba(0, 0, 0, 0.46), 0 16px 38px rgba(0,0,0,0.45);
+            background: radial-gradient(circle at 20% 20%, rgba(46, 77, 170, 0.25), transparent 40%), radial-gradient(circle at 80% 30%, rgba(123, 52, 175, 0.2), transparent 42%), linear-gradient(180deg, #010104 0%, #020512 45%, #010205 100%);
+            background-size: 140% 140%, 130% 130%, 100% 100%;
+            animation: magicSkyShift 14s ease-in-out infinite alternate;
+            box-shadow: inset 0 0 55px rgba(114, 169, 255, 0.12), inset 0 -18px 40px rgba(0, 0, 0, 0.56), 0 16px 38px rgba(0,0,0,0.45);
         }
         .magic-cards-stage {
             position: relative;
@@ -139,22 +141,29 @@
         }
         .magic-ticket-star {
             position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(calc(-50% + var(--sx, 0px)), calc(-50% + var(--sy, 0px)));
-            color: rgba(255, 245, 205, 0.9);
-            text-shadow: 0 0 9px rgba(255, 241, 189, 0.35);
-            opacity: var(--so, 0.5);
-            font-size: var(--sf, 12px);
+            left: 0;
+            top: 0;
+            width: clamp(22px, 5.4vw, 34px);
+            height: clamp(22px, 5.4vw, 34px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff9d6;
+            font-size: 9px;
+            font-weight: 700;
+            text-shadow: 0 0 8px rgba(255, 235, 171, 0.75);
+            background: radial-gradient(circle at 40% 35%, rgba(255,255,255,0.95), rgba(255,236,179,0.72) 48%, rgba(255,208,100,0.4) 68%, rgba(255,208,100,0));
+            clip-path: polygon(50% 0%, 60% 34%, 95% 34%, 67% 55%, 77% 90%, 50% 70%, 23% 90%, 33% 55%, 5% 34%, 40% 34%);
+            opacity: var(--so, 0.8);
             animation: twinkle var(--tw, 3s) ease-in-out infinite;
             pointer-events: none;
             z-index: 1;
-            transition: transform 1000ms cubic-bezier(.2,.8,.2,1), opacity 900ms ease;
+            transition: transform 900ms cubic-bezier(.2,.8,.2,1), opacity 700ms ease;
             will-change: transform, opacity;
         }
         .magic-ticket-star.is-converging {
-            transform: translate(calc(-50% + var(--cx, 0px)), calc(-50% + var(--cy, 0px))) scale(0.8);
             opacity: 0;
+            transform: scale(0.4);
         }
         .magic-card {
             position: absolute;
@@ -235,6 +244,10 @@
             text-shadow:0 2px 10px rgba(0,0,0,.35);
         }
         .magic-winner-banner.show { opacity:1; transform:translateX(-50%) scale(1); }
+        @keyframes magicSkyShift {
+            0% { background-position: 0% 0%, 100% 20%, 0 0; }
+            100% { background-position: 100% 80%, 0% 60%, 0 0; }
+        }
         @keyframes twinkle {
             0%, 100% { opacity: calc(var(--so, 0.5) * 0.65); }
             50% { opacity: var(--so, 0.5); }
