@@ -490,25 +490,30 @@
         .event-overlay[style*="display: flex"] { display:flex !important; }
         .magic-ticket-star.size-1 { --star-size: 36px; }
 
-        .mushu-invite-modal {
-            position: fixed;
-            inset: 0;
-            z-index: 3800;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 16px;
-            background: rgba(7, 7, 16, 0.72);
+        .mushu-inline-invite {
+            margin: 8px auto 10px;
+            width: 95%;
+            background: linear-gradient(130deg, #fff3e0, #ffe0b2);
+            border: 1px solid #ffb74d;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(239, 108, 0, .18);
+            padding: 10px;
+            color: #5d4037;
+            animation: mushuInvitePulse 1.8s ease-in-out infinite;
         }
-        .mushu-invite-card {
-            width: min(92vw, 420px);
-            background: linear-gradient(160deg, #fff8ea, #ffe0b2);
-            border: 2px solid #ff9800;
-            border-radius: 18px;
-            padding: 16px;
-            text-align: center;
-            box-shadow: 0 14px 34px rgba(0,0,0,.28);
-            color: #4e342e;
+        .mushu-inline-btn {
+            margin-top: 8px;
+            width: 100%;
+            border: none;
+            border-radius: 10px;
+            padding: 10px;
+            color: #fff;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ef6c00, #d84315);
+        }
+        @keyframes mushuInvitePulse {
+            0%,100% { transform: scale(1); box-shadow: 0 8px 20px rgba(239, 108, 0, .16); }
+            50% { transform: scale(1.015); box-shadow: 0 12px 26px rgba(239, 108, 0, .26); }
         }
         .mushu-overlay {
             position: fixed;
@@ -516,27 +521,35 @@
             z-index: 3900;
             display: none;
             flex-direction: column;
-            background: radial-gradient(circle at 30% 14%, rgba(255, 214, 111, 0.38), transparent 44%), linear-gradient(180deg, #1b1207 0%, #2d1408 52%, #1a0902 100%);
+            background: radial-gradient(circle at 50% 8%, rgba(255, 167, 38, 0.34), transparent 45%), linear-gradient(180deg, #1f1308, #2f1308 45%, #160904 100%);
             color: #fff8e1;
             padding: 12px;
             overflow: hidden;
         }
         .mushu-progress-bar { width: 100%; height: 14px; border-radius: 999px; background: rgba(255,255,255,.2); overflow: hidden; border: 1px solid rgba(255,255,255,.35); }
         .mushu-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd54f, #ff8f00); transition: width .35s ease; }
-        .mushu-dragon-zone { flex:1; display:flex; align-items:center; justify-content:center; position:relative; }
-        .mushu-dragon { font-size: 72px; filter: drop-shadow(0 0 20px rgba(255,183,77,.55)); }
-        .mushu-fruit-btn { border: 1px solid #ffd54f; background: linear-gradient(160deg, #ffecb3, #ffb74d); color: #3e2723; border-radius: 14px; padding: 10px 14px; font-weight: 800; width: 100%; margin-top: 10px; }
-        .mushu-fruit-fly { position: fixed; z-index: 4100; pointer-events: none; font-size: 28px; animation: mushuFruitFly 880ms cubic-bezier(.2,.8,.2,1) forwards; }
-        .mushu-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: mushuBreath 1400ms ease-out forwards; }
-        @keyframes mushuFruitFly {
-            0% { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 1; }
-            100% { transform: translate(var(--dx), var(--dy)) scale(.25); opacity: 0; }
-        }
-        @keyframes mushuBreath {
-            0% { opacity: 0; transform: scale(.45); }
-            22% { opacity: 1; }
-            100% { opacity: 0; transform: scale(1.45); }
-        }
+        .mushu-fuse-timer { margin-top:8px; border:1px solid rgba(255,224,178,.5); border-radius: 12px; padding:8px; background: rgba(0,0,0,.2); }
+        .mushu-fuse-track { position:relative; height: 10px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+        .mushu-fuse-burn { position:absolute; inset:0 auto 0 0; width:100%; background: linear-gradient(90deg,#ffca28,#ef6c00,#6d4c41); transition: width .9s linear; }
+        .mushu-fuse-spark { position:absolute; top:50%; right:-8px; width:14px; height:14px; border-radius:50%; background:#ffd54f; box-shadow:0 0 10px #ffeb3b, 0 0 18px #ff9800; transform: translateY(-50%); animation:mushuSpark 0.7s infinite alternate; }
+        .mushu-time-critical { animation: mushuTimerShake .4s infinite; color:#ff8a80; }
+        .mushu-dragon-zone { flex:1; min-height:44vh; display:flex; align-items:center; justify-content:center; position:relative; }
+        .mushu-dragon { font-size: min(48vw, 280px); line-height:1; filter: drop-shadow(0 0 24px rgba(255,183,77,.66)); animation: mushuBreathing 2.8s ease-in-out infinite; transform-origin: center; }
+        .mushu-dragon.mushu-chomp { animation: mushuChomp .35s ease-in-out 2; }
+        .mushu-smoke { position:absolute; width:12px; height:12px; border-radius:50%; background: rgba(220,220,220,.7); animation: mushuSmokeUp 1.9s ease-out forwards; }
+        .mushu-mouth-zone { position:absolute; width:30%; height:20%; top:42%; left:56%; border:2px dashed rgba(255,224,178,.5); border-radius:999px; }
+        .mushu-fruit-panel { padding-bottom:10px; }
+        .mushu-fruit-list { display:flex; gap:8px; margin-top:8px; }
+        .mushu-fruit-chip { flex:1; border:1px solid #ffd54f; background: linear-gradient(160deg, #ffecb3, #ffb74d); color: #3e2723; border-radius: 14px; padding: 10px 8px; font-weight: 800; text-align:center; touch-action: none; user-select: none; }
+        .mushu-fruit-chip.dragging { opacity:.45; }
+        .mushu-fruit-ghost { position: fixed; z-index: 4300; pointer-events:none; font-size: 34px; transform: translate(-50%, -50%); }
+        .mushu-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: mushuBreathFx 1400ms ease-out forwards; }
+        @keyframes mushuBreathing { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-8px) rotate(2deg); } }
+        @keyframes mushuChomp { 0%,100% { transform: translateX(0) scale(1); } 25% { transform: translateX(-6px) scale(1.03); } 75% { transform: translateX(6px) scale(0.99); } }
+        @keyframes mushuSmokeUp { 0% { opacity:.7; transform:translate(0,0) scale(.7);} 100% { opacity:0; transform:translate(var(--sx), -58px) scale(1.6);} }
+        @keyframes mushuSpark { from{ transform: translateY(-50%) scale(.7);} to{ transform: translateY(-50%) scale(1.15);} }
+        @keyframes mushuTimerShake { 0%,100%{ transform:translateX(0);} 30%{ transform:translateX(-1px);} 60%{ transform:translateX(1px);} }
+        @keyframes mushuBreathFx { 0% { opacity: 0; transform: scale(.45); } 22% { opacity: 1; } 100% { opacity: 0; transform: scale(1.45); } }
     `;
   document.head.appendChild(style);
 })();
