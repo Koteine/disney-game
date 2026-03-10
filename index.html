@@ -4675,6 +4675,12 @@
           const uid = () => String(window.currentUserId || '').trim();
           const isActive = () => String(mushuState.status || '') === 'active';
           const isKnownFruitId = (id) => id === GOLDEN_CUPCAKE.id || FRUITS.some((fruit) => fruit.id === id);
+          const resolveFruitIdFromEntry = (entry) => {
+            if (!entry) return null;
+            if (typeof entry === 'string') return isKnownFruitId(entry) ? entry : null;
+            const id = entry.id || entry.fruitId || entry.fruit || null;
+            return isKnownFruitId(id) ? id : null;
+          };
           const ensureDb = async () => {
             if (window.db && typeof window.db.ref === 'function') return window.db;
             if (typeof window.waitForDbReady === 'function') return window.waitForDbReady();
@@ -4695,15 +4701,26 @@
             const me = uid();
             if (!me) return null;
             const personal = mushuState.personal_fruits?.[me] || mushuState.participants?.[me]?.item || null;
-            if (!personal?.id) return null;
-            if (personal.id === GOLDEN_CUPCAKE.id) {
-              const pickedAt = Number(personal.pickedAt || 0);
+            const fruitId = resolveFruitIdFromEntry(personal);
+            if (!fruitId) return null;
+            if (fruitId === GOLDEN_CUPCAKE.id) {
+              const pickedAt = Number(personal?.pickedAt || 0);
               const graceLeft = Math.max(0, GOLDEN_CUPCAKE_GRACE_MS - (Date.now() - pickedAt));
               if (pickedAt > 0 && graceLeft === 0) return { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
               return { ...GOLDEN_CUPCAKE, graceLeftMs: graceLeft };
             }
-            const fallback = FRUITS.find((f) => f.id === personal.id) || FRUITS[0];
+            const fallback = FRUITS.find((f) => f.id === fruitId) || FRUITS[0];
             return { ...fallback };
+          }
+
+          function buildFallbackFruitForUser(userId) {
+            const normalizedUid = String(userId || '').trim();
+            if (!normalizedUid) return null;
+            const luckyUid = String(mushuState.lucky_cupcake_uid || '');
+            if (luckyUid && luckyUid === normalizedUid) return { ...GOLDEN_CUPCAKE, graceLeftMs: GOLDEN_CUPCAKE_GRACE_MS };
+            const salt = `${normalizedUid}:${String(mushuState.startedAt || mushuState.endAt || 0)}`;
+            const hash = Array.from(salt).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+            return { ...FRUITS[hash % FRUITS.length] };
           }
 
           function getDragonMarkup() {
@@ -4764,9 +4781,11 @@
             const me = uid();
             if (!me || !isActive()) return getMyPersonalFruit();
 
-            const existing = mushuState.personal_fruits?.[me]?.id || mushuState.participants?.[me]?.item?.id;
-            if (existing && isKnownFruitId(existing)) {
-              if (!mushuState.personal_fruits?.[me]?.id && mushuState.participants?.[me]?.item?.id) {
+            const personalFruitId = resolveFruitIdFromEntry(mushuState.personal_fruits?.[me]);
+            const participantFruitId = resolveFruitIdFromEntry(mushuState.participants?.[me]?.item);
+            const existing = personalFruitId || participantFruitId;
+            if (existing) {
+              if (!personalFruitId && participantFruitId) {
                 mushuState.personal_fruits = mushuState.personal_fruits || {};
                 mushuState.personal_fruits[me] = { ...mushuState.participants[me].item };
               }
@@ -4812,7 +4831,15 @@
             }
 
             if (!localFruit) {
-              localFruit = await ensureMyFruitAssigned();
+              try {
+                localFruit = await ensureMyFruitAssigned();
+              } catch (err) {
+                console.error('ensureMyFruitAssigned in renderFruitPanel failed', err);
+              }
+            }
+
+            if (!localFruit) {
+              localFruit = buildFallbackFruitForUser(me);
             }
 
             if (!localFruit) {
@@ -4994,7 +5021,7 @@ ${text}`);
             const me = uid();
             if (!me) return;
             const db = await ensureDb();
-            const fruit = getMyPersonalFruit();
+            const fruit = getMyPersonalFruit() || localFruit || buildFallbackFruitForUser(me);
             if (!fruit) return;
             const fedTx = await db.ref(`${EVENT_PATH}/fed_users/${me}`).transaction(v => v ? v : { at: Date.now(), fruit: fruit.id });
             if (!fedTx.committed) return;
