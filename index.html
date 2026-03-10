@@ -4791,6 +4791,7 @@
           }
 
           function closeMushuOverlay() {
+            clearFruitDragState();
             const overlay = $('mushu-overlay');
             if (overlay) overlay.style.display = 'none';
             document.body.classList.remove('event-mode');
@@ -4841,6 +4842,7 @@
           async function renderFruitPanel() {
             const panel = $('mushu-fruit-panel');
             if (!panel) return;
+            clearFruitDragState();
             const me = uid();
             if (isAdminUser()) {
               panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#ffe082;">Ты в режиме наблюдателя: администратор не участвует в событии.</div>';
@@ -4876,7 +4878,7 @@
               : '';
 
             panel.innerHTML = `<div style="font-size:15px;">У тебя один шанс за ивент — перетащи фрукт в зону рта Мушу:</div>
-              <div class="mushu-fruit-list"><div class="mushu-fruit-chip" data-fruit="${localFruit.id}">${localFruit.emoji}<br><span style="font-size:11px;">${localFruit.label}</span></div></div>${graceText}`;
+              <div class="mushu-fruit-list"><div class="mushu-fruit-chip" aria-label="${localFruit.label}" title="${localFruit.label}" data-fruit="${localFruit.id}">${localFruit.emoji}</div></div>${graceText}`;
             panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => {
               if (window.PointerEvent) {
                 chip.addEventListener('pointerdown', onFruitPointerDown);
@@ -4884,6 +4886,15 @@
               }
               chip.addEventListener('touchstart', onFruitTouchStart, { passive: false });
             });
+          }
+
+
+          function clearFruitDragState() {
+            window.removeEventListener('pointermove', onFruitPointerMove);
+            window.removeEventListener('touchmove', onFruitTouchMove);
+            if (dragState?.chip) dragState.chip.classList.remove('dragging');
+            if (dragState?.ghost?.isConnected) dragState.ghost.remove();
+            dragState = null;
           }
 
           function getClientPoint(ev) {
@@ -4915,6 +4926,7 @@
             startFruitDrag(chip, x, y);
             window.addEventListener('pointermove', onFruitPointerMove);
             window.addEventListener('pointerup', onFruitPointerUp, { once: true });
+            window.addEventListener('pointercancel', onFruitPointerCancel, { once: true });
           }
 
           function onFruitTouchStart(ev) {
@@ -4948,16 +4960,19 @@
           async function finishFruitDragByPoint(x, y) {
             const mouth = $('mushu-mouth-zone')?.getBoundingClientRect();
             const droppedInMouth = mouth && x >= mouth.left && x <= mouth.right && y >= mouth.top && y <= mouth.bottom;
-            if (dragState?.chip) dragState.chip.classList.remove('dragging');
-            if (dragState?.ghost) dragState.ghost.remove();
-            dragState = null;
+            clearFruitDragState();
             if (droppedInMouth) await feedMushu();
           }
 
           async function onFruitPointerUp(ev) {
             window.removeEventListener('pointermove', onFruitPointerMove);
+            window.removeEventListener('pointercancel', onFruitPointerCancel);
             const { x, y } = getClientPoint(ev);
             await finishFruitDragByPoint(x, y);
+          }
+
+          async function onFruitPointerCancel() {
+            clearFruitDragState();
           }
 
           async function onFruitTouchEnd(ev) {
