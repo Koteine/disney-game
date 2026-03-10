@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&display=swap" rel="stylesheet">
     <title>Disney Battle: Trap Edition (💥 V.5)</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
@@ -98,15 +101,16 @@
 </div>
 
         <div id="tab-wheel" class="tab-content">
-            <h1>🎡 Колесо</h1>
-            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к розыгрышу?</div>
+            <h1>🃏 Магические карты</h1>
+            <div id="winner-display" style="font-weight:bold; color:var(--p-pink); min-height:40px; font-size:14px; padding:5px;">Готовы к магическому розыгрышу?</div>
             <div id="winner-toast" class="winner-toast">
                 <button class="winner-toast-close" onclick="closeWinnerToast()">✕</button>
                 <div id="winner-toast-text" style="font-weight:700; color:#6a1b9a;"></div>
             </div>
-            <div class="wheel-wrap">
-                <div class="wheel-pointer" aria-hidden="true"></div>
-                <canvas id="wheel-canvas" width="280" height="280"></canvas>
+            <div id="wheel-container" class="magic-draw-container" aria-live="polite">
+                <div id="magic-sparkle-layer" class="magic-sparkle-layer"></div>
+                <div id="magic-cards-stage" class="magic-cards-stage"></div>
+                <div id="magic-winner-banner" class="magic-winner-banner">✨ ПОБЕДИТЕЛЬ! ✨</div>
             </div>
             <div id="wheel-admin-btn"></div>
             <div class="news-box" style="margin-top:10px;">
@@ -255,7 +259,7 @@
         <nav class="nav-bar">
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
             <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
-            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🎡 Колесо</span></button>
+            <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🃏 Розыгрыш</span></button>
             <button class="nav-item" onclick="switchTab('tab-works', this)"><span>📤 Работы</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
             <button id="nav-event-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-event', this)"><span>🎨 Событие</span></button>
@@ -761,7 +765,7 @@
         function checkAccess() {
             if (currentUserId === ADMIN_ID) {
                 document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Выбрать победителя</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
                 syncAdminList();
                 fillAdminNickOptions();
                 ensureDateTimeInputDefault('event-start-at');
@@ -2262,103 +2266,13 @@
         // Источник активных билетиков для колеса вынесен в Tickets.js.
 
         function drawWheel() {
-            const canvas = document.getElementById('wheel-canvas');
-            const ctx = canvas.getContext('2d');
-            const tickets = getActiveTicketsForWheel();
-            ctx.clearRect(0, 0, 280, 280);
-
-            if (!tickets.length) {
-                ctx.beginPath();
-                ctx.arc(140, 140, 122, 0, Math.PI * 2);
-                ctx.fillStyle = '#f2f2f2';
-                ctx.fill();
-                ctx.fillStyle = '#999';
-                ctx.font = 'bold 14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Нет активных билетов', 140, 145);
-                return;
+            const stage = document.getElementById('magic-cards-stage');
+            const banner = document.getElementById('magic-winner-banner');
+            if (!stage || !banner) return;
+            if (!stage.children.length) {
+                stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нажми «Выбрать победителя», чтобы запустить магические карты ✨</div>';
             }
-
-            const segs = tickets.length;
-            const angle = (2 * Math.PI) / segs;
-            const shouldRenderLabel = (index, count) => {
-                if (count <= 70) return true;
-                if (count <= 120) return index % 2 === 0;
-                return index % 3 === 0;
-            };
-
-            tickets.forEach((t, i) => {
-                const startA = i * angle;
-                const endA = (i + 1) * angle;
-
-                ctx.beginPath();
-                ctx.moveTo(140, 140);
-                ctx.arc(140, 140, 122, startA, endA);
-                ctx.closePath();
-                ctx.fillStyle = (i % 2 === 0) ? '#ef1e1e' : '#ffffff';
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.moveTo(140, 140);
-                ctx.lineTo(140 + 122 * Math.cos(startA), 140 + 122 * Math.sin(startA));
-                ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-
-                if (shouldRenderLabel(i, segs)) {
-                    ctx.save();
-                    ctx.translate(140, 140);
-                    ctx.rotate(startA + angle / 2);
-
-                    const fontSize = segs > 120 ? 10 : 11;
-                    ctx.font = `900 ${fontSize}px Arial`;
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.lineJoin = 'round';
-                    ctx.lineWidth = 3;
-                    ctx.strokeStyle = (i % 2 === 0) ? '#7a0a0a' : '#fff7f7';
-                    ctx.fillStyle = (i % 2 === 0) ? '#ffffff' : '#9d1212';
-
-                    const label = String(t.num);
-                    const x = 100;
-                    const y = 0;
-                    ctx.strokeText(label, x, y);
-                    ctx.fillText(label, x, y);
-                    ctx.restore();
-                }
-            });
-
-            const rimGradOuter = ctx.createLinearGradient(12, 12, 268, 268);
-            rimGradOuter.addColorStop(0, '#fbe5a6');
-            rimGradOuter.addColorStop(0.55, '#efbe47');
-            rimGradOuter.addColorStop(1, '#d49a2e');
-
-            ctx.beginPath();
-            ctx.arc(140, 140, 133, 0, Math.PI * 2);
-            ctx.strokeStyle = rimGradOuter;
-            ctx.lineWidth = 10;
-            ctx.stroke();
-
-            const rimGradInner = ctx.createLinearGradient(24, 24, 256, 256);
-            rimGradInner.addColorStop(0, '#fff3c8');
-            rimGradInner.addColorStop(1, '#d89d2f');
-            ctx.beginPath();
-            ctx.arc(140, 140, 127, 0, Math.PI * 2);
-            ctx.strokeStyle = rimGradInner;
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(140, 140, 17, 0, Math.PI * 2);
-            const centerGrad = ctx.createRadialGradient(134, 132, 2, 140, 140, 18);
-            centerGrad.addColorStop(0, '#fff7dc');
-            centerGrad.addColorStop(0.45, '#e7bf65');
-            centerGrad.addColorStop(1, '#ca9224');
-            ctx.fillStyle = centerGrad;
-            ctx.fill();
-            ctx.strokeStyle = '#b37c1f';
-            ctx.lineWidth = 1.2;
-            ctx.stroke();
+            banner.classList.remove('show');
         }
 
         function closeWinnerToast() {
@@ -2374,56 +2288,180 @@
             toast.style.display = 'block';
         }
 
-        function startContinuousWheelSpin() {
-            const canvas = document.getElementById('wheel-canvas');
-            if (!canvas) return;
-            if (wheelSpinInterval) clearInterval(wheelSpinInterval);
-            canvas.style.transition = 'none';
-            wheelSpinInterval = setInterval(() => {
-                currentWheelRotation += 18;
-                canvas.style.transform = `rotate(${currentWheelRotation}deg)`;
-            }, 100);
+        async function getTicketsFromFirebaseDrawPool() {
+            const snap = await db.ref('tickets').once('value');
+            const allTickets = snap.val() || {};
+            return Object.keys(allTickets).map((ticketNum) => {
+                const raw = allTickets[ticketNum] || {};
+                const ownerIndex = Number(raw.owner);
+                const fallbackName = raw.nickname || raw.playerName || raw.ownerName || raw.name || raw.userName || raw.userId || 'Игрок';
+                return {
+                    num: String(ticketNum),
+                    owner: Number.isFinite(ownerIndex) ? ownerIndex : -1,
+                    userId: String(raw.userId || ''),
+                    name: players[ownerIndex]?.n || fallbackName
+                };
+            }).sort((a, b) => Number(a.num) - Number(b.num));
         }
 
-        function stopContinuousWheelSpin() {
-            if (wheelSpinInterval) {
-                clearInterval(wheelSpinInterval);
-                wheelSpinInterval = null;
+        function createMagicCardMarkup(ticket, isWinner) {
+            const card = document.createElement('div');
+            card.className = 'magic-card';
+            card.dataset.ticket = String(ticket.num);
+            card.dataset.winner = isWinner ? '1' : '0';
+            card.innerHTML = `
+                <div class="magic-card-inner">
+                    <div class="magic-card-face magic-card-back">✨</div>
+                    <div class="magic-card-face magic-card-front"><div><small>Счастливый билет</small><b>№${ticket.num}</b><span>${ticket.name}</span></div></div>
+                </div>`;
+            return card;
+        }
+
+        function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function spawnMagicSparks(count = 44) {
+            const layer = document.getElementById('magic-sparkle-layer');
+            if (!layer) return;
+            layer.innerHTML = '';
+            for (let i = 0; i < count; i++) {
+                const spark = document.createElement('i');
+                spark.className = 'magic-spark';
+                spark.style.left = `${50 + (Math.random() - 0.5) * 26}%`;
+                spark.style.top = `${50 + (Math.random() - 0.5) * 26}%`;
+                spark.style.setProperty('--dx', `${(Math.random() - 0.5) * 340}px`);
+                spark.style.setProperty('--dy', `${(Math.random() - 0.5) * 280}px`);
+                layer.appendChild(spark);
             }
+            setTimeout(() => { if (layer) layer.innerHTML = ''; }, 1500);
         }
 
-        function getWinnerIndexByTicketNum(ticketNum) {
-            const tickets = getActiveTicketsForWheel();
-            return tickets.findIndex(t => String(t.num) === String(ticketNum));
+        async function runMagicCardsReveal(winnerTicket, winnerName) {
+            const stage = document.getElementById('magic-cards-stage');
+            const banner = document.getElementById('magic-winner-banner');
+            if (!stage || !banner) return;
+
+            const tickets = await getTicketsFromFirebaseDrawPool();
+            if (!tickets.length) {
+                stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нет билетов в Firebase /tickets</div>';
+                return;
+            }
+
+            const winner = tickets.find(t => String(t.num) === String(winnerTicket)) || tickets[0];
+            const pool = tickets.filter(t => String(t.num) !== String(winner.num));
+            const visibleCount = Math.max(5, Math.min(7, tickets.length));
+            const showcase = [winner];
+            while (showcase.length < visibleCount && pool.length) {
+                const idx = Math.floor(Math.random() * pool.length);
+                showcase.push(pool.splice(idx, 1)[0]);
+            }
+            showcase.sort(() => Math.random() - 0.5);
+
+            banner.classList.remove('show');
+            stage.innerHTML = '';
+            const cards = showcase.map(t => {
+                const card = createMagicCardMarkup(t, String(t.num) === String(winner.num));
+                stage.appendChild(card);
+                return card;
+            });
+
+            cards.forEach((card, idx) => {
+                const angle = -28 + idx * (56 / Math.max(1, cards.length - 1));
+                const radius = 120;
+                card.style.setProperty('--tx', `${Math.sin((angle * Math.PI) / 180) * radius}px`);
+                card.style.setProperty('--ty', `${Math.cos((angle * Math.PI) / 180) * 42 - 24}px`);
+                card.style.setProperty('--rot', `${angle}deg`);
+            });
+
+            await wait(60);
+            cards.forEach(card => card.classList.add('is-visible'));
+            await wait(900);
+
+            const shuffleStart = Date.now();
+            while (Date.now() - shuffleStart < 2300) {
+                cards.forEach(card => {
+                    card.style.setProperty('--tx', `${(Math.random() - 0.5) * 180}px`);
+                    card.style.setProperty('--ty', `${(Math.random() - 0.5) * 120}px`);
+                    card.style.setProperty('--rot', `${(Math.random() - 0.5) * 40}deg`);
+                });
+                await wait(160);
+            }
+
+            const winnerCard = cards.find(card => card.dataset.winner === '1');
+            cards.forEach(card => {
+                if (card !== winnerCard) card.classList.add('is-vanishing');
+            });
+            await wait(620);
+
+            if (winnerCard) {
+                winnerCard.style.setProperty('--tx', '0px');
+                winnerCard.style.setProperty('--ty', '0px');
+                winnerCard.style.setProperty('--rot', '0deg');
+                winnerCard.classList.add('is-focused');
+                await wait(650);
+                winnerCard.classList.add('is-revealed');
+            }
+
+            spawnMagicSparks();
+            banner.classList.add('show');
+            document.getElementById('winner-display').innerHTML = `🏆 Билет №${winner.num}: <b>${winnerName || winner.name}</b>`;
+            showWinnerToast(`✨ Победитель: ${winnerName || winner.name} (билет №${winner.num})`);
+            launchCelebrationFireworks();
+            playFireworksSound();
         }
 
-        function computeRotationForWinnerIndex(index, segs, baseRotation) {
-            const segmentDeg = 360 / Math.max(1, segs);
-            const val = index * segmentDeg + segmentDeg / 2;
-            const targetMod = (630 - val) % 360;
-            const baseMod = ((baseRotation % 360) + 360) % 360;
-            const delta = (targetMod - baseMod + 360) % 360;
-            return baseRotation + (6 * 360) + delta;
+        async function adminPickWinnerNow() {
+            if (currentUserId !== ADMIN_ID) return;
+            const tickets = await getTicketsFromFirebaseDrawPool();
+            if (!tickets.length) {
+                alert('В папке /tickets Firebase нет активных билетов.');
+                return;
+            }
+            const randomIdx = Math.floor(Math.random() * tickets.length);
+            const winner = tickets[randomIdx];
+            const now = Date.now();
+
+            await db.ref('current_winner').set({
+                ticket: String(winner.num),
+                winnerName: winner.name,
+                userId: winner.userId || null,
+                createdAt: now,
+                source: 'magic_cards_manual'
+            });
+
+            await db.ref('winners_history').push({
+                ticket: String(winner.num),
+                winnerName: winner.name,
+                userId: winner.userId || null,
+                createdAt: now,
+                source: 'magic_cards_manual'
+            });
+
+            await db.ref('wheel_history').push({
+                drawId: now,
+                ticket: String(winner.num),
+                winnerName: winner.name,
+                createdAt: now
+            });
+
+            await db.ref('wheel_draw').set({
+                status: 'completed',
+                completedAt: now,
+                winnerTicket: String(winner.num),
+                winnerName: winner.name,
+                randomIdx
+            });
+
+            await runMagicCardsReveal(winner.num, winner.name);
         }
 
-        function runWheelStopAnimationAndShowWinner(winnerTicket, winnerName, drawId) {
-            const tickets = getActiveTicketsForWheel();
-            const winnerIdx = tickets.findIndex(t => String(t.num) === String(winnerTicket));
-            if (winnerIdx < 0) return;
-            const canvas = document.getElementById('wheel-canvas');
-            stopContinuousWheelSpin();
-            const targetRotation = computeRotationForWinnerIndex(winnerIdx, tickets.length, currentWheelRotation);
-            currentWheelRotation = targetRotation;
-            canvas.style.transition = 'transform 6s cubic-bezier(0.16, 0.84, 0.24, 1)';
-            canvas.style.transform = `rotate(${targetRotation}deg)`;
+        function startContinuousWheelSpin() {}
 
-            setTimeout(async () => {
-                const text = `Поздравляю, ${winnerName}, великая азиатская фортуна выбрала тебя победителем!`;
-                document.getElementById('winner-display').innerHTML = `🏆 Билет №${winnerTicket}: <b>${winnerName}</b>`;
-                showWinnerToast(text);
-                launchCelebrationFireworks();
-                playFireworksSound();
-            }, 6200);
+        function stopContinuousWheelSpin() {}
+
+        async function runWheelStopAnimationAndShowWinner(winnerTicket, winnerName) {
+            await runMagicCardsReveal(winnerTicket, winnerName);
         }
 
         function renderWinnerHistory() {
@@ -2459,7 +2497,7 @@
             const finishAt = (currentDrawSchedule.startedAt || 0) + (currentDrawSchedule.durationMs || 0);
             if (Date.now() < finishAt) return;
 
-            const tickets = getActiveTicketsForWheel();
+            const tickets = await getTicketsFromFirebaseDrawPool();
             if (!tickets.length) {
                 await db.ref('wheel_draw').transaction(v => {
                     if (!v || v.status !== 'spinning') return v;
@@ -2482,8 +2520,11 @@
                 };
             });
             if (tx.committed) {
+                const doneAt = tx.snapshot.val()?.completedAt || Date.now();
+                await db.ref('current_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
+                await db.ref('winners_history').push({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'magic_cards_scheduled' });
                 await db.ref('wheel_history').push({
-                    drawId: tx.snapshot.val()?.completedAt || Date.now(),
+                    drawId: doneAt,
                     ticket: String(winner.num),
                     winnerName: winner.name,
                     createdAt: Date.now()
@@ -4636,7 +4677,7 @@
         function checkAccess() {
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Запланировать розыгрыш</button>`;
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Выбрать победителя</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
                 syncAdminList();
                 fillAdminNickOptions();
                 ensureDateTimeInputDefault('event-start-at');
