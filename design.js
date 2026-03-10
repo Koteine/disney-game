@@ -543,8 +543,8 @@
         .mushu-mouth-zone { position:absolute; width:24%; height:19%; top:35%; left:50%; transform:translateX(-50%); border:none; border-radius:999px; background: rgba(255,255,255,.05); z-index:11; }
         .mushu-spark { position:absolute; width:18px; height:18px; border-radius:50%; background: radial-gradient(circle,#fff59d,#ffca28 50%,transparent 70%); box-shadow:0 0 14px #ffd54f; animation:mushuSparkFly 550ms ease-out forwards; pointer-events:none; }
         .mushu-fruit-panel { position: relative; z-index: 30; padding-bottom:10px; }
-        .mushu-fruit-list { display:flex; gap:8px; margin-top:8px; }
-        .mushu-fruit-chip { flex:1; border:1px solid #ffd54f; background: linear-gradient(160deg, #ffecb3, #ffb74d); color: #3e2723; border-radius: 14px; padding: 10px 8px; font-weight: 800; text-align:center; touch-action: none; user-select: none; }
+        .mushu-fruit-list { display:flex; justify-content:center; margin-top:8px; }
+        .mushu-fruit-chip { width:64px; height:64px; display:flex; align-items:center; justify-content:center; border-radius:50%; border:2px solid #ffd54f; background: radial-gradient(circle at 30% 30%, #fff8e1, #ffcc80 65%, #ffb74d); font-size:34px; line-height:1; text-align:center; touch-action:none; user-select:none; box-shadow:0 6px 14px rgba(0,0,0,.25); cursor:grab; }
         .mushu-fruit-chip.dragging { opacity:.45; }
         .mushu-fruit-ghost { position: fixed; z-index: 4300; pointer-events:none; font-size: 34px; transform: translate(-50%, -50%); }
         .mushu-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: mushuBreathFx 1400ms ease-out forwards; }
