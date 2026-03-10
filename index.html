@@ -16,11 +16,11 @@
 
   function getKarmaRank(points) {
     const p = Number(points) || 0;
-    if (p < 50) return 'Зритель 🎟️';
-    if (p < 120) return 'Ценитель 🏺';
-    if (p < 220) return 'Художник 🖌️';
-    if (p < 360) return 'Творец Миров 🌌';
-    return 'Легенда Сезона 🧧';
+    if (p <= 20) return 'Зритель из Первого Ряда';
+    if (p <= 40) return 'Ценитель';
+    if (p <= 60) return 'Золотая Кисть';
+    if (p <= 85) return 'Творец Миров';
+    return 'Бессмертный Мастер';
   }
 
   async function ensureSeasonProfile(db, userId, nickname, isAdmin) {
@@ -7482,14 +7482,22 @@
         let seasonProfileData = { karma_points: 0, nickname: '', avatar_url: '' };
 
         const KARMA_LEVEL_STEP = 100;
-        const MAX_RANK_KARMA = 360;
+        const MAX_RANK_KARMA = 100;
         const KARMA_VISUAL_LEVELS = [
-            { min: 0, title: 'Зритель', icon: '🎟️', border: 'linear-gradient(135deg,#bdbdbd,#9e9e9e)' },
-            { min: 50, title: 'Ценитель', icon: '🏺', border: 'linear-gradient(135deg,#d7ccc8,#a1887f)' },
-            { min: 120, title: 'Художник', icon: '🖌️', border: 'linear-gradient(135deg,#90caf9,#5c6bc0)' },
-            { min: 220, title: 'Творец Миров', icon: '🌌', border: 'linear-gradient(135deg,#ce93d8,#7e57c2)' },
-            { min: 360, title: 'Легенда Сезона', icon: '🧧', border: 'linear-gradient(135deg,#ffe082,#ff7043)' }
+            { min: 0, title: 'Зритель из Первого Ряда', icon: '', border: 'linear-gradient(135deg,#bdbdbd,#9e9e9e)' },
+            { min: 21, title: 'Ценитель', icon: '', border: 'linear-gradient(135deg,#d7ccc8,#a1887f)' },
+            { min: 41, title: 'Золотая Кисть', icon: '', border: 'linear-gradient(135deg,#90caf9,#5c6bc0)' },
+            { min: 61, title: 'Творец Миров', icon: '', border: 'linear-gradient(135deg,#ce93d8,#7e57c2)' },
+            { min: 86, title: 'Бессмертный Мастер', icon: '', border: 'linear-gradient(135deg,#ffe082,#ff7043)' }
         ];
+
+        function getCurrentPlayerNickname() {
+            const gameplayNickname = players[myIndex]?.n;
+            if (String(gameplayNickname || '').trim()) return gameplayNickname;
+            const seasonNickname = String(seasonProfileData.nickname || '').trim();
+            if (seasonNickname) return seasonNickname;
+            return 'Путешественник';
+        }
 
         function getKarmaVisualMeta(points) {
             const karma = Math.max(0, Number(points) || 0);
@@ -7535,7 +7543,7 @@
             if (adminBannerEl) adminBannerEl.style.display = isAdminProfile ? 'block' : 'none';
             if (isAdminProfile) return;
 
-            const nickname = String(seasonProfileData.nickname || '').trim() || 'Путешественник';
+            const nickname = getCurrentPlayerNickname();
             const karma = Math.max(0, Number(seasonProfileData.karma_points) || 0);
             const karmaText = document.getElementById('profile-karma-points');
             const karmaBar = document.getElementById('karma-progress');
@@ -7548,7 +7556,7 @@
             progress = Math.max(0, Math.min(100, progress));
             if (karmaText) karmaText.textContent = `${karma} / ${MAX_RANK_KARMA}`;
             if (karmaBar) karmaBar.style.width = progress + '%';
-            if (karmaRank) karmaRank.textContent = `${visual.title} ${visual.icon}`;
+            if (karmaRank) karmaRank.textContent = visual.icon ? `${visual.title} ${visual.icon}` : visual.title;
         }
 
         async function syncSeasonProfile() {
