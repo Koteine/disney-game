@@ -204,24 +204,38 @@
                     <button id="admin-emergency-toggle-btn" class="news-toggle-btn" onclick="toggleAdminEmergencyActions()">Развернуть</button>
                 </div>
                 <div id="admin-emergency-body" class="news-list" style="margin-top:8px;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная выдача билетиков</div>
-                    <input type="number" id="admin-grant-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <input type="number" id="admin-grant-ticket-count" placeholder="Сколько билетиков" class="admin-input" min="1" value="1">
-                    <input type="text" id="admin-grant-ticket-note" placeholder="Пометка (например: компенсация за ...)" class="admin-input">
-                    <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
+                    <button onclick="toggleEmergencySection('grant')" class="admin-btn" style="background:#00897b; width:100%; margin:0 0 6px;">Принудительная выдача билетиков</button>
+                    <div id="admin-emergency-grant-body" class="news-list" style="margin-bottom:8px;">
+                        <input type="number" id="admin-grant-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                        <input type="number" id="admin-grant-ticket-count" placeholder="Сколько билетиков" class="admin-input" min="1" value="1">
+                        <input type="text" id="admin-grant-ticket-note" placeholder="Пометка (например: компенсация за ...)" class="admin-input">
+                        <button onclick="adminGrantTicketsToPlayer()" class="admin-btn" style="background:#00897b; width:100%; margin:0;">🎫 Выдать билетики</button>
+                    </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Отобрать билетики у игрока</div>
-                    <input type="number" id="admin-revoke-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <input type="number" id="admin-revoke-ticket-count" placeholder="Сколько билетиков отобрать" class="admin-input" min="1" value="1">
-                    <input type="text" id="admin-revoke-ticket-note" placeholder="Пометка (почему отобрали)" class="admin-input">
-                    <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
+                    <button onclick="toggleEmergencySection('revoke')" class="admin-btn" style="background:#c62828; width:100%; margin:0 0 6px;">Отобрать билетики у игрока</button>
+                    <div id="admin-emergency-revoke-body" class="news-list" style="margin-bottom:8px;">
+                        <input type="number" id="admin-revoke-ticket-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                        <input type="number" id="admin-revoke-ticket-count" placeholder="Сколько билетиков отобрать" class="admin-input" min="1" value="1">
+                        <input type="text" id="admin-revoke-ticket-note" placeholder="Пометка (почему отобрали)" class="admin-input">
+                        <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
+                    </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                    <div style="font-size:12px; color:#666; margin:6px 0 4px;">Принудительная смена никнейма</div>
-                    <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
-                    <select id="admin-rename-char-index" class="admin-input"></select>
-                    <button onclick="adminForceRenamePlayer()" class="admin-btn" style="background:#5e35b1; width:100%; margin:0;">✏️ Сменить никнейм</button>
+                    <button onclick="toggleEmergencySection('rename')" class="admin-btn" style="background:#5e35b1; width:100%; margin:0 0 6px;">Принудительная смена никнейма</button>
+                    <div id="admin-emergency-rename-body" class="news-list" style="margin-bottom:8px;">
+                        <input type="number" id="admin-rename-user-id" placeholder="Telegram ID игрока" class="admin-input">
+                        <select id="admin-rename-char-index" class="admin-input"></select>
+                        <button onclick="adminForceRenamePlayer()" class="admin-btn" style="background:#5e35b1; width:100%; margin:0;">✏️ Сменить никнейм</button>
+                    </div>
+
+                    <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                    <button onclick="toggleEmergencySection('teleport')" class="admin-btn" style="background:#6d4c41; width:100%; margin:0 0 6px;">Телепорт и Фикс</button>
+                    <div id="admin-emergency-teleport-body" class="news-list" style="margin-bottom:8px;">
+                        <input type="number" id="admin-teleport-user-id" placeholder="ID игрока" class="admin-input">
+                        <button onclick="adminTeleportPlayerToStart()" class="admin-btn" style="background:#8d6e63; width:100%; margin:0 0 8px;">⏮️ Переставить на старт</button>
+                        <button onclick="adminRestartPlayerCurrentCell()" class="admin-btn" style="background:#6d4c41; width:100%; margin:0;">🔁 Перезапустить текущую клетку</button>
+                    </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
@@ -1358,6 +1372,22 @@
 
         function toggleAdminEmergencyActions() {
             toggleExpandablePanel('admin-emergency-body', 'admin-emergency-toggle-btn');
+        }
+
+        function toggleEmergencySection(sectionName) {
+            const map = {
+                grant: 'admin-emergency-grant-body',
+                revoke: 'admin-emergency-revoke-body',
+                rename: 'admin-emergency-rename-body',
+                teleport: 'admin-emergency-teleport-body'
+            };
+            const targetId = map[sectionName];
+            if (!targetId) return;
+            const body = document.getElementById(targetId);
+            if (!body) return;
+            body.classList.toggle('expanded');
+            body.style.maxHeight = body.classList.contains('expanded') ? '65vh' : '0';
+            body.style.overflowY = 'auto';
         }
 
         function toggleExpandablePanel(listId, btnId) {
@@ -2876,6 +2906,69 @@
             alert(`Готово! Отозвано билетиков: ${toRevoke.length}. Номера: ${revokedText}.${note ? `
 Пометка: ${note}` : ''}`);
         }
+
+        async function adminTeleportPlayerToStart() {
+            if (currentUserId !== ADMIN_ID) return;
+            const userId = (document.getElementById('admin-teleport-user-id')?.value || '').trim();
+            if (!/^\d+$/.test(userId)) return alert('Укажи корректный ID игрока.');
+
+            const [userSnap, boardSnap] = await Promise.all([
+                db.ref(`whitelist/${userId}`).once('value'),
+                db.ref('board').once('value')
+            ]);
+            const user = userSnap.val() || {};
+            if (!userSnap.exists() || !Number.isInteger(user.charIndex) || !players[user.charIndex]) {
+                return alert('Игрок не найден или у него не назначен никнейм.');
+            }
+
+            const board = boardSnap.val() || {};
+            const updates = {};
+            Object.entries(board).forEach(([idx, cell]) => {
+                if (!cell) return;
+                if (String(cell.userId) !== String(userId)) return;
+                updates[`board/${idx}`] = null;
+            });
+
+            updates[`whitelist/${userId}/last_round`] = 0;
+            updates[`whitelist/${userId}/used_tasks`] = [];
+            await db.ref().update(updates);
+            await postNews(`⏮️ Администратор переставил(а) игрока ${players[user.charIndex].n} на старт.`);
+            alert('Готово! Игрок переставлен на старт.');
+        }
+
+        async function adminRestartPlayerCurrentCell() {
+            if (currentUserId !== ADMIN_ID) return;
+            const userId = (document.getElementById('admin-teleport-user-id')?.value || '').trim();
+            if (!/^\d+$/.test(userId)) return alert('Укажи корректный ID игрока.');
+
+            const [userSnap, boardSnap] = await Promise.all([
+                db.ref(`whitelist/${userId}`).once('value'),
+                db.ref('board').once('value')
+            ]);
+            const user = userSnap.val() || {};
+            if (!userSnap.exists() || !Number.isInteger(user.charIndex) || !players[user.charIndex]) {
+                return alert('Игрок не найден или у него не назначен никнейм.');
+            }
+
+            const board = boardSnap.val() || {};
+            const candidateEntries = Object.entries(board)
+                .filter(([_, cell]) => cell && String(cell.userId) === String(userId) && !cell.excluded)
+                .sort((a, b) => Number(b[0]) - Number(a[0]));
+            if (!candidateEntries.length) return alert('У игрока нет активной клетки для перезапуска.');
+
+            const [cellIdx, cell] = candidateEntries[0];
+            const updatedCell = { ...cell, restartedAt: Date.now(), restartedByAdmin: Number(currentUserId) };
+
+            if (!String(updatedCell.ticket || '').trim() && !updatedCell.isMiniGame && !updatedCell.isWordSketch) {
+                const awarded = await claimSequentialTickets(1);
+                if (awarded?.length) updatedCell.ticket = awarded[0];
+            }
+
+            await db.ref(`board/${cellIdx}`).set(updatedCell);
+            await postNews(`🔁 Администратор перезапустил(а) текущую клетку игрока ${players[user.charIndex].n} (№${Number(cellIdx) + 1}).`);
+            alert(`Готово! Клетка №${Number(cellIdx) + 1} перезапущена.`);
+        }
+
 
         async function adminResetCurrentRound() {
             if (currentUserId !== ADMIN_ID) return;
