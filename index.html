@@ -1011,12 +1011,14 @@
         const tg = window.Telegram.WebApp;
         const ADMIN_ID = 341995937;
         let currentUserId = 0;
+        let currentUserPathId = '';
         let currentUserRole = 'player';
         let telegramUser = {};
 
         function refreshTelegramContext() {
             telegramUser = tg.initDataUnsafe?.user || {};
             currentUserId = Number(telegramUser.id) || 0;
+            currentUserPathId = String(telegramUser.id || '').trim();
             currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? 'admin' : 'player';
         }
         const onValue = (ref, handler) => ref.on('value', handler);
@@ -1034,21 +1036,33 @@
 
         async function initializeTelegramSeasonUser() {
             const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user || {};
-            const userId = String(tgUser.id || currentUserId || '').trim();
+            const userId = String(tgUser.id || currentUserPathId || currentUserId || '').trim();
             if (!userId || Number(userId) === Number(ADMIN_ID)) return;
-            if (!String(tgUser.first_name || '').trim()) {
-                console.log('TG User Data:', tgUser);
-            }
             const profileRef = db.ref(`player_season_status/${userId}`);
-            const snap = await profileRef.once('value');
-            if (snap.exists()) return;
-            await profileRef.set({
-                userId,
-                nickname: String(tgUser.first_name || '').trim() || 'Путешественник',
-                photo_url: String(tgUser.photo_url || '').trim(),
-                avatar_url: String(tgUser.photo_url || '').trim(),
-                karma_points: 0,
-                updatedAt: Date.now()
+            const telegramNickname = String(tgUser.first_name || '').trim();
+            const telegramPhoto = String(tgUser.photo_url || '').trim();
+            await profileRef.transaction((row) => {
+                const safeNickname = String(row?.nickname || '').trim();
+                const shouldReplacePlaceholder = safeNickname === 'Путешественник' && telegramNickname;
+                if (row && typeof row === 'object') {
+                    return {
+                        ...row,
+                        userId,
+                        nickname: shouldReplacePlaceholder ? telegramNickname : (safeNickname || telegramNickname || 'Путешественник'),
+                        photo_url: String(row.photo_url || telegramPhoto || ''),
+                        avatar_url: String(row.avatar_url || row.photo_url || telegramPhoto || ''),
+                        karma_points: typeof row.karma_points === 'number' ? row.karma_points : (Number(row.karma_points) || 0),
+                        updatedAt: Date.now()
+                    };
+                }
+                return {
+                    userId,
+                    nickname: telegramNickname || 'Путешественник',
+                    photo_url: telegramPhoto,
+                    avatar_url: telegramPhoto,
+                    karma_points: 0,
+                    updatedAt: Date.now()
+                };
             });
         }
 
@@ -1405,6 +1419,7 @@
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
                 await initializeTelegramSeasonUser();
+                if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
                 setupEpicPaintCanvas();
                 document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
                 checkAccess();
@@ -5644,7 +5659,7 @@
             const invite = $('mushu-inline-invite');
             if (invite) {
               invite.addEventListener('click', (ev) => {
-                const btn = ev.target.closest('#mushu-inline-btn');
+                const btn = ev.target.closest('.mushu-inline-btn');
                 if (!btn) return;
                 openMushuOverlay();
               });
@@ -5676,10 +5691,10 @@
               if (joinBtn) joinBtn.onclick = () => openMushuOverlay();
             }
             if (isAdminUser()) {
-              invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя: админ видит ход события, но не участвует.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Наблюдать</button>`;
+              invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя: админ видит ход события, но не участвует.</div><button class="mushu-inline-btn">Наблюдать</button>`;
               return;
             }
-            invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи свой фрукт в пасть дракона и помоги команде.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Помочь Мушу</button>`;
+            invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи свой фрукт в пасть дракона и помоги команде.</div><button class="mushu-inline-btn">Помочь Мушу</button>`;
           }
 
           function openMushuOverlay() {
@@ -5745,14 +5760,14 @@
             clearFruitDragState();
             const me = uid();
             if (isAdminUser()) {
-              panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#ffe082;">Ты в режиме наблюдателя: администратор не участвует в событии.</div>';
+              panel.innerHTML = '<div style="font-weight:700; color:#ffe082;">Ты в режиме наблюдателя: администратор не участвует в событии.</div>';
               return;
             }
             const alreadyFed = Boolean(mushuState.fed_users?.[me]);
             localFruit = getMyPersonalFruit();
 
             if (alreadyFed) {
-              panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#c8e6c9;">Твой шанс использован! Жди общий итог ивента.</div>';
+              panel.innerHTML = '<div style="font-weight:700; color:#c8e6c9;">Твой шанс использован! Жди общий итог ивента.</div>';
               return;
             }
 
@@ -7537,16 +7552,18 @@
         }
 
         async function syncSeasonProfile() {
-            if (!currentUserId) return;
-            if (String(currentUserId) === String(ADMIN_ID)) {
+            const userId = String(currentUserPathId || currentUserId || '').trim();
+            if (!userId) return;
+            if (String(userId) === String(ADMIN_ID)) {
                 seasonProfileData = { karma_points: 0, nickname: 'Администратор', avatar_url: '' };
                 updateProfileUI();
                 return;
             }
             const fallbackNickname = getTelegramDisplayName();
             const fallbackAvatarUrl = String(telegramUser.photo_url || '').trim();
-            const profileRef = db.ref(`player_season_status/${currentUserId}`);
-            await window.karmaSystem.ensureSeasonProfile(db, currentUserId, fallbackNickname, false);
+            const profileRef = db.ref(`player_season_status/${userId}`);
+            console.log("Current Player Path:", 'player_season_status/' + userId);
+            await window.karmaSystem.ensureSeasonProfile(db, userId, fallbackNickname, false);
 
             if (seasonProfileRef) seasonProfileRef.off();
             seasonProfileRef = profileRef;
@@ -7567,18 +7584,10 @@
                     nickname: String(data.nickname || fallbackNickname || 'Путешественник'),
                     avatar_url: String(data.avatar_url || data.photo_url || fallbackAvatarUrl || '')
                 };
-                updateProfileUI();
-            });
-
-            if (seasonKarmaRef) seasonKarmaRef.off();
-            seasonKarmaRef = db.ref(`player_season_status/${currentUserId}/karma_points`);
-            onValue(seasonKarmaRef, snap => {
-                if (!snap.exists()) {
-                    seasonProfileData.karma_points = 0;
-                    updateProfileUI();
-                    return;
+                if (seasonProfileData.nickname === 'Путешественник' && fallbackNickname && fallbackNickname !== 'Путешественник') {
+                    profileRef.update({ nickname: fallbackNickname, updatedAt: Date.now() });
+                    seasonProfileData.nickname = fallbackNickname;
                 }
-                seasonProfileData.karma_points = Math.max(0, Number(snap.val()) || 0);
                 updateProfileUI();
             });
         }
@@ -7825,9 +7834,10 @@
 
         // END works.js
 
-        tg.ready();
+        window.Telegram.WebApp.ready();
         tg.expand();
         refreshTelegramContext();
+        if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
         init();
     </script>
 </body>
