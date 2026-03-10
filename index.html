@@ -4877,11 +4877,20 @@
 
             panel.innerHTML = `<div style="font-size:15px;">У тебя один шанс за ивент — перетащи фрукт в зону рта Мушу:</div>
               <div class="mushu-fruit-list"><div class="mushu-fruit-chip" data-fruit="${localFruit.id}">${localFruit.emoji}<br><span style="font-size:11px;">${localFruit.label}</span></div></div>${graceText}`;
-            panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => chip.addEventListener('pointerdown', onFruitPointerDown));
+            panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => {
+              chip.addEventListener('pointerdown', onFruitPointerDown);
+              chip.addEventListener('touchstart', onFruitTouchStart, { passive: false });
+            });
           }
 
-          function onFruitPointerDown(ev) {
-            const chip = ev.currentTarget;
+          function getClientPoint(ev) {
+            if (!ev) return { x: 0, y: 0 };
+            if (Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY)) return { x: ev.clientX, y: ev.clientY };
+            const touch = ev.touches?.[0] || ev.changedTouches?.[0];
+            return { x: Number(touch?.clientX) || 0, y: Number(touch?.clientY) || 0 };
+          }
+
+          function startFruitDrag(chip, x, y) {
             if (!localFruit) return;
             chip.classList.add('dragging');
             const ghost = document.createElement('div');
@@ -4889,9 +4898,31 @@
             ghost.textContent = localFruit.emoji;
             document.body.appendChild(ghost);
             dragState = { chip, ghost, fruit: { ...localFruit } };
-            moveGhost(ev.clientX, ev.clientY);
+            moveGhost(x, y);
+          }
+
+          function onFruitPointerDown(ev) {
+            const chip = ev.currentTarget;
+            if (!localFruit) return;
+            ev.preventDefault();
+            if (typeof chip.setPointerCapture === 'function' && Number.isFinite(ev.pointerId)) {
+              chip.setPointerCapture(ev.pointerId);
+            }
+            const { x, y } = getClientPoint(ev);
+            startFruitDrag(chip, x, y);
             window.addEventListener('pointermove', onFruitPointerMove);
             window.addEventListener('pointerup', onFruitPointerUp, { once: true });
+          }
+
+          function onFruitTouchStart(ev) {
+            const chip = ev.currentTarget;
+            if (!localFruit) return;
+            ev.preventDefault();
+            const { x, y } = getClientPoint(ev);
+            startFruitDrag(chip, x, y);
+            window.addEventListener('touchmove', onFruitTouchMove, { passive: false });
+            window.addEventListener('touchend', onFruitTouchEnd, { once: true });
+            window.addEventListener('touchcancel', onFruitTouchEnd, { once: true });
           }
 
           function moveGhost(x, y) {
@@ -4901,19 +4932,35 @@
           }
 
           function onFruitPointerMove(ev) {
-            moveGhost(ev.clientX, ev.clientY);
+            const { x, y } = getClientPoint(ev);
+            moveGhost(x, y);
           }
 
-          async function onFruitPointerUp(ev) {
-            window.removeEventListener('pointermove', onFruitPointerMove);
+          function onFruitTouchMove(ev) {
+            ev.preventDefault();
+            const { x, y } = getClientPoint(ev);
+            moveGhost(x, y);
+          }
+
+          async function finishFruitDragByPoint(x, y) {
             const mouth = $('mushu-mouth-zone')?.getBoundingClientRect();
-            const x = ev.clientX;
-            const y = ev.clientY;
             const droppedInMouth = mouth && x >= mouth.left && x <= mouth.right && y >= mouth.top && y <= mouth.bottom;
             if (dragState?.chip) dragState.chip.classList.remove('dragging');
             if (dragState?.ghost) dragState.ghost.remove();
             dragState = null;
             if (droppedInMouth) await feedMushu();
+          }
+
+          async function onFruitPointerUp(ev) {
+            window.removeEventListener('pointermove', onFruitPointerMove);
+            const { x, y } = getClientPoint(ev);
+            await finishFruitDragByPoint(x, y);
+          }
+
+          async function onFruitTouchEnd(ev) {
+            window.removeEventListener('touchmove', onFruitTouchMove);
+            const { x, y } = getClientPoint(ev);
+            await finishFruitDragByPoint(x, y);
           }
 
           function startEventTimer() {
