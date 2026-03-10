@@ -10,6 +10,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="karmaSystem.js"></script>
     <script src="design.js"></script>
     
 </head>
@@ -68,7 +69,21 @@
         </div>
 
        <div id="tab-tickets" class="tab-content">
-    <h1>🎫 История билетов</h1>
+    <h1>👤 Профиль</h1>
+    <div class="works-card" style="margin-bottom:8px; text-align:center;">
+        <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
+        <div id="profile-nickname" style="font-weight:800; font-size:16px;">Игрок</div>
+        <div style="margin-top:10px; text-align:left;">
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;"><span>Карма сезона</span><span id="profile-karma-points">0 / 100</span></div>
+            <div style="height:12px; border-radius:999px; background:#f1f1f1; overflow:hidden;"><div id="profile-karma-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#c0c0c0,#d4af37);"></div></div>
+            <div id="profile-karma-rank" style="margin-top:6px; font-size:12px; color:#6a1b9a;">Зритель из Первого Ряда</div>
+        </div>
+    </div>
+    <div class="works-card" style="margin-bottom:8px;">
+        <b>🎫 Мои билеты</b>
+        <div id="profile-ticket-balance" style="margin-top:6px; font-size:14px;">0</div>
+    </div>
+    <h1 style="font-size:18px;">🎫 История билетов</h1>
     <div id="admin-tickets-subtabs" class="admin-inner-tabs" style="display:none; margin:8px;">
         <button id="admin-tickets-all-btn" class="admin-inner-tab-btn active" onclick="switchAdminTicketsSubtab('all')">Все билеты в игре</button>
         <button id="admin-tickets-player-btn" class="admin-inner-tab-btn" onclick="switchAdminTicketsSubtab('player')">Билеты игрока</button>
@@ -139,6 +154,11 @@
                 <div id="ink-deadline-hint" style="font-size:11px; color:#d84315; margin-top:6px;"></div>
             </div>
             <div id="works-list"></div>
+        </div>
+
+        <div id="tab-gallery" class="tab-content">
+            <h1>🖼️ Выставка одной картины</h1>
+            <div id="gallery-content" class="works-card"></div>
         </div>
 
         <div id="tab-admin" class="tab-content">
@@ -257,8 +277,8 @@
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
                     <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
-                    <button onclick="adminResetGame()" class="admin-btn" style="background:#FF9800; font-size:12px; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ИГРУ</button>
-                    <button onclick="adminFullReset()" class="admin-btn" style="background:#f44336; font-size:10px; width:100%; margin-top:8px;">⚠️ ПОЛНЫЙ СБРОС БАЗЫ</button>
+                    <button onclick="adminResetGame()" class="admin-btn" style="background:#FF8C00; font-size:12px; width:100%; margin-top:8px;">🔄 Сброс текущей сессии (Задания и Игроки)</button>
+                    <button onclick="adminFullReset()" class="admin-btn" style="background:#D32F2F; font-size:10px; width:100%; margin-top:8px;">⚠️ УДАЛИТЬ ДАННЫЕ СЕЗОНА (КАРМУ) ⚠️</button>
                 </div>
             </div>
         </div>
@@ -301,9 +321,10 @@
 
         <nav class="nav-bar">
             <button class="nav-item active" onclick="switchTab('tab-game', this)"><span>🏰 Поле</span></button>
-            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>🎫 Билеты</span></button>
+            <button class="nav-item" onclick="switchTab('tab-tickets', this)"><span>👤 Профиль</span></button>
             <button class="nav-item" onclick="switchTab('tab-wheel', this)"><span>🃏 Розыгрыш</span></button>
             <button class="nav-item" onclick="switchTab('tab-works', this)"><span>📤 Работы</span></button>
+            <button class="nav-item" onclick="switchTab('tab-gallery', this)"><span>🖼️ Галерея</span></button>
             <button class="nav-item" onclick="switchTab('tab-rules', this)"><span>📜 Правила</span></button>
             <button id="nav-event-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-event', this)"><span>🎨 Событие</span></button>
             <button id="nav-admin-btn" class="nav-item" style="display:none;" onclick="switchTab('tab-admin', this)"><span>⚙️ Админ</span></button>
@@ -826,6 +847,8 @@
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 updateWorksTabForRole(true);
                 setAuthorizedView(true);
+                if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
+                if (typeof renderGalleryTab === 'function') renderGalleryTab();
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
                 if (s.exists()) {
@@ -833,6 +856,8 @@
                     document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                     updateWorksTabForRole(false);
                     setAuthorizedView(true);
+                    if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
+                    if (typeof renderGalleryTab === 'function') renderGalleryTab();
                     return;
                 }
 
@@ -3587,10 +3612,12 @@
 
         function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
         async function adminResetGame() {
-            if (!confirm("Точно сбросить?")) return;
+            if (!confirm('Подтвердить сброс текущей сессии?')) return;
+            if (!confirm('Это удалит players/ и игровые пулы. Карма сезона сохранится. Продолжить?')) return;
 
             const whitelistSnap = await db.ref('whitelist').once('value');
             const updates = {
+                players: null,
                 board: {},
                 tickets_archive: null,
                 news_feed: null,
@@ -3636,7 +3663,12 @@
             alert('Игра сброшена полностью: поле, раунды, билеты, предметы, лента событий и работы очищены. Нажми «Запустить раунд», чтобы начать заново.');
             location.reload();
         }
-        function adminFullReset() { if(confirm("Точно сбросить?")) db.ref().remove(); }
+        async function adminFullReset() {
+            if (!confirm('Экстренное действие: очистить кэш сезона?')) return;
+            if (!confirm('⚠️ Будут удалены данные player_season_status (карма сезона). Продолжить?')) return;
+            await db.ref('player_season_status').remove();
+            alert('Данные сезона очищены.');
+        }
         async function adminTriggerSpin() {
             await adminPickWinnerNow();
         }
@@ -3651,6 +3683,7 @@
                 fillSubmissionTaskOptions();
                 renderSubmissions();
             }
+            if (id === 'tab-gallery' && typeof renderGalleryTab === 'function') renderGalleryTab();
         }
         function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
         function openRulesScroll() {
@@ -4239,6 +4272,7 @@
                 if (isAdmin) {
                     renderAdminPlayerTickets(expandedRows);
                 }
+                if (typeof updateProfileTicketBalance === 'function') updateProfileTicketBalance(expandedRows);
             }
 
             function openTicketTaskDetails(ticketNum) {
@@ -4269,6 +4303,7 @@
 
             window.syncTicketData = syncTicketData;
             window.extractTicketNumbers = extractTicketNumbers;
+            window.expandTicketsRows = expandTicketsRows;
             window.claimSequentialTickets = claimSequentialTickets;
             window.updateTicketsTable = updateTicketsTable;
             window.viewTaskDetails = viewTaskDetails;
@@ -6526,6 +6561,136 @@
         }
 
         window.isPlayerNotificationDismissed = isPlayerNotificationDismissed;
+
+        let seasonProfileRef = null;
+        let seasonProfileData = { karma_points: 0, nickname: '' };
+
+        function getAvatarEmojiByIndex(idx) {
+            const list = ['🎨','🖌️','🖼️','✨','🌟','🦊','🐉','🎭'];
+            return list[Math.abs(Number(idx) || 0) % list.length];
+        }
+
+        function updateProfileUI() {
+            const nickname = seasonProfileData.nickname || players[myIndex]?.n || (currentUserId === ADMIN_ID ? 'Администратор' : 'Игрок');
+            const karma = Number(seasonProfileData.karma_points) || 0;
+            const karmaText = document.getElementById('profile-karma-points');
+            const karmaBar = document.getElementById('profile-karma-bar');
+            const karmaRank = document.getElementById('profile-karma-rank');
+            const nickEl = document.getElementById('profile-nickname');
+            const avatarEl = document.getElementById('profile-avatar');
+            if (nickEl) nickEl.textContent = nickname;
+            if (avatarEl) avatarEl.textContent = getAvatarEmojiByIndex(myIndex);
+            if (karmaText) karmaText.textContent = `${Math.max(0, Math.min(100, karma))} / 100`;
+            if (karmaBar) karmaBar.style.width = `${Math.max(0, Math.min(100, karma))}%`;
+            if (karmaRank && window.karmaSystem) karmaRank.textContent = window.karmaSystem.getKarmaRank(karma);
+        }
+
+        async function syncSeasonProfile() {
+            if (!currentUserId) return;
+            if (currentUserId === ADMIN_ID) {
+                seasonProfileData = { karma_points: 0, nickname: 'Администратор' };
+                updateProfileUI();
+                return;
+            }
+            const fallbackNickname = players[myIndex]?.n || 'Игрок';
+            await window.karmaSystem.ensureSeasonProfile(db, currentUserId, fallbackNickname, false);
+            if (seasonProfileRef) seasonProfileRef.off();
+            seasonProfileRef = db.ref(`player_season_status/${currentUserId}`);
+            seasonProfileRef.on('value', snap => {
+                seasonProfileData = snap.val() || { karma_points: 0, nickname: fallbackNickname };
+                updateProfileUI();
+            });
+        }
+
+        function updateProfileTicketBalance(expandedRows) {
+            const el = document.getElementById('profile-ticket-balance');
+            if (!el) return;
+            const rows = Array.isArray(expandedRows) ? expandedRows : (window.expandTicketsRows ? window.expandTicketsRows(allTicketsData) : []);
+            const mine = rows.filter(t => !t.excluded && !t.isRevoked && (t.owner === myIndex || Number(t.userId) === Number(currentUserId)));
+            el.textContent = String(mine.length);
+        }
+
+        function pickExhibitWork(acceptedWorks) {
+            if (!acceptedWorks.length) return null;
+            const slot = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
+            let seed = slot % 2147483647;
+            seed = (seed * 48271) % 2147483647;
+            const idx = seed % acceptedWorks.length;
+            return acceptedWorks[idx];
+        }
+
+        async function spendTicketsTransaction(cost) {
+            if (!cost) return true;
+            const rows = (window.expandTicketsRows ? window.expandTicketsRows(allTicketsData) : []).filter(t => !t.excluded && !t.isRevoked && (t.owner === myIndex || Number(t.userId) === Number(currentUserId)));
+            if (rows.length < cost) return false;
+            const selected = rows.slice(0, cost);
+            const committed = [];
+            for (const row of selected) {
+                const num = String(row.ticketNum || '').trim();
+                const tx = await db.ref(`revoked_tickets/${num}`).transaction(v => v ? undefined : true);
+                if (!tx.committed) {
+                    await Promise.all(committed.map(n => db.ref(`revoked_tickets/${n}`).remove()));
+                    return false;
+                }
+                committed.push(num);
+            }
+            return true;
+        }
+
+        async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
+            if (!currentUserId || currentUserId === ADMIN_ID) return alert('Админ не начисляет карму.');
+            if (String(ownerUserId) === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
+            const map = { clap: { cost: 0, points: 1, emoji: '👏' }, heart: { cost: 1, points: 3, emoji: '❤️' }, sun: { cost: 2, points: 5, emoji: '🌞' } };
+            const cfg = map[type];
+            if (!cfg) return;
+
+            const limitTx = await db.ref(`gallery_compliments/${exhibitId}/${currentUserId}`).transaction(v => v ? undefined : { type, at: Date.now(), points: cfg.points });
+            if (!limitTx.committed) return alert('Ты уже отправлял(а) комплимент этой картине.');
+
+            const paid = await spendTicketsTransaction(cfg.cost);
+            if (!paid) {
+                await db.ref(`gallery_compliments/${exhibitId}/${currentUserId}`).remove();
+                return alert('Недостаточно билетиков для этого комплимента.');
+            }
+
+            await window.karmaSystem.addKarmaPoints(db, ownerUserId, cfg.points, ADMIN_ID);
+            const fx = document.getElementById('gallery-fx');
+            if (fx) {
+                fx.textContent = cfg.emoji.repeat(6);
+                fx.className = `gallery-fx active ${type}`;
+                setTimeout(() => { fx.className = 'gallery-fx'; fx.textContent = ''; }, 1200);
+            }
+            alert('Комплимент отправлен!');
+            updateProfileTicketBalance();
+        }
+
+        function renderGalleryTab() {
+            const wrap = document.getElementById('gallery-content');
+            if (!wrap) return;
+            const approved = (allSubmissions || []).filter(x => x.status === 'accepted' && (x.afterImageData || x.imageData) && String(x.userId || '') !== String(ADMIN_ID));
+            const picked = pickExhibitWork(approved);
+            if (!picked) {
+                wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Твое место в истории пустует... Будь первым, чью работу увидят все!</p><button class="admin-btn" onclick="switchTab('tab-works', document.querySelector('.nav-item[onclick*=\"tab-works\"]'))" style="margin:0; width:100%;">Перейти к заданиям</button></div>`;
+                return;
+            }
+            const exhibitId = `${picked.userId}_${picked.id}_${Math.floor(Date.now() / (3 * 60 * 60 * 1000))}`;
+            const img = picked.afterImageData || picked.imageData;
+            wrap.innerHTML = `
+                <div id="gallery-fx" class="gallery-fx"></div>
+                <div class="gallery-pedestal">
+                    <div style="font-size:12px; color:#8d6e63; margin-bottom:6px;">Ротация каждые 3 часа</div>
+                    <img src="${img}" class="gallery-image" alt="Выставленная работа">
+                    <div style="font-size:12px; margin-top:6px;">Автор: <b>${picked.ownerName || players[picked.owner]?.n || 'Художник'}</b></div>
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <button class="admin-btn compliment-btn clap" style="margin:0;" onclick="sendGalleryCompliment('clap','${exhibitId}','${picked.userId}')">👏 Аплодисменты</button>
+                        <button class="admin-btn compliment-btn heart" style="margin:0;" onclick="sendGalleryCompliment('heart','${exhibitId}','${picked.userId}')">❤️ Сердце (1)</button>
+                        <button class="admin-btn compliment-btn sun" style="margin:0;" onclick="sendGalleryCompliment('sun','${exhibitId}','${picked.userId}')">🌞 Солнце (2)</button>
+                    </div>
+                </div>`;
+        }
+
+        window.sendGalleryCompliment = sendGalleryCompliment;
+
         // END works.js
 
 
