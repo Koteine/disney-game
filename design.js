@@ -535,12 +535,12 @@
         .mushu-time-critical { animation: mushuTimerShake .4s infinite; color:#ff8a80; }
         .mushu-dragon-zone { flex:1; min-height:50vh; display:flex; align-items:center; justify-content:center; position:relative; padding: 14px 0 8px; }
         .mushu-dragon { width:min(86vw,700px); height:min(52vh,420px); position:relative; display:flex; align-items:center; justify-content:center; }
-        #mushu-container.mushu-container { background-image: url('mushu.png'); width: 50vh; height: 50vh; margin: 0 auto; position: relative; background-size: contain; background-repeat: no-repeat; background-position:center bottom; transform-origin: center center; animation: mushu-breathe 6s ease-in-out infinite; filter: drop-shadow(0 8px 26px rgba(255,183,77,.42)); max-width:min(82vw,440px); max-height:min(52vh,440px); }
+        #mushu-container.mushu-container { background-image: url('mushu.png'); width: 50vh; height: 50vh; margin: 0 auto; position: relative; display:flex; justify-content:center; align-items:center; background-size: contain; background-repeat: no-repeat; background-position:center bottom; transform-origin: center center; animation: mushu-breathe 6s ease-in-out infinite; filter: drop-shadow(0 8px 26px rgba(255,183,77,.42)); max-width:min(82vw,440px); max-height:min(52vh,440px); }
         .mushu-dragon.mushu-chew #mushu-container { animation: mushu-chew .9s ease; }
         .smoke-particle { position:absolute; width:14px; height:14px; border-radius:50%; background: radial-gradient(circle at 38% 38%, rgba(255,255,255,.9), rgba(210,210,210,.52), rgba(180,180,180,0)); opacity:0; animation: mushu-smoke 3.8s linear infinite; pointer-events:none; }
         .smoke-particle.left { left: 47%; top: 35%; }
         .smoke-particle.right { left: 53%; top: 35%; animation-delay: 1.1s; }
-        .mushu-mouth-zone { position:absolute; width:24%; height:19%; top:40%; left:50%; transform:translateX(-50%); border:2px dashed rgba(255,224,178,.55); border-radius:999px; background: rgba(255,255,255,.05); }
+        .mushu-mouth-zone { position:absolute; width:24%; height:19%; top:40%; left:50%; transform:translateX(-50%); border:none; border-radius:999px; background: rgba(255,255,255,.05); }
         .mushu-spark { position:absolute; width:18px; height:18px; border-radius:50%; background: radial-gradient(circle,#fff59d,#ffca28 50%,transparent 70%); box-shadow:0 0 14px #ffd54f; animation:mushuSparkFly 550ms ease-out forwards; pointer-events:none; }
         .mushu-fruit-panel { padding-bottom:10px; }
         .mushu-fruit-list { display:flex; gap:8px; margin-top:8px; }
