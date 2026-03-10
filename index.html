@@ -70,7 +70,10 @@
 
        <div id="tab-tickets" class="tab-content">
     <h1>👤 Профиль</h1>
-    <div class="works-card" style="margin-bottom:8px; text-align:center;">
+    <div id="profile-admin-mode" class="works-card" style="margin-bottom:8px; text-align:center; display:none;">
+        <div style="font-weight:800; font-size:16px; color:#6a1b9a;">Режим Администратора: Управление системой</div>
+    </div>
+    <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
         <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
         <div id="profile-nickname" style="font-weight:800; font-size:16px;">Игрок</div>
         <div style="margin-top:10px; text-align:left;">
@@ -79,7 +82,7 @@
             <div id="profile-karma-rank" style="margin-top:6px; font-size:12px; color:#6a1b9a;">Зритель из Первого Ряда</div>
         </div>
     </div>
-    <div class="works-card" style="margin-bottom:8px;">
+    <div id="profile-player-tickets-block" class="works-card" style="margin-bottom:8px;">
         <b>🎫 Мои билеты</b>
         <div id="profile-ticket-balance" style="margin-top:6px; font-size:14px;">0</div>
     </div>
@@ -246,6 +249,12 @@
                         <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
                     </div>
 
+                    <div class="works-card" style="margin:8px 0;">
+                        <b>🗂 Архив билетов</b>
+                        <div style="font-size:11px; color:#666; margin-top:4px;">Серый — вычеркнут, белый — свободен. Нажми на вычеркнутый билет, чтобы увидеть детали.</div>
+                        <div id="admin-ticket-archive-grid" style="margin-top:8px; display:grid; grid-template-columns:repeat(auto-fill, minmax(46px, 1fr)); gap:6px;"></div>
+                    </div>
+
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="toggleEmergencySection('rename')" class="admin-btn" style="background:#5e35b1; width:100%; margin:0 0 6px;">Принудительная смена никнейма</button>
                     <div id="admin-emergency-rename-body" class="news-list" style="margin-bottom:8px;">
@@ -292,7 +301,7 @@
                     <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
                     <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
                     <button onclick="adminResetGame()" class="admin-btn" style="background:#FF8C00; font-size:12px; width:100%; margin-top:8px;">🔄 Сброс текущей сессии (Задания и Игроки)</button>
-                    <button onclick="adminFullReset()" class="admin-btn" style="background:#D32F2F; font-size:10px; width:100%; margin-top:8px;">⚠️ УДАЛИТЬ ДАННЫЕ СЕЗОНА (КАРМУ) ⚠️</button>
+                    <button onclick="adminFullReset()" class="admin-btn" style="background:#455a64; font-size:10px; width:100%; margin-top:8px;">🛡️ ДАННЫЕ СЕЗОНА ЗАЩИЩЕНЫ ОТ СБРОСА</button>
                 </div>
             </div>
         </div>
@@ -3751,10 +3760,7 @@
             location.reload();
         }
         async function adminFullReset() {
-            if (!confirm('Экстренное действие: очистить кэш сезона?')) return;
-            if (!confirm('⚠️ Будут удалены данные player_season_status (карма сезона). Продолжить?')) return;
-            await db.ref('player_season_status').remove();
-            alert('Данные сезона очищены.');
+            alert('player_season_status защищен от полного сброса. Очистка отключена.');
         }
         async function adminTriggerSpin() {
             await adminPickWinnerNow();
@@ -4313,6 +4319,67 @@
                 `).join('');
             }
 
+            function renderAdminTicketArchive(expandedRows) {
+                const grid = document.getElementById('admin-ticket-archive-grid');
+                if (!grid) return;
+                if (currentUserId !== ADMIN_ID) {
+                    grid.innerHTML = '';
+                    return;
+                }
+
+                const byNum = new Map();
+                expandedRows.forEach(row => byNum.set(String(row.ticketNum), row));
+                const maxTickets = Math.max(1, Number(MAX_TICKETS) || 100);
+
+                const html = [];
+                for (let i = 1; i <= maxTickets; i++) {
+                    const key = String(i);
+                    const row = byNum.get(key);
+                    const isUsed = !!(row && (row.isRevoked || row.excluded));
+                    const ownerName = players[row?.owner]?.n || 'Неизвестный';
+                    const usedTs = Number(row?.updatedAt || row?.revokedAt || row?.archivedAt || row?.ts || row?.createdAt || 0);
+                    const usedDate = usedTs ? new Date(usedTs).toLocaleString('ru-RU') : 'дата неизвестна';
+                    const tooltip = isUsed ? `Использовал: ${ownerName} | ${usedDate}` : '';
+                    html.push(`
+                        <button
+                            onclick="showTicketArchiveTooltip('${key}')"
+                            data-ticket-num="${key}"
+                            data-tooltip="${tooltip.replace(/"/g, '&quot;')}"
+                            style="height:32px; border-radius:8px; border:1px solid ${isUsed ? '#bdbdbd' : '#e0e0e0'}; background:${isUsed ? '#e0e0e0' : '#fff'}; color:#333; font-size:11px; padding:0; text-decoration:${isUsed ? 'line-through' : 'none'};"
+                        >${key}</button>
+                    `);
+                }
+                grid.innerHTML = html.join('');
+            }
+
+            function showTicketArchiveTooltip(ticketNum) {
+                if (currentUserId !== ADMIN_ID) return;
+                const el = document.querySelector(`#admin-ticket-archive-grid [data-ticket-num="${String(ticketNum)}"]`);
+                if (!el) return;
+                const tooltip = String(el.getAttribute('data-tooltip') || '');
+                if (!tooltip) return;
+                const old = document.getElementById('admin-ticket-archive-tooltip');
+                if (old) old.remove();
+                const bubble = document.createElement('div');
+                bubble.id = 'admin-ticket-archive-tooltip';
+                bubble.textContent = tooltip;
+                bubble.style.position = 'fixed';
+                bubble.style.maxWidth = '80vw';
+                bubble.style.background = '#2d2d2d';
+                bubble.style.color = '#fff';
+                bubble.style.padding = '6px 8px';
+                bubble.style.borderRadius = '8px';
+                bubble.style.fontSize = '11px';
+                bubble.style.lineHeight = '1.3';
+                bubble.style.boxShadow = '0 4px 14px rgba(0,0,0,0.25)';
+                bubble.style.zIndex = '2500';
+                const r = el.getBoundingClientRect();
+                bubble.style.left = `${Math.max(8, Math.min(window.innerWidth - 260, r.left))}px`;
+                bubble.style.top = `${Math.max(8, r.top - 42)}px`;
+                document.body.appendChild(bubble);
+                setTimeout(() => bubble.remove(), 2200);
+            }
+
             function selectAdminTicketUser(userId) {
                 selectedAdminTicketUserId = String(userId || '');
                 updateTicketsTable();
@@ -4358,6 +4425,7 @@
 
                 if (isAdmin) {
                     renderAdminPlayerTickets(expandedRows);
+                    renderAdminTicketArchive(expandedRows);
                 }
                 if (typeof updateProfileTicketBalance === 'function') updateProfileTicketBalance(expandedRows);
             }
@@ -4399,6 +4467,7 @@
             window.switchAdminTicketsSubtab = switchAdminTicketsSubtab;
             window.selectAdminTicketUser = selectAdminTicketUser;
             window.openTicketTaskDetails = openTicketTaskDetails;
+            window.showTicketArchiveTooltip = showTicketArchiveTooltip;
         })();
         // END Tickets.js
 
@@ -6703,6 +6772,15 @@
         }
 
         function updateProfileUI() {
+            const isAdminProfile = currentUserRole === 'admin';
+            const adminModeEl = document.getElementById('profile-admin-mode');
+            const playerBlockEl = document.getElementById('profile-player-block');
+            const playerTicketsEl = document.getElementById('profile-player-tickets-block');
+            if (adminModeEl) adminModeEl.style.display = isAdminProfile ? 'block' : 'none';
+            if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
+            if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
+            if (isAdminProfile) return;
+
             const nickname = seasonProfileData.nickname || players[myIndex]?.n || (currentUserId === ADMIN_ID ? 'Администратор' : 'Игрок');
             const karma = Number(seasonProfileData.karma_points) || 0;
             const karmaText = document.getElementById('profile-karma-points');
@@ -6850,7 +6928,18 @@
                 return alert('Недостаточно билетиков для этого комплимента.');
             }
 
-            await window.karmaSystem.addKarmaPoints(db, targetOwnerUserId, cfg.points, ADMIN_ID);
+            await db.ref(`player_season_status/${currentUserId}`).update({
+                karma_points: firebase.database.ServerValue.increment(cfg.points),
+                updatedAt: Date.now(),
+                lastGalleryComplimentAt: Date.now(),
+                lastGalleryComplimentType: String(type || ''),
+                lastGalleryComplimentExhibitId: String(exhibitId || '')
+            });
+            const karmaSnap = await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value');
+            const nextKarma = Number(karmaSnap.val()) || 0;
+            if (currentUserRole === 'admin') {
+                console.info(`[KARMA][ADMIN] Комплимент ${cfg.emoji}: userId=${currentUserId}, delta=${cfg.points}, total=${nextKarma}`);
+            }
             const fx = document.getElementById('gallery-fx');
             if (fx) {
                 fx.textContent = cfg.emoji.repeat(6);
@@ -6928,6 +7017,7 @@
                 updatedAt: Date.now(),
                 updatedByAdmin: String(currentUserId)
             });
+            console.info(`[KARMA][ADMIN] manual_adjust userId=${selectedKarmaUserId} delta=${delta}`);
             await adminSelectKarmaUser(selectedKarmaUserId);
             alert(delta > 0 ? 'Карма начислена.' : 'Карма списана.');
         }
