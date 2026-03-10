@@ -488,6 +488,55 @@
         }
         #event-done-message { color: #9cffb2; margin-top: 4px; }
         .event-overlay[style*="display: flex"] { display:flex !important; }
+        .magic-ticket-star.size-1 { --star-size: 36px; }
+
+        .mushu-invite-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 3800;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: rgba(7, 7, 16, 0.72);
+        }
+        .mushu-invite-card {
+            width: min(92vw, 420px);
+            background: linear-gradient(160deg, #fff8ea, #ffe0b2);
+            border: 2px solid #ff9800;
+            border-radius: 18px;
+            padding: 16px;
+            text-align: center;
+            box-shadow: 0 14px 34px rgba(0,0,0,.28);
+            color: #4e342e;
+        }
+        .mushu-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 3900;
+            display: none;
+            flex-direction: column;
+            background: radial-gradient(circle at 30% 14%, rgba(255, 214, 111, 0.38), transparent 44%), linear-gradient(180deg, #1b1207 0%, #2d1408 52%, #1a0902 100%);
+            color: #fff8e1;
+            padding: 12px;
+            overflow: hidden;
+        }
+        .mushu-progress-bar { width: 100%; height: 14px; border-radius: 999px; background: rgba(255,255,255,.2); overflow: hidden; border: 1px solid rgba(255,255,255,.35); }
+        .mushu-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd54f, #ff8f00); transition: width .35s ease; }
+        .mushu-dragon-zone { flex:1; display:flex; align-items:center; justify-content:center; position:relative; }
+        .mushu-dragon { font-size: 72px; filter: drop-shadow(0 0 20px rgba(255,183,77,.55)); }
+        .mushu-fruit-btn { border: 1px solid #ffd54f; background: linear-gradient(160deg, #ffecb3, #ffb74d); color: #3e2723; border-radius: 14px; padding: 10px 14px; font-weight: 800; width: 100%; margin-top: 10px; }
+        .mushu-fruit-fly { position: fixed; z-index: 4100; pointer-events: none; font-size: 28px; animation: mushuFruitFly 880ms cubic-bezier(.2,.8,.2,1) forwards; }
+        .mushu-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: mushuBreath 1400ms ease-out forwards; }
+        @keyframes mushuFruitFly {
+            0% { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 1; }
+            100% { transform: translate(var(--dx), var(--dy)) scale(.25); opacity: 0; }
+        }
+        @keyframes mushuBreath {
+            0% { opacity: 0; transform: scale(.45); }
+            22% { opacity: 1; }
+            100% { opacity: 0; transform: scale(1.45); }
+        }
     `;
   document.head.appendChild(style);
 })();
