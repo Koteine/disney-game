@@ -651,6 +651,7 @@
                 syncData();
                 syncGameEvents();
                 syncWheelSystems();
+                window.initMushuEventSystem?.();
             } catch(e) { console.error(e); }
         }
 
@@ -2505,19 +2506,59 @@
         }
 
         async function getTicketsFromFirebaseDrawPool() {
-            const snap = await db.ref('tickets').once('value');
-            const allTickets = snap.val() || {};
-            return Object.keys(allTickets).map((ticketNum) => {
-                const raw = allTickets[ticketNum] || {};
+            const [ticketsSnap, boardSnap, archiveSnap] = await Promise.all([
+                db.ref('tickets').once('value'),
+                db.ref('board').once('value'),
+                db.ref('tickets_archive').once('value')
+            ]);
+
+            const byNum = new Map();
+            const upsertTicket = (num, raw = {}) => {
+                const ticketNum = Number(num);
+                if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
                 const ownerIndex = Number(raw.owner);
                 const fallbackName = raw.nickname || raw.playerName || raw.ownerName || raw.name || raw.userName || raw.userId || 'Игрок';
-                return {
+                byNum.set(ticketNum, {
                     num: String(ticketNum),
                     owner: Number.isFinite(ownerIndex) ? ownerIndex : -1,
                     userId: String(raw.userId || ''),
                     name: players[ownerIndex]?.n || fallbackName
-                };
-            }).sort((a, b) => Number(a.num) - Number(b.num));
+                });
+            };
+
+            const collectFromTicketString = (ticketText, raw = {}) => {
+                String(ticketText || '')
+                    .split(' и ')
+                    .map((chunk) => chunk.trim())
+                    .filter(Boolean)
+                    .forEach((num) => upsertTicket(num, raw));
+            };
+
+            const allTickets = ticketsSnap.val() || {};
+            Object.keys(allTickets).forEach((ticketNum) => upsertTicket(ticketNum, allTickets[ticketNum] || {}));
+
+            const board = boardSnap.val() || {};
+            Object.values(board).forEach((row) => {
+                if (!row) return;
+                collectFromTicketString(row.ticket, row);
+            });
+
+            archiveSnap.forEach((rowSnap) => {
+                const row = rowSnap.val() || {};
+                collectFromTicketString(row.ticket, row);
+            });
+
+            const allNums = [...byNum.keys()].sort((a, b) => a - b);
+            if (!allNums.length) return [];
+
+            const maxTicketNum = allNums[allNums.length - 1];
+            for (let num = 1; num <= maxTicketNum; num += 1) {
+                if (!byNum.has(num)) {
+                    byNum.set(num, { num: String(num), owner: -1, userId: '', name: 'Билет в игре' });
+                }
+            }
+
+            return [...byNum.values()].sort((a, b) => Number(a.num) - Number(b.num));
         }
 
         function createMagicCardMarkup(ticket, isWinner) {
@@ -4313,6 +4354,271 @@
           window.legacyAdminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
         })();
         // END ivents.js
+
+        // BEGIN mushu_event.js
+        (function () {
+          const EVENT_PATH = 'mushu_event';
+          const FEED_WINDOW_MS = 15 * 60 * 1000;
+          const FRUITS = [
+            { id: 'apple', emoji: '🍎', label: 'Яблоко', satiety: 1 },
+            { id: 'pear', emoji: '🍐', label: 'Груша', satiety: 1 },
+            { id: 'peach', emoji: '🍑', label: 'Персик', satiety: 1 },
+            { id: 'cherry', emoji: '🍒', label: 'Вишня', satiety: 1 }
+          ];
+          const CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 5, ttlMs: 5 * 60 * 1000 };
+          const TARGET_POOL = [5, 10, 15, 20, 30, 40, 50];
+
+          let mushuRef = null;
+          let mushuState = { status: 'idle', current_satiety: 0, target: 10, participants: {}, fed_users: {}, rewards: {} };
+          let localFruit = null;
+          let cupcakeDeadline = 0;
+          let cupcakeTimer = null;
+
+          const $ = (id) => document.getElementById(id);
+          const uid = () => String(window.currentUserId || '').trim();
+          const isActive = () => String(mushuState.status || '') === 'active';
+          const ensureDb = async () => {
+            if (window.db && typeof window.db.ref === 'function') return window.db;
+            if (typeof window.waitForDbReady === 'function') return window.waitForDbReady();
+            throw new Error('db not ready');
+          };
+
+          function randomGift() {
+            const pool = [
+              { id: 'ticket_1', label: '🎫 1 билет' },
+              { id: 'ticket_2', label: '🎫 2 билета' },
+              { id: 'magnifier', label: '🔎 Лупа' },
+              { id: 'goldenPollen', label: '🎇 Золотая пыльца' }
+            ];
+            return pool[Math.floor(Math.random() * pool.length)];
+          }
+
+          function ensureMushuUi() {
+            if ($('mushu-invite-modal')) return;
+            const invite = document.createElement('div');
+            invite.id = 'mushu-invite-modal';
+            invite.className = 'mushu-invite-modal';
+            invite.innerHTML = `<div class="mushu-invite-card"><div style="font-size:18px; font-weight:900; margin-bottom:8px;">🔥 Мушу проголодался!</div><div style="font-size:14px; margin-bottom:12px;">Помоги накормить дракона!</div><button id="mushu-join-btn" class="admin-btn" style="margin:0; background:#ef6c00;">Присоединиться</button></div>`;
+            document.body.appendChild(invite);
+
+            const overlay = document.createElement('div');
+            overlay.id = 'mushu-overlay';
+            overlay.className = 'mushu-overlay';
+            overlay.innerHTML = `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><b>🐉 Покорми Мушу</b><button id="mushu-back-btn" class="event-back-btn">Вернуться на поле</button></div>
+              <div style="margin-top:8px; text-align:left; font-size:13px;">Сытость: <b id="mushu-satiety-text">0 / 0</b></div>
+              <div class="mushu-progress-bar"><div id="mushu-progress-fill" class="mushu-progress-fill"></div></div>
+              <div id="mushu-combo-text" style="margin-top:6px; font-size:12px; color:#ffe082;"></div>
+              <div class="mushu-dragon-zone"><div id="mushu-dragon" class="mushu-dragon">🐉</div></div>
+              <div id="mushu-fruit-panel" style="padding-bottom:10px;"></div>`;
+            document.body.appendChild(overlay);
+
+            $('mushu-join-btn')?.addEventListener('click', () => {
+              invite.style.display = 'none';
+              openMushuOverlay();
+            });
+            $('mushu-back-btn')?.addEventListener('click', () => closeMushuOverlay());
+          }
+
+          function openMushuOverlay() {
+            const overlay = $('mushu-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'flex';
+            document.body.classList.add('event-mode');
+            renderFruitPanel();
+          }
+
+          function closeMushuOverlay() {
+            const overlay = $('mushu-overlay');
+            if (overlay) overlay.style.display = 'none';
+            document.body.classList.remove('event-mode');
+          }
+
+          function pickLocalFruit() {
+            localFruit = Math.random() < 0.05
+              ? { ...CUPCAKE }
+              : { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
+            cupcakeDeadline = localFruit.id === CUPCAKE.id ? Date.now() + CUPCAKE.ttlMs : 0;
+          }
+
+          function renderFruitPanel() {
+            const panel = $('mushu-fruit-panel');
+            if (!panel) return;
+            const me = uid();
+            const alreadyFed = Boolean(mushuState.fed_users?.[me]);
+            if (!localFruit) pickLocalFruit();
+
+            if (alreadyFed) {
+              panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#c8e6c9;">Мушу благодарен! Жди завершения ивента.</div>';
+              return;
+            }
+
+            const ttlLine = localFruit.id === CUPCAKE.id
+              ? `<div id="mushu-cupcake-timer" style="font-size:12px; margin-top:4px; color:#ffe082;">Кекс активен: 05:00</div>`
+              : '<div style="font-size:12px; margin-top:4px; color:#ffe082;">Обычный фрукт</div>';
+
+            panel.innerHTML = `<div style="font-size:16px;">Твой фрукт: <b>${localFruit.emoji} ${localFruit.label}</b></div>${ttlLine}<button id="mushu-feed-btn" class="mushu-fruit-btn">Покормить Мушу</button>`;
+            $('mushu-feed-btn')?.addEventListener('click', () => feedMushu());
+            startCupcakeTimer();
+          }
+
+          function startCupcakeTimer() {
+            if (cupcakeTimer) clearInterval(cupcakeTimer);
+            if (localFruit?.id !== CUPCAKE.id) return;
+            cupcakeTimer = setInterval(() => {
+              const left = Math.max(0, cupcakeDeadline - Date.now());
+              const mm = String(Math.floor(left / 60000)).padStart(2, '0');
+              const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
+              const timerEl = $('mushu-cupcake-timer');
+              if (timerEl) timerEl.textContent = `Кекс активен: ${mm}:${ss}`;
+              if (left <= 0) {
+                clearInterval(cupcakeTimer);
+                cupcakeTimer = null;
+                localFruit = { ...FRUITS[Math.floor(Math.random() * FRUITS.length)] };
+                renderFruitPanel();
+              }
+            }, 1000);
+          }
+
+          function updateProgressUi() {
+            const current = Number(mushuState.current_satiety || 0);
+            const target = Math.max(1, Number(mushuState.target || 1));
+            const pct = Math.min(100, (current / target) * 100);
+            if ($('mushu-satiety-text')) $('mushu-satiety-text').textContent = `${current} / ${target}`;
+            if ($('mushu-progress-fill')) $('mushu-progress-fill').style.width = `${pct}%`;
+            if ($('mushu-combo-text')) $('mushu-combo-text').textContent = `Комбо за 15 минут: 5 кормлений = +5, 20 кормлений = +10`;
+          }
+
+          function toggleInvite() {
+            const modal = $('mushu-invite-modal');
+            if (!modal) return;
+            modal.style.display = isActive() ? 'flex' : 'none';
+          }
+
+          function animateFruitFlight() {
+            const dragon = $('mushu-dragon');
+            const btn = $('mushu-feed-btn');
+            if (!dragon || !btn) return Promise.resolve();
+            const s = btn.getBoundingClientRect();
+            const d = dragon.getBoundingClientRect();
+            const fx = document.createElement('div');
+            fx.className = 'mushu-fruit-fly';
+            fx.textContent = localFruit?.emoji || '🍎';
+            fx.style.setProperty('--sx', `${s.left + s.width / 2}px`);
+            fx.style.setProperty('--sy', `${s.top}px`);
+            fx.style.setProperty('--dx', `${d.left + d.width / 2}px`);
+            fx.style.setProperty('--dy', `${d.top + d.height / 2}px`);
+            document.body.appendChild(fx);
+            return new Promise((resolve) => setTimeout(() => { fx.remove(); resolve(); }, 900));
+          }
+
+          async function ensureTargetIfMissing(db) {
+            if (!isActive()) return;
+            const me = uid();
+            if (Number(me) !== Number(window.ADMIN_ID)) return;
+            if (Number(mushuState.target || 0) > 0) return;
+            await db.ref(`${EVENT_PATH}/target`).transaction(v => Number(v || 0) > 0 ? v : TARGET_POOL[Math.floor(Math.random() * TARGET_POOL.length)]);
+          }
+
+          async function applyComboBonus(db, now) {
+            const feedSnap = await db.ref(`${EVENT_PATH}/feed_log`).once('value');
+            const feeds = [];
+            feedSnap.forEach((row) => {
+              const v = row.val() || {};
+              const at = Number(v.at || 0);
+              if (at >= now - FEED_WINDOW_MS) feeds.push(v);
+            });
+            const count = feeds.length;
+            const bonusRef = db.ref(`${EVENT_PATH}/combo_bonus`);
+            const bonusTx = await bonusRef.transaction((v) => {
+              const cur = v || {};
+              const next = { ...cur };
+              if (count >= 5 && !cur.bonus5AppliedAt) next.bonus5AppliedAt = now;
+              if (count >= 20 && !cur.bonus20AppliedAt) next.bonus20AppliedAt = now;
+              return next;
+            });
+            const row = bonusTx.snapshot?.val() || {};
+            let add = 0;
+            if (count >= 5 && row.bonus5AppliedAt === now) add += 5;
+            if (count >= 20 && row.bonus20AppliedAt === now) add += 10;
+            if (add > 0) await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + add);
+          }
+
+          async function feedMushu() {
+            if (!isActive()) return;
+            const me = uid();
+            if (!me) return;
+            const db = await ensureDb();
+            const fedTx = await db.ref(`${EVENT_PATH}/fed_users/${me}`).transaction(v => v ? v : { at: Date.now(), fruit: localFruit?.id || 'apple' });
+            if (!fedTx.committed) return;
+
+            await animateFruitFlight();
+            await db.ref(`${EVENT_PATH}/participants/${me}`).set(true);
+            const baseSatiety = Number(localFruit?.satiety || 1);
+            const now = Date.now();
+            await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: localFruit?.id || 'apple', satiety: baseSatiety, at: now });
+            await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + baseSatiety);
+            await applyComboBonus(db, now);
+            renderFruitPanel();
+            await maybeFinalizeEvent(db);
+          }
+
+          async function maybeFinalizeEvent(db) {
+            const evSnap = await db.ref(EVENT_PATH).once('value');
+            const ev = evSnap.val() || {};
+            if (String(ev.status || '') !== 'active') return;
+            if (Number(ev.current_satiety || 0) < Number(ev.target || 1)) return;
+            const tx = await db.ref(`${EVENT_PATH}/status`).transaction(v => v === 'active' ? 'completed' : v);
+            if (!tx.committed) return;
+
+            const participants = ev.participants || {};
+            const rewards = {};
+            Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
+            await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
+            await db.ref(`${EVENT_PATH}/completedAt`).set(Date.now());
+          }
+
+          async function applyMyRewardIfNeeded() {
+            const me = uid();
+            if (!me || String(mushuState.status || '') !== 'completed') return;
+            const reward = mushuState.rewards?.[me];
+            if (!reward?.id) return;
+            const db = await ensureDb();
+            const tx = await db.ref(`${EVENT_PATH}/rewarded_users/${me}`).transaction(v => v || { at: Date.now(), rewardId: reward.id });
+            if (!tx.committed) return;
+
+            if (reward.id === 'ticket_1') await window.claimSequentialTickets?.(1);
+            if (reward.id === 'ticket_2') await window.claimSequentialTickets?.(2);
+            if (reward.id === 'magnifier') await window.addInventoryItem?.('magnifier', 1);
+            if (reward.id === 'goldenPollen') await window.addInventoryItem?.('goldenPollen', 1);
+
+            const fx = document.createElement('div');
+            fx.className = 'mushu-breath';
+            document.body.appendChild(fx);
+            setTimeout(() => fx.remove(), 1400);
+            setTimeout(() => {
+              closeMushuOverlay();
+              alert(`🐉 Магический выдох Мушу! Твой приз: ${reward.label || reward.id}`);
+            }, 900);
+          }
+
+          async function attachMushuListeners() {
+            ensureMushuUi();
+            const db = await ensureDb();
+            if (mushuRef) mushuRef.off();
+            mushuRef = db.ref(EVENT_PATH);
+            mushuRef.on('value', async (snap) => {
+              mushuState = snap.val() || { status: 'idle' };
+              toggleInvite();
+              updateProgressUi();
+              renderFruitPanel();
+              await ensureTargetIfMissing(db);
+              await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
+            });
+          }
+
+          window.initMushuEventSystem = () => attachMushuListeners().catch((e) => console.error('initMushuEventSystem failed', e));
+        })();
+        // END mushu_event.js
 
         // BEGIN adminpage.js
         (function () {
