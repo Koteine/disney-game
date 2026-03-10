@@ -4671,6 +4671,7 @@
           const uid = () => String(window.currentUserId || currentUserId || '').trim();
           const getNow = () => Date.now() + (Number(mushuServerOffsetMs) || 0);
           const isActive = () => String(mushuState.status || '') === 'active';
+          const isAdminUser = () => Number(window.currentUserId || currentUserId || 0) === Number(window.ADMIN_ID || ADMIN_ID);
           const isKnownFruitId = (id) => id === GOLDEN_CUPCAKE.id || FRUITS.some((fruit) => fruit.id === id);
           const resolveFruitIdFromEntry = (entry) => {
             if (!entry) return null;
@@ -4757,6 +4758,10 @@
               return;
             }
             invite.style.display = 'block';
+            if (isAdminUser()) {
+              invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя: админ видит ход события, но не участвует.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Наблюдать</button>`;
+              return;
+            }
             invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи свой фрукт в пасть дракона и помоги команде.</div><button id="mushu-inline-btn" class="mushu-inline-btn">Помочь Мушу</button>`;
           }
 
@@ -4777,6 +4782,7 @@
           async function ensureMyFruitAssigned() {
             const me = uid();
             if (!me || !isActive()) return getMyPersonalFruit();
+            if (isAdminUser()) return null;
 
             const personalFruitId = resolveFruitIdFromEntry(mushuState.personal_fruits?.[me]);
             const participantFruitId = resolveFruitIdFromEntry(mushuState.participants?.[me]?.item);
@@ -4819,6 +4825,10 @@
             const panel = $('mushu-fruit-panel');
             if (!panel) return;
             const me = uid();
+            if (isAdminUser()) {
+              panel.innerHTML = '<div id="mushu-done-message" style="font-weight:700; color:#ffe082;">Ты в режиме наблюдателя: администратор не участвует в событии.</div>';
+              return;
+            }
             const alreadyFed = Boolean(mushuState.fed_users?.[me]);
             localFruit = getMyPersonalFruit();
 
@@ -5007,6 +5017,7 @@
 
           async function feedMushu() {
             if (!isActive()) return;
+            if (isAdminUser()) return;
             const me = uid();
             if (!me) return;
             const db = await ensureDb();
@@ -5811,6 +5822,7 @@
             ensureDateTimeInputDefault('event-start-at');
             syncRoundSchedules();
             syncEventSchedules();
+            maybeActivateScheduledEvent().catch(() => {});
 
             database.ref('users').on('value', (snap) => {
               window.cachedUsersData = snap.val() || {};
@@ -5833,7 +5845,7 @@
             if (window.adminEventScheduleInterval) clearInterval(window.adminEventScheduleInterval);
             window.adminEventScheduleInterval = setInterval(async () => {
               await maybeActivateScheduledEvent();
-            }, 60000);
+            }, 1000);
           }
 
           exposeAdminActions();
