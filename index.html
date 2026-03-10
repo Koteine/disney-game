@@ -4655,7 +4655,6 @@
           let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
           let localFruit = null;
           let timerId = null;
-          let smokeId = null;
           let dragState = null;
           let statusToastShown = '';
 
@@ -4694,16 +4693,7 @@
           }
 
           function getDragonMarkup() {
-            return `<div class="mushu-dragon-segment mushu-segment-1"></div>
-              <div class="mushu-dragon-segment mushu-segment-2"></div>
-              <div class="mushu-dragon-segment mushu-segment-3"></div>
-              <div class="mushu-tail"></div>
-              <div class="mushu-head"></div>
-              <div class="mushu-horn left"></div>
-              <div class="mushu-horn right"></div>
-              <div class="mushu-eye"></div>
-              <div class="mushu-whisker"></div>
-              <div class="mushu-whisker w2"></div>`;
+            return '<div class="mushu-container"></div>';
           }
 
           function ensureMushuUi() {
@@ -4747,37 +4737,29 @@
             if (!overlay) return;
             overlay.style.display = 'flex';
             document.body.classList.add('event-mode');
-            renderFruitPanel();
-            startOverlayEffects();
+            renderFruitPanel().catch((e) => console.error('renderFruitPanel failed', e));
           }
 
           function closeMushuOverlay() {
             const overlay = $('mushu-overlay');
             if (overlay) overlay.style.display = 'none';
             document.body.classList.remove('event-mode');
-            if (smokeId) clearInterval(smokeId);
-            smokeId = null;
           }
 
-          function startOverlayEffects() {
-            if (smokeId) clearInterval(smokeId);
-            smokeId = setInterval(() => {
-              const dragon = $('mushu-dragon');
-              if (!dragon || $('mushu-overlay')?.style.display !== 'flex') return;
-              const rect = dragon.getBoundingClientRect();
-              for (let i = 0; i < 2; i += 1) {
-                const p = document.createElement('span');
-                p.className = 'mushu-smoke';
-                p.style.left = `${rect.left + rect.width * 0.84 + (Math.random() * 14 - 7)}px`;
-                p.style.top = `${rect.top + rect.height * 0.46 + (Math.random() * 10 - 5)}px`;
-                p.style.setProperty('--sx', `${(Math.random() * 34) - 17}px`);
-                document.body.appendChild(p);
-                setTimeout(() => p.remove(), 1800);
-              }
-            }, 4000);
+          async function ensureMyFruitAssigned() {
+            const me = uid();
+            if (!me || !isActive() || mushuState.personal_fruits?.[me]?.id) return getMyPersonalFruit();
+            const db = await ensureDb();
+            const base = FRUITS[Math.floor(Math.random() * FRUITS.length)] || FRUITS[0];
+            const tx = await db.ref(`${EVENT_PATH}/personal_fruits/${me}`).transaction((v) => v || { id: base.id });
+            if (tx.committed) {
+              mushuState.personal_fruits = mushuState.personal_fruits || {};
+              mushuState.personal_fruits[me] = tx.snapshot?.val() || { id: base.id };
+            }
+            return getMyPersonalFruit();
           }
 
-          function renderFruitPanel() {
+          async function renderFruitPanel() {
             const panel = $('mushu-fruit-panel');
             if (!panel) return;
             const me = uid();
@@ -4790,7 +4772,11 @@
             }
 
             if (!localFruit) {
-              panel.innerHTML = '<div style="font-size:13px; color:#ffe082;">Твой фрукт еще не назначен. Обнови экран через пару секунд.</div>';
+              localFruit = await ensureMyFruitAssigned();
+            }
+
+            if (!localFruit) {
+              panel.innerHTML = '<div style="font-size:13px; color:#ffe082;">Не удалось назначить фрукт. Попробуй открыть ивент снова.</div>';
               return;
             }
 
@@ -4853,7 +4839,7 @@
               const pct = Math.max(0, Math.min(100, (left / total) * 100));
               if (burn) burn.style.width = `${pct}%`;
               if (timer) timer.classList.toggle('mushu-time-critical', left <= 60000);
-              if (isActive() && localFruit?.id === GOLDEN_CUPCAKE.id) renderFruitPanel();
+              if (isActive() && localFruit?.id === GOLDEN_CUPCAKE.id) renderFruitPanel().catch((e) => console.error('renderFruitPanel failed', e));
             }, 1000);
           }
 
@@ -4880,7 +4866,7 @@
             if (!mouth) return;
             const rect = mouth.getBoundingClientRect();
             const spark = document.createElement('span');
-            spark.className = 'mushu-eat-spark';
+            spark.className = 'mushu-spark';
             spark.style.left = `${rect.left + rect.width * 0.5}px`;
             spark.style.top = `${rect.top + rect.height * 0.5}px`;
             document.body.appendChild(spark);
@@ -4932,9 +4918,9 @@
             if (!fedTx.committed) return;
 
             const dragon = $('mushu-dragon');
-            dragon?.classList.add('mushu-chomp');
+            dragon?.classList.add('mushu-happy');
             spawnEatSpark();
-            setTimeout(() => dragon?.classList.remove('mushu-chomp'), 700);
+            setTimeout(() => dragon?.classList.remove('mushu-happy'), 1000);
 
             await db.ref(`${EVENT_PATH}/participants/${me}`).set(true);
             const baseSatiety = Number(fruit.satiety || 1);
@@ -4942,7 +4928,7 @@
             await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: fruit.id, satiety: baseSatiety, at: now });
             await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + baseSatiety);
             await applyComboBonus(db, now);
-            renderFruitPanel();
+            await renderFruitPanel();
             await maybeFinalizeEvent(db);
           }
 
@@ -4998,7 +4984,7 @@
               updateInlineInvite();
               updateProgressUi();
               startEventTimer();
-              renderFruitPanel();
+              await renderFruitPanel();
               showMushuResultIfNeeded();
               await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
             });
