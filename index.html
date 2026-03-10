@@ -3362,19 +3362,35 @@
             }
 
             function expandTicketsRows(rows) {
-                const expanded = [];
+                const expandedByNum = new Map();
                 rows.forEach(t => {
                     extractTicketNumbers(t.ticket).forEach(ticketNum => {
-                        expanded.push({
+                        const normalizedTicketNum = String(ticketNum);
+                        const candidate = {
                             ...t,
-                            ticketNum: String(ticketNum),
+                            ticketNum: normalizedTicketNum,
                             isRevoked: isTicketRevoked(ticketNum),
                             sourceLabel: getTicketSourceLabel(t),
                             taskLabel: getTicketTaskLabel(t)
-                        });
+                        };
+
+                        const prev = expandedByNum.get(normalizedTicketNum);
+                        if (!prev) {
+                            expandedByNum.set(normalizedTicketNum, candidate);
+                            return;
+                        }
+
+                        const prevPriority = Number(!prev.isArchived) * 10 + Number(!prev.excluded);
+                        const nextPriority = Number(!candidate.isArchived) * 10 + Number(!candidate.excluded);
+                        const prevTs = Number(prev.updatedAt || prev.archivedAt || prev.createdAt || prev.ts || 0);
+                        const nextTs = Number(candidate.updatedAt || candidate.archivedAt || candidate.createdAt || candidate.ts || 0);
+
+                        if (nextPriority > prevPriority || (nextPriority === prevPriority && nextTs >= prevTs)) {
+                            expandedByNum.set(normalizedTicketNum, candidate);
+                        }
                     });
                 });
-                return expanded;
+                return Array.from(expandedByNum.values());
             }
 
             async function toggleTicketRevocation(ticketNum, shouldRevoke) {
@@ -3530,15 +3546,10 @@
             }
 
             function getActiveTicketsForWheel() {
-                const tickets = [];
-                allTicketsData.forEach(t => {
-                    if (t.excluded) return;
-                    extractTicketNumbers(t.ticket).forEach(n => {
-                        if (isTicketRevoked(n)) return;
-                        tickets.push({ num: String(n), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' });
-                    });
-                });
-                return tickets.sort((a, b) => Number(a.num) - Number(b.num));
+                return expandTicketsRows(allTicketsData)
+                    .filter(t => !t.excluded && !t.isRevoked)
+                    .map(t => ({ num: String(t.ticketNum), owner: t.owner, name: players[t.owner]?.n || 'Неизвестный' }))
+                    .sort((a, b) => Number(a.num) - Number(b.num));
             }
 
             window.syncTicketData = syncTicketData;
