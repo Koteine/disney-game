@@ -121,84 +121,96 @@
 
         .magic-draw-container {
             position: relative;
-            width: min(94vw, 560px);
-            min-height: 380px;
+            width: min(96vw, 620px);
+            min-height: 420px;
             margin: 0 auto 10px;
             border-radius: 20px;
             overflow: hidden;
-            border: 1px solid rgba(255, 215, 120, 0.25);
-            background:
-                radial-gradient(circle at 20% 10%, rgba(255,255,255,0.16) 1px, transparent 2px) 0 0/90px 90px,
-                radial-gradient(circle at 80% 30%, rgba(255,255,255,0.12) 1px, transparent 2px) 0 0/120px 120px,
-                linear-gradient(135deg, #140b2f 0%, #1f1045 45%, #090d24 100%);
-            box-shadow: inset 0 0 35px rgba(255, 223, 139, 0.12), 0 12px 32px rgba(0,0,0,0.35);
+            border: 1px solid rgba(255, 215, 120, 0.35);
+            background: radial-gradient(circle at 50% 48%, rgba(95, 138, 255, 0.24), transparent 36%), linear-gradient(180deg, #040919 0%, #070f2f 55%, #030714 100%);
+            box-shadow: inset 0 0 55px rgba(114, 169, 255, 0.18), inset 0 -18px 40px rgba(0, 0, 0, 0.46), 0 16px 38px rgba(0,0,0,0.45);
         }
         .magic-cards-stage {
             position: relative;
             width: 100%;
-            min-height: 380px;
-            perspective: 1200px;
+            min-height: 420px;
+            perspective: 1400px;
+            isolation: isolate;
+        }
+        .magic-ticket-star {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(calc(-50% + var(--sx, 0px)), calc(-50% + var(--sy, 0px)));
+            color: rgba(255, 245, 205, 0.9);
+            text-shadow: 0 0 9px rgba(255, 241, 189, 0.35);
+            opacity: var(--so, 0.5);
+            font-size: var(--sf, 12px);
+            animation: twinkle var(--tw, 3s) ease-in-out infinite;
+            pointer-events: none;
+            z-index: 1;
+            transition: transform 1000ms cubic-bezier(.2,.8,.2,1), opacity 900ms ease;
+            will-change: transform, opacity;
+        }
+        .magic-ticket-star.is-converging {
+            transform: translate(calc(-50% + var(--cx, 0px)), calc(-50% + var(--cy, 0px))) scale(0.8);
+            opacity: 0;
         }
         .magic-card {
             position: absolute;
             left: 50%;
             top: 50%;
-            width: 118px;
-            aspect-ratio: 1 / 1.62;
+            width: clamp(82px, 17vw, 122px);
+            aspect-ratio: 1 / 1.55;
             transform-style: preserve-3d;
-            transform: translate(-50%, -50%) rotate(0deg) scale(0.12);
-            transition: transform 700ms cubic-bezier(.2,.8,.2,1), opacity 550ms ease;
+            transform: translate(-50%, -50%) scale(0.2);
             opacity: 0;
-            filter: drop-shadow(0 10px 16px rgba(0,0,0,0.35));
-            z-index: 2;
+            transition: transform 700ms cubic-bezier(.2,.8,.2,1), opacity 600ms ease;
+            filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.24));
+            z-index: 3;
+            will-change: transform;
         }
-        .magic-card.is-visible {
-            opacity: 1;
-            transform: translate(calc(-50% + var(--tx, 0px)), calc(-50% + var(--ty, 0px))) rotate(var(--rot, 0deg)) scale(1);
-        }
-        .magic-card.is-vanishing { opacity: 0; transform: translate(calc(-50% + var(--tx, 0px)), calc(-50% + var(--ty, 0px))) rotate(var(--rot, 0deg)) scale(0.6); }
-        .magic-card.is-focused {
-            z-index: 10;
-            transform: translate(-50%, -50%) rotate(0deg) scale(1.45);
-        }
+        .magic-card.is-visible { opacity: 1; }
+        .magic-card.is-vanishing { opacity: 0; transition: transform 820ms ease, opacity 820ms ease; }
+        .magic-card.is-focused { z-index: 50 !important; }
         .magic-card-inner {
             width: 100%;
             height: 100%;
             position: relative;
             transform-style: preserve-3d;
-            transition: transform 1200ms cubic-bezier(.2,.8,.2,1);
+            transition: transform 1400ms cubic-bezier(.2,.8,.2,1);
         }
         .magic-card.is-revealed .magic-card-inner { transform: rotateY(180deg); }
         .magic-card-face {
             position: absolute;
             inset: 0;
-            border-radius: 14px;
-            border: 2px solid #d8ab4f;
+            border-radius: 12px;
+            border: 2px solid #FFD700;
             backface-visibility: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
-            padding: 12px;
+            padding: 10px;
             font-weight: 700;
-            box-shadow: 0 0 20px rgba(255, 221, 137, 0.24);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
         }
         .magic-card-back {
-            background: radial-gradient(circle at 30% 30%, #2c2e76, #120b3e 72%);
-            color: #f7dca3;
-            font-size: 28px;
-            letter-spacing: 1px;
+            background: radial-gradient(circle at 35% 28%, #213a88 0%, #0d1a49 45%, #090d26 100%);
+            color: #f8df8a;
+            font-size: 24px;
+            letter-spacing: 2px;
         }
         .magic-card-front {
             transform: rotateY(180deg);
-            background: linear-gradient(150deg, #fef8e8, #efe0b9);
-            color: #452900;
+            background: linear-gradient(150deg, #fffdf4, #f1e3b9);
+            color: #2b1800;
             font-family: 'Cinzel', Georgia, serif;
         }
-        .magic-card-front small { display:block; font-size:12px; color:#7d6332; margin-bottom:8px; }
-        .magic-card-front b { display:block; font-size:22px; margin-bottom:8px; }
-        .magic-card-front span { font-size:14px; line-height:1.3; }
-        .magic-sparkle-layer { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+        .magic-card-front small { display:block; font-size:11px; color:#7d6332; margin-bottom:7px; }
+        .magic-card-front b { display:block; font-size:20px; margin-bottom:7px; }
+        .magic-card-front span { font-size:13px; line-height:1.25; }
+        .magic-sparkle-layer { position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index: 4; }
         .magic-spark {
             position:absolute;
             width:8px;
@@ -207,10 +219,10 @@
             background: radial-gradient(circle, #fff6b8, #ffc938 70%, rgba(255,201,56,0));
             animation: sparkle-burst 1200ms ease-out forwards;
         }
-        .magic-winner-banner {
+        .magic-winner-banner { z-index: 7;
             position:absolute;
             left:50%;
-            bottom:16px;
+            bottom:14px;
             transform:translateX(-50%) scale(.9);
             background:rgba(255, 223, 136, 0.2);
             border:1px solid rgba(255,215,120,.65);
@@ -223,9 +235,16 @@
             text-shadow:0 2px 10px rgba(0,0,0,.35);
         }
         .magic-winner-banner.show { opacity:1; transform:translateX(-50%) scale(1); }
+        @keyframes twinkle {
+            0%, 100% { opacity: calc(var(--so, 0.5) * 0.65); }
+            50% { opacity: var(--so, 0.5); }
+        }
         @keyframes sparkle-burst {
             0% { transform: translate(0,0) scale(0.4); opacity: 1; }
             100% { transform: translate(var(--dx), var(--dy)) scale(1.4); opacity: 0; }
+        }
+        @media (max-width: 520px) {
+            .magic-card.is-focused { transform: translate(-50%, -50%) scale(1.25) !important; }
         }
         .winner-toast {
             position: fixed;
