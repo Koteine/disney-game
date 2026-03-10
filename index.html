@@ -29,7 +29,7 @@
     await ref.transaction((row) => {
       if (row && typeof row === 'object') {
         if (!row.nickname && nickname) row.nickname = nickname;
-        if (typeof row.karma_points !== 'number') row.karma_points = 0;
+        if (typeof row.karma_points !== 'number') row.karma_points = Number(row.karma_points) || 0;
         return row;
       }
       return {
@@ -706,11 +706,8 @@
             </div>
         </div>
 
-       <div id="tab-tickets" class="tab-content">
-    <h1>👤 Профиль</h1>
-    <div id="profile-admin-mode" class="works-card" style="margin-bottom:8px; text-align:center; display:none;">
-        <div style="font-weight:800; font-size:16px; color:#6a1b9a;">Режим Администратора. Доступ к игровым механикам ограничен</div>
-    </div>
+   <div id="tab-tickets" class="tab-content">
+    <h1 id="profile-main-title">👤 Профиль</h1>
     <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
         <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
         <div id="profile-nickname" style="font-weight:800; font-size:16px;">Игрок</div>
@@ -887,8 +884,8 @@
                         <button onclick="adminRevokeTicketsFromPlayer()" class="admin-btn" style="background:#c62828; width:100%; margin:0;">🧾 Отобрать билетики</button>
                     </div>
 
-                    <div class="works-card" style="margin:8px 0;">
-                        <b>🗂 Архив билетов · Умный поиск</b>
+                    <button onclick="toggleEmergencySection('archive')" class="admin-btn" style="background:#5e35b1; width:100%; margin:0 0 6px;">🗂 Архив билетов · Умный поиск</button>
+                    <div id="admin-emergency-archive-body" class="news-list" style="margin-bottom:8px;">
                         <div style="display:flex; gap:6px; margin-top:8px;">
                             <input type="number" id="admin-ticket-search-input" placeholder="Введите номер билета" class="admin-input" style="margin:0;">
                             <button onclick="runAdminTicketArchiveSearch()" class="admin-btn" style="margin:0; white-space:nowrap; background:#5e35b1;">Найти информацию</button>
@@ -2402,6 +2399,7 @@
                 rename: 'admin-emergency-rename-body',
                 teleport: 'admin-emergency-teleport-body',
                 items: 'admin-emergency-items-body',
+                archive: 'admin-emergency-archive-body',
                 karma: 'admin-emergency-karma-body'
             };
             const targetId = map[sectionName];
@@ -7468,11 +7466,10 @@
 
         function updateProfileUI() {
             const isAdminProfile = String(currentUserId) === String(ADMIN_ID);
-            const adminModeEl = document.getElementById('profile-admin-mode');
+            const profileMainTitleEl = document.getElementById('profile-main-title');
             const playerBlockEl = document.getElementById('profile-player-block');
             const playerTicketsEl = document.getElementById('profile-player-tickets-block');
-            if (adminModeEl) adminModeEl.style.display = isAdminProfile ? 'block' : 'none';
-            if (adminModeEl) adminModeEl.innerHTML = '<div style="font-weight:800; font-size:16px; color:#6a1b9a;">Панель управления администратора. Игровой профиль отключен</div>';
+            if (profileMainTitleEl) profileMainTitleEl.textContent = isAdminProfile ? '🎫 История билетов' : '👤 Профиль';
             if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
             if (isAdminProfile) return;
