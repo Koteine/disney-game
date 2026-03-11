@@ -1118,7 +1118,7 @@
         let liveBoardTicketsData = [];
         let shownMagicLinks = {};
         let magicLinksRef = null;
-        let newsFeedRef = null;
+        let newsRef = null;
         let submissionsRef = null;
         let legacyWorksRef = null;
         let inventoryRef = null;
@@ -1756,23 +1756,6 @@
                 alert('Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай.');
             });
 
-            if (newsFeedRef) newsFeedRef.off();
-            newsFeedRef = db.ref('news_feed').limitToLast(30);
-            newsFeedRef.on('value', snap => {
-                const items = [];
-                snap.forEach(item => {
-                    const v = item.val();
-                    if (v?.text) items.push(v.text);
-                });
-                const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
-
-                const preview = document.getElementById('news-preview');
-                const list = document.getElementById('news-list');
-                preview.innerText = ordered[0] || 'Пока новостей нет — откройте первую клетку! ✨';
-                list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
-            });
-
-            if (submissionsRef) submissionsRef.off();
             submissionsRef = db.ref('submissions');
             submissionsRef.on('value', snap => {
                 const items = [];
@@ -2397,14 +2380,7 @@
             });
         }
 
-        function postNews(text) {
-            if (!text) return;
-            return db.ref('news_feed').push({
-                text,
-                round: currentRoundNum,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
-        }
+       
 
         function toggleNewsPanel() {
             toggleExpandablePanel('news-list', 'news-toggle-btn');
@@ -4850,7 +4826,6 @@
                 players: null,
                 board: {},
                 tickets_archive: null,
-                news_feed: null,
                 submissions: null,
                 game_event: null,
                 game_events: null,
@@ -5991,7 +5966,6 @@
           const EVENT_PATH = 'mushu_event';
           const GAME_EVENTS_PATH = 'game_events';
           const MUSHU_EVENT_ID = 'mushu_feast';
-          const FEED_WINDOW_MS = 15 * 60 * 1000;
           const GOLDEN_CUPCAKE_GRACE_MS = 5 * 60 * 1000;
           const FRUITS = [
             { id: 'apple', emoji: '🍎', label: 'Яблоко', satiety: 1 },
@@ -6123,7 +6097,7 @@
               if (joinBtn) joinBtn.onclick = () => openMushuOverlay();
             }
             if (isAdminUser()) {
-              invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя: админ видит ход события, но не участвует.</div><button class="mushu-inline-btn">Наблюдать</button>`;
+              invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя</div><button class="mushu-inline-btn">Наблюдать</button>`;
               return;
             }
             invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи свой фрукт в пасть дракона и помоги команде.</div><button class="mushu-inline-btn">Помочь Мушу</button>`;
@@ -7398,22 +7372,7 @@
                 alert('Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай.');
             });
 
-            if (newsFeedRef) newsFeedRef.off();
-            newsFeedRef = db.ref('news_feed').limitToLast(30);
-            newsFeedRef.on('value', snap => {
-                const items = [];
-                snap.forEach(item => {
-                    const v = item.val();
-                    if (v?.text) items.push(v.text);
-                });
-                const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
-
-                const preview = document.getElementById('news-preview');
-                const list = document.getElementById('news-list');
-                preview.innerText = ordered[0] || 'Пока новостей нет — откройте первую клетку! ✨';
-                list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
-            });
-
+            
             const submissionsById = {};
             const extractSubmissionEntries = (parentKey, value) => {
                 if (!value || typeof value !== 'object') return [];
