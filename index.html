@@ -1618,7 +1618,7 @@
                 syncGameEvents();
                 syncWheelSystems();
                 window.initMushuEventSystem?.();
-                subscribeToCalligraphyDuelInvites();
+                initDuelsListener();
                 document.getElementById('duel-close-btn')?.addEventListener('click', closeCalligraphyDuelUI);
             } catch(e) { console.error(e); }
         }
@@ -2582,6 +2582,14 @@
             if (shouldResetCooldown) {
                 await db.ref(`player_season_status/${currentUserId}/lastDuelSent`).remove();
             }
+        }
+
+        function initDuelsListener() {
+            if (!db || !currentUserId) {
+                setTimeout(initDuelsListener, 500);
+                return;
+            }
+            subscribeToCalligraphyDuelInvites();
         }
 
         function subscribeToCalligraphyDuelInvites() {
@@ -5783,6 +5791,7 @@
           let pendingCanvasSync = false;
           let pendingProgressSync = false;
           let syncTimer = null;
+          let progressCheckInterval = null;
           let lastProgressCheckAt = 0;
           let lastFullProgressCheckAt = 0;
           let dirtyRect = null;
@@ -6074,7 +6083,6 @@
             drawLine(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y, color);
             markDirtySegment(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y);
             scheduleCanvasAndProgressSync();
-            checkCanvasProgress({ force: true });
           }
 
           async function draw(evt) {
@@ -6087,7 +6095,6 @@
             drawLine(from.x, from.y, p.x, p.y, color);
             markDirtySegment(from.x, from.y, p.x, p.y);
             scheduleCanvasAndProgressSync();
-            checkCanvasProgress();
           }
 
           function stopDrawing() {
@@ -6206,6 +6213,11 @@
                 updateTimer();
               }, 1000);
 
+              if (progressCheckInterval) clearInterval(progressCheckInterval);
+              progressCheckInterval = setInterval(() => {
+                checkCanvasProgress();
+              }, 2000);
+
               window.addEventListener('resize', resizeCanvasToViewport);
               window.addEventListener('orientationchange', resizeCanvasToViewport);
             } catch (err) {
@@ -6220,7 +6232,7 @@
               await db.ref(EVENT_PATH).set({
                 status: ACTIVE_STATUS,
                 type: EVENT_TYPE,
-                endTime: Date.now() + 600000
+                endTime: Date.now() + (20 * 60 * 1000)
               });
             } catch (err) {
               console.error('adminLaunchEpicPaintEvent failed:', err);
@@ -7248,7 +7260,7 @@
             if (Number.isFinite(fromArg) && fromArg >= 1) return Math.max(1, Math.round(fromArg));
             const fromInput = Number(document.getElementById('event-duration-mins')?.value || 0);
             if (Number.isFinite(fromInput) && fromInput >= 1) return Math.max(1, Math.round(fromInput));
-            return 10;
+            return 20;
           }
 
           async function adminLaunchEpicPaintEvent() {
@@ -7256,7 +7268,7 @@
             await database.ref('current_event').set({
               status: 'active',
               type: 'paint',
-              endTime: Date.now() + 600000
+              endTime: Date.now() + (20 * 60 * 1000)
             });
           }
 
