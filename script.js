@@ -6113,17 +6113,21 @@ const JSON_URL = 'tasks.json';
           async function maybeActivateScheduledRound() {
             const now = getAdminNow();
             const due = roundSchedules
+
               .filter(r => r.status === 'scheduled'
                 && (r.startAt || 0) <= now
                 && getRoundActivationNotBefore(r) <= now)
+
               .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
             if (!due?.key) return;
 
             const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
               const txNow = getAdminNow();
               if (!v || v.status !== 'scheduled') return v;
+
               if (txNow < (v.startAt || 0)) return v;
               if (txNow < getRoundActivationNotBefore(v)) return v;
+
               return { ...v, status: 'starting', startedAt: Date.now() };
             });
             if (!tx.committed) return;
