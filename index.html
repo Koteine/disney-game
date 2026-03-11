@@ -1112,7 +1112,11 @@
         function startOnlineHeartbeat() {
             if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
             const ref = db.ref(`player_season_status/${currentUserId}`);
-            const beat = () => ref.update({ lastSeen: firebase.database.ServerValue.TIMESTAMP, updatedAt: Date.now() }).catch(() => {});
+            const beat = () => ref.update({
+                lastSeen: firebase.database.ServerValue.TIMESTAMP,
+                onlineHeartbeatAt: Date.now(),
+                updatedAt: Date.now()
+            }).catch(() => {});
             beat();
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(beat, ONLINE_HEARTBEAT_MS);
@@ -1127,6 +1131,15 @@
                 palette.push(`hsl(${hue}, 85%, 42%)`);
             }
             return palette;
+        }
+
+        function colorWithAlpha(color, alpha = 0.3) {
+            const c = String(color || '').trim();
+            if (!c) return `rgba(33, 150, 243, ${alpha})`;
+            const hslMatch = c.match(/^hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)$/i);
+            if (hslMatch) return `hsla(${hslMatch[1]}, ${hslMatch[2]}%, ${hslMatch[3]}%, ${alpha})`;
+            if (/^#([\da-f]{6}|[\da-f]{3})$/i.test(c)) return `${c}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
+            return c;
         }
 
         const charColors = generateBrightColors(players.length);
@@ -2612,7 +2625,7 @@
                 const now = Date.now();
                 const lockAge = now - Number(row.resolvingAt || 0);
                 const canTakeOverStaleLock = row.status === 'resolving' && lockAge > 30000;
-                if (row.status !== 'active' && !canTakeOverStaleLock) return row;
+                if (row.status !== 'active' && !canTakeOverStaleLock) return;
                 row.status = 'resolving';
                 row.resolvingAt = now;
                 row.resolvingBy = String(currentUserId || 'system');
@@ -2621,7 +2634,7 @@
             if (!lockTx.committed) return;
 
             const duel = lockTx.snapshot.val();
-            if (!duel) return;
+            if (!duel || duel.status !== 'resolving' || String(duel.resolvingBy || '') !== String(currentUserId || 'system')) return;
             const symbolChar = duel.symbol?.char || '永';
             const reference = createReferencePointsFromSymbol(symbolChar);
             const participants = Object.keys(duel.players || {});
@@ -5421,7 +5434,7 @@
                     const profile = seasonProfilesByUserId[ownerId] || {};
                     const lastSeen = Number(profile.lastSeen || 0);
                     const isOnlineTrail = lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
-                    node.style.background = isOnlineTrail ? (c + '4D') : '#ffffff';
+                    node.style.background = isOnlineTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
                 }
             }
 
@@ -5452,7 +5465,7 @@
                             const profile = seasonProfilesByUserId[ownerId] || {};
                             const lastSeen = Number(profile.lastSeen || 0);
                             const isOnlineTrail = lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
-                            d.style.background = isOnlineTrail ? (c + '4D') : '#ffffff';
+                            d.style.background = isOnlineTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
                             d.style.borderColor = c;
                             const mark = cell.isTrap ? '💣'
                                 : cell.isMagic ? '🔮'
