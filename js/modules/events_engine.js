@@ -29,12 +29,29 @@ let eventSchedulesRef = null;
 let legacyEventSchedulesRef = null;
 let plannedEvents = [];
 let serverOffsetMs = 0;
+let activeDb = null;
 
 const EVENT_SCHEDULES_PATH = 'event_schedules';
 const LEGACY_EVENT_SCHEDULES_PATH = 'scheduled_events';
 
 function getNowMs() {
-  return Date.now() + (Number(serverOffsetMs) || 0);
+  const firebaseAlignedMs = Date.now() + (Number(serverOffsetMs) || 0);
+  return new Date(firebaseAlignedMs).getTime();
+}
+
+function toEventTimeMs(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value instanceof Date) return value.getTime();
+
+  if (typeof value === 'string') {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return asNumber;
+
+    const parsed = new Date(value).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return 0;
 }
 
 function normalizePlannedEvent(row, key) {
@@ -42,7 +59,7 @@ function normalizePlannedEvent(row, key) {
   return {
     key,
     type: String(event.type || event.id || 'epic_paint'),
-    startAt: Number(event.startAt) || 0,
+    startAt: toEventTimeMs(event.startAt),
     durationMins: Math.max(1, Number(event.durationMins) || 10),
     status: String(event.status || 'scheduled')
   };
@@ -102,13 +119,33 @@ async function activatePlannedEventIfDue(db) {
   }
 }
 
+async function runEventTickOnce(dbInstance) {
+  const db = await ensureDbReady(dbInstance || activeDb || window.db);
+
+  if (!db || !plannedEvents.length) return;
+
+  let hasDueEvents = true;
+  while (hasDueEvents) {
+    const dueEvent = plannedEvents
+      .filter((event) => event.status === 'scheduled' && (event.startAt || 0) <= getNowMs())
+      .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+
+    if (!dueEvent) {
+      hasDueEvents = false;
+      break;
+    }
+
+    await activatePlannedEventIfDue(db);
+  }
+}
+
 function startTickLoop(db) {
   if (tickHandle) clearInterval(tickHandle);
   tickHandle = setInterval(() => {
-    activatePlannedEventIfDue(db).catch((err) => {
+    runEventTickOnce(db).catch((err) => {
       console.error('Planned event tick failed:', err);
     });
-  }, 1000);
+  }, 15000);
 }
 
 function subscribePlannedEvents(db) {
@@ -145,9 +182,9 @@ function subscribeServerTimeOffset(db) {
   });
 }
 
-async function adminDeleteScheduledEvent(eventKey) {
+async function adminDeleteScheduledEvent(eventKey, dbInstance) {
   if (!isAdmin() || !eventKey) return;
-  const db = await ensureDbReady(window.db);
+  const db = await ensureDbReady(dbInstance || activeDb || window.db);
 
   const cancelInPath = async (path) => {
     const result = await db.ref(`${path}/${eventKey}`).transaction((event) => {
@@ -214,6 +251,7 @@ export function wireAdminEventButton() {
 export async function initEventsEngine(dbInstance) {
   console.log('DEBUG: Module EventsEngine received DB object:', !!dbInstance);
   const db = await ensureDbReady(dbInstance);
+  activeDb = db;
 
   if (typeof window.initEventSystem === 'function') {
     await window.initEventSystem();
@@ -228,7 +266,14 @@ export async function initEventsEngine(dbInstance) {
     startTickLoop(db);
     schedulerStarted = true;
   }
+
+  await runEventTickOnce(db);
 }
 
-export const EventsEngineModule = { init: initEventsEngine, wireAdminEventButton };
+export const EventsEngineModule = {
+  init: initEventsEngine,
+  wireAdminEventButton,
+  deleteScheduledEvent: adminDeleteScheduledEvent,
+  tickDueEvents: runEventTickOnce
+};
 window.EventsEngineModule = EventsEngineModule;
