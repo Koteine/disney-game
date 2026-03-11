@@ -884,7 +884,7 @@
                     <input type="datetime-local" id="event-start-at" class="admin-input">
                     <label style="font-size:12px; color:#777;">Сколько длится (минут)</label>
                     <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
-                    <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
+                    <button id="admin-schedule-event-btn" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
                     <div id="admin-event-queue-list" style="font-size:12px; margin-top:8px; color:#555;">Нет запланированных ивентов.</div>
                 </div>
@@ -3598,18 +3598,24 @@
         }
 
         async function adminScheduleEvent() {
-            if (currentUserId !== ADMIN_ID) return;
+            if (Number(currentUserId) !== Number(ADMIN_ID)) {
+                alert('Эта кнопка доступна только администратору.');
+                return;
+            }
 
-            const startRaw = String(document.getElementById('event-start-at')?.value || '').trim();
+            const startInput = document.getElementById('event-start-at');
+            const startRaw = String(startInput?.value || '').trim();
             const durationMins = Number(document.getElementById('event-duration-mins')?.value || 0);
             const eventId = String(document.getElementById('event-type')?.value || EPIC_PAINT_EVENT_ID);
 
-            if (!startRaw) return alert('Выбери дату и время старта события.');
             if (!Number.isFinite(durationMins) || durationMins < 1) return alert('Укажи длительность события (в минутах).');
 
-            const startAt = parseMoscowDateTimeLocalInput(startRaw);
             const nowMs = typeof getServerNowMs === 'function' ? getServerNowMs() : Date.now();
-            if (!Number.isFinite(startAt) || startAt <= nowMs - 1000) return alert('Время старта должно быть в будущем.');
+            let startAt = Number.isFinite(parseMoscowDateTimeLocalInput(startRaw)) ? parseMoscowDateTimeLocalInput(startRaw) : (nowMs + 5000);
+            if (startAt <= nowMs - 1000) startAt = nowMs + 5000;
+            if (startInput && !startRaw) {
+                startInput.value = toMoscowDateTimeLocalInput(startAt);
+            }
 
             const existingSchedules = queuedGameEvents.filter(ev => ev.status === 'scheduled');
             if (existingSchedules.length >= MAX_SCHEDULED_EVENTS) {
@@ -7697,6 +7703,18 @@
             window.waitForDbReady = window.waitForDbReady || waitForDbReady;
             exposeAdminActions();
             ensureAdminTabVisibility();
+            ensureDateTimeInputDefault('round-start-at');
+            ensureDateTimeInputDefault('event-start-at');
+
+            const scheduleEventBtn = document.getElementById('admin-schedule-event-btn');
+            if (scheduleEventBtn) {
+              scheduleEventBtn.disabled = false;
+              scheduleEventBtn.removeAttribute('disabled');
+              scheduleEventBtn.onclick = (ev) => {
+                ev?.preventDefault?.();
+                window.adminScheduleEvent?.().catch?.((err) => console.error('adminScheduleEvent failed:', err));
+              };
+            }
 
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
