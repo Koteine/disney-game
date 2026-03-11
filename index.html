@@ -1177,6 +1177,13 @@
             markActive();
         }
 
+        function repaintOnlineTrails() {
+            const repaintImpl = window.__repaintOnlineTrailsImpl;
+            if (typeof repaintImpl === 'function') {
+                repaintImpl();
+            }
+        }
+
         function startOnlineTrailsRepaintLoop() {
             repaintOnlineTrails();
             if (onlineTrailsRepaintInterval) clearInterval(onlineTrailsRepaintInterval);
