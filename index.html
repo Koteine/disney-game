@@ -3374,13 +3374,35 @@
             const userIds = Object.keys(players);
             if (!userIds.length) return alert('Нет игроков для рассылки.');
 
-            let sentCount = 0;
-            for (const userId of userIds) {
-                const ok = await notifyPlayer(userId, message);
-                if (ok) sentCount += 1;
+            const requestRef = db.ref('admin_event_notifications').push();
+            await requestRef.set({
+                eventType,
+                message,
+                requestedBy: currentUserId,
+                requestedAt: Date.now(),
+                status: 'queued'
+            });
+
+            const startedAt = Date.now();
+            const timeoutMs = 60000;
+            while (Date.now() - startedAt < timeoutMs) {
+                const statusSnap = await requestRef.once('value');
+                const requestData = statusSnap.val() || {};
+                if (requestData.status === 'completed') {
+                    const sentCount = Number(requestData.sentCount || 0);
+                    const totalCount = Number(requestData.totalCount || userIds.length);
+                    alert(`Рассылка завершена. Успешно: ${sentCount} из ${totalCount}.`);
+                    return;
+                }
+                if (requestData.status === 'failed') {
+                    const reason = String(requestData.error || 'Неизвестная ошибка');
+                    alert(`Рассылка не выполнена: ${reason}`);
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            alert(`Рассылка завершена. Успешно: ${sentCount} из ${userIds.length}.`);
+            alert('Рассылка запущена, но результат пока не получен. Проверьте позже в базе admin_event_notifications.');
         }
 
         async function adminCancelScheduledEvent(eventKey) {
