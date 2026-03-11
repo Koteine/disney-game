@@ -5356,6 +5356,7 @@
                     if (!node || !cell) continue;
                     const c = charColors[cell.owner];
                     const ownerId = String(cell.userId || '');
+                    if (ownerId && String(currentUserId || '') === ownerId) continue;
                     const profile = seasonProfilesByUserId[ownerId] || {};
                     const hasWetTrail = isPlayerWetTrailVisible(profile);
                     node.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
@@ -5395,7 +5396,11 @@
                             const ownerId = String(cell.userId || '');
                             const profile = seasonProfilesByUserId[ownerId] || {};
                             const hasWetTrail = isPlayerWetTrailVisible(profile);
-                            d.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
+                            if (ownerId && String(currentUserId || '') === ownerId) {
+                                d.style.background = '#ffffff';
+                            } else {
+                                d.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
+                            }
                             d.style.borderColor = c;
                             const mark = cell.isTrap ? '💣'
                                 : cell.isMagic ? '🔮'
@@ -5784,6 +5789,9 @@
           let eventRef = null;
           let timerHandle = null;
           let state = { status: 'idle', type: EVENT_TYPE, endTime: 0, progress: 0, participants: {} };
+          let remoteProgressRef = null;
+          let isProgressLeader = false;
+          const PROGRESS_PATH = 'game_events/current_progress';
           let drawing = false;
           let lastPoint = { x: 0, y: 0 };
           let finishing = false;
@@ -5817,7 +5825,7 @@
               status: String(e.status || 'idle'),
               type: String(e.type || EVENT_TYPE),
               endTime: Number(e.endTime || 0),
-              progress: Number(e.progress || 0),
+              progress: Number(typeof e.progress === 'object' ? e.progress?.percent : e.progress || 0),
               participants: e.participants || {},
               canvas_data: e.canvas_data || ''
             };
@@ -5839,7 +5847,29 @@
             }
             const leftMs = Number(state.endTime) - Date.now();
             timerEl.textContent = formatLeft(leftMs);
-            if (leftMs <= 0) finalizeEventWithRewards().catch(() => {});
+            if (leftMs <= 0) checkEventStatus().catch(() => {});
+          }
+
+
+          async function resolveProgressLeadership() {
+            isProgressLeader = isAdminUser();
+            return isProgressLeader;
+          }
+
+          function normalizeProgressValue(value) {
+            if (typeof value === 'number' && Number.isFinite(value)) return Number(value);
+            if (value && typeof value === 'object') {
+              const percent = Number(value.percent);
+              if (Number.isFinite(percent)) return percent;
+            }
+            return 0;
+          }
+
+          async function checkEventStatus() {
+            if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
+            const endAt = Number(state.endTime || 0);
+            if (!endAt || Date.now() < endAt) return;
+            await finalizeEventWithRewards();
           }
 
           function updateOverlayUi() {
@@ -6042,10 +6072,12 @@
               pendingCanvasSync = false;
             }
             if (pendingProgressSync || forceProgress) {
-              const percent = Number(computeProgressPercent(forceProgress).toFixed(2));
-              state.progress = percent;
-              updateOverlayUi();
-              await db.ref(`${EVENT_PATH}/progress`).set(percent);
+              if (isProgressLeader) {
+                const percent = Number(computeProgressPercent(forceProgress).toFixed(2));
+                state.progress = percent;
+                updateOverlayUi();
+                await db.ref(PROGRESS_PATH).set(percent);
+              }
               pendingProgressSync = false;
             }
             const percent = Number(state.progress || 0);
@@ -6054,7 +6086,7 @@
 
           function scheduleCanvasAndProgressSync() {
             pendingCanvasSync = true;
-            pendingProgressSync = true;
+            pendingProgressSync = Boolean(isProgressLeader);
             if (!syncTimer) {
               syncTimer = setTimeout(() => {
                 flushPendingState().catch(() => {});
@@ -6067,6 +6099,7 @@
             const now = Date.now();
             if (!force && now - lastProgressCheckAt < 500) return;
             lastProgressCheckAt = now;
+            if (!isProgressLeader) return;
             pendingProgressSync = true;
             const percent = Number(computeProgressPercent(force).toFixed(2));
             state.progress = percent;
@@ -6100,7 +6133,6 @@
           function stopDrawing() {
             if (!drawing) return;
             drawing = false;
-            checkCanvasProgress({ force: true });
             flushPendingState({ forceProgress: true }).catch(() => {});
           }
 
@@ -6174,7 +6206,6 @@
             img.onload = () => {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              checkCanvasProgress({ force: true });
             };
             img.src = dataUrl;
           }
@@ -6186,7 +6217,16 @@
             eventRef = db.ref(EVENT_PATH);
             eventRef.on('value', (snap) => {
               state = normalizeEvent(snap.val());
+              state.progress = normalizeProgressValue(state.progress);
               showNotification();
+              updateOverlayUi();
+              checkEventStatus().catch(() => {});
+            });
+
+            if (remoteProgressRef) remoteProgressRef.off();
+            remoteProgressRef = db.ref(PROGRESS_PATH);
+            remoteProgressRef.on('value', (snap) => {
+              state.progress = normalizeProgressValue(snap.val());
               updateOverlayUi();
             });
 
@@ -6213,10 +6253,13 @@
                 updateTimer();
               }, 1000);
 
+              await resolveProgressLeadership();
+
               if (progressCheckInterval) clearInterval(progressCheckInterval);
               progressCheckInterval = setInterval(() => {
                 checkCanvasProgress();
-              }, 2000);
+                checkEventStatus().catch(() => {});
+              }, 5000);
 
               window.addEventListener('resize', resizeCanvasToViewport);
               window.addEventListener('orientationchange', resizeCanvasToViewport);
@@ -6229,10 +6272,13 @@
             try {
               const db = await getDbReady();
               if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+              await db.ref('online_trails').remove();
+              await db.ref(PROGRESS_PATH).set(0);
               await db.ref(EVENT_PATH).set({
                 status: ACTIVE_STATUS,
                 type: EVENT_TYPE,
-                endTime: Date.now() + (20 * 60 * 1000)
+                endTime: Date.now() + (20 * 60 * 1000),
+                progress: 0
               });
             } catch (err) {
               console.error('adminLaunchEpicPaintEvent failed:', err);
@@ -7265,10 +7311,13 @@
 
           async function adminLaunchEpicPaintEvent() {
             const database = await waitForDbReady();
+            await database.ref('online_trails').remove();
+            await database.ref('game_events/current_progress').set(0);
             await database.ref('current_event').set({
               status: 'active',
               type: 'paint',
-              endTime: Date.now() + (20 * 60 * 1000)
+              endTime: Date.now() + (20 * 60 * 1000),
+              progress: 0
             });
           }
 
@@ -7391,13 +7440,15 @@
                 const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
                 await database.ref('mushu_event').set({ status: 'active', current_satiety: 0, target, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {}, combo_bonus: {}, startedAt: Date.now(), endAt: Date.now() + (mins * 60 * 1000), durationMs: mins * 60 * 1000 });
               } else {
+                await database.ref('online_trails').remove();
+                await database.ref('game_events/current_progress').set(0);
                 await database.ref('current_event').set({
                   type: 'paint',
                   status: 'active',
                   endTime: Date.now() + (mins * 60 * 1000),
                   participants: {},
                   strokes: {},
-                  progress: { percent: 0 }
+                  progress: 0
                 });
               }
 
