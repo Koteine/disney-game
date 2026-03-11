@@ -1,22 +1,57 @@
 (function (window) {
+  function isAdmin() {
+    return Number(window.currentUserId) === Number(window.ADMIN_ID);
+  }
+
+  async function ensureDbReady() {
+    if (typeof window.waitForDbReady === 'function') {
+      return window.waitForDbReady();
+    }
+    if (window.db) return window.db;
+    throw new Error('Database connection is not ready');
+  }
+
+  function resolveEventLauncher() {
+    return (
+      window.adminScheduleEpicPaintEvent ||
+      window.adminLaunchEpicPaintEvent ||
+      window.adminScheduleEvent
+    );
+  }
+
+  function wireAdminEventButton() {
+    const btn = document.getElementById('admin-schedule-event-btn');
+    if (!btn || btn.dataset.eventButtonWired === '1') return;
+
+    btn.disabled = false;
+    btn.removeAttribute('disabled');
+    btn.dataset.eventButtonWired = '1';
+
+    btn.addEventListener('click', async (ev) => {
+      ev?.preventDefault?.();
+
+      if (!isAdmin()) return;
+
+      try {
+        await ensureDbReady();
+        const run = resolveEventLauncher();
+        if (typeof run !== 'function') {
+          throw new Error('Event launcher is not available');
+        }
+        await run();
+      } catch (err) {
+        console.error('Failed to run admin event action:', err);
+      }
+    });
+  }
+
   function init() {
     if (typeof window.initEventSystem === 'function') {
       window.initEventSystem().catch((err) => console.error('initEventSystem failed:', err));
     }
 
-    // Fix: primary admin event button should use epic event scheduler/launcher.
-    const btn = document.getElementById('admin-schedule-event-btn');
-    if (btn) {
-      btn.disabled = false;
-      btn.removeAttribute('disabled');
-      btn.onclick = async (ev) => {
-        ev?.preventDefault?.();
-        if (Number(window.currentUserId) !== Number(window.ADMIN_ID)) return;
-        const run = window.adminScheduleEpicPaintEvent || window.adminLaunchEpicPaintEvent;
-        if (typeof run === 'function') await run();
-      };
-    }
+    wireAdminEventButton();
   }
 
-  window.EventsEngineModule = { init };
+  window.EventsEngineModule = { init, wireAdminEventButton };
 })(window);
