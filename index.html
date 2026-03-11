@@ -5780,6 +5780,14 @@
           let lastPoint = { x: 0, y: 0 };
           let finishing = false;
           let myColor = null;
+          let pendingCanvasSync = false;
+          let pendingProgressSync = false;
+          let syncTimer = null;
+          let lastProgressCheckAt = 0;
+          let lastFullProgressCheckAt = 0;
+          let dirtyRect = null;
+          let sampleMask = null;
+          let sampleMeta = { step: 4, cols: 0, rows: 0, total: 0, painted: 0 };
 
           const $ = (id) => document.getElementById(id);
 
@@ -5843,6 +5851,19 @@
             canvas.style.height = `${Math.max(420, window.innerHeight - 120)}px`;
             canvas.width = WORLD_WIDTH;
             canvas.height = WORLD_HEIGHT;
+            resetProgressSampling();
+          }
+
+          function resetProgressSampling() {
+            const canvas = getCanvas();
+            if (!canvas) return;
+            const step = 4;
+            const cols = Math.ceil(canvas.width / step);
+            const rows = Math.ceil(canvas.height / step);
+            sampleMeta = { step, cols, rows, total: cols * rows, painted: 0 };
+            sampleMask = new Uint8Array(sampleMeta.total);
+            dirtyRect = { x1: 0, y1: 0, x2: canvas.width, y2: canvas.height };
+            lastFullProgressCheckAt = 0;
           }
 
           function openEventOverlay() {
@@ -5907,6 +5928,24 @@
             await db.ref(`${EVENT_PATH}/canvas_data`).set(data);
           }
 
+          function markDirtySegment(x1, y1, x2, y2) {
+            const canvas = getCanvas();
+            if (!canvas) return;
+            const pad = BRUSH_SIZE;
+            const minX = Math.max(0, Math.floor(Math.min(x1, x2) - pad));
+            const minY = Math.max(0, Math.floor(Math.min(y1, y2) - pad));
+            const maxX = Math.min(canvas.width, Math.ceil(Math.max(x1, x2) + pad));
+            const maxY = Math.min(canvas.height, Math.ceil(Math.max(y1, y2) + pad));
+            if (!dirtyRect) {
+              dirtyRect = { x1: minX, y1: minY, x2: maxX, y2: maxY };
+              return;
+            }
+            dirtyRect.x1 = Math.min(dirtyRect.x1, minX);
+            dirtyRect.y1 = Math.min(dirtyRect.y1, minY);
+            dirtyRect.x2 = Math.max(dirtyRect.x2, maxX);
+            dirtyRect.y2 = Math.max(dirtyRect.y2, maxY);
+          }
+
           function drawLine(x1, y1, x2, y2, color) {
             const ctx = getCtx();
             if (!ctx) return;
@@ -5926,32 +5965,103 @@
             ctx.stroke();
           }
 
-          function computeProgressPercent() {
+          function computeProgressPercent(forceFull = false) {
             const canvas = getCanvas();
             const ctx = getCtx();
             if (!canvas || !ctx) return 0;
-            const step = 4;
-            const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            let total = 0;
-            let painted = 0;
-            for (let y = 0; y < canvas.height; y += step) {
-              for (let x = 0; x < canvas.width; x += step) {
-                total += 1;
-                const i = (y * canvas.width + x) * 4;
-                if (img[i + 3] > 0) painted += 1;
+            if (!sampleMask || sampleMeta.total === 0) resetProgressSampling();
+            const now = Date.now();
+            const shouldDoFull = forceFull || !dirtyRect || (now - lastFullProgressCheckAt >= 4000);
+            const step = sampleMeta.step;
+            let x1 = 0;
+            let y1 = 0;
+            let x2 = canvas.width;
+            let y2 = canvas.height;
+
+            if (!shouldDoFull && dirtyRect) {
+              x1 = dirtyRect.x1;
+              y1 = dirtyRect.y1;
+              x2 = dirtyRect.x2;
+              y2 = dirtyRect.y2;
+            }
+
+            const width = Math.max(1, x2 - x1);
+            const height = Math.max(1, y2 - y1);
+            const img = ctx.getImageData(x1, y1, width, height).data;
+            const startCol = Math.floor(x1 / step);
+            const endCol = Math.min(sampleMeta.cols - 1, Math.floor((x2 - 1) / step));
+            const startRow = Math.floor(y1 / step);
+            const endRow = Math.min(sampleMeta.rows - 1, Math.floor((y2 - 1) / step));
+
+            for (let row = startRow; row <= endRow; row += 1) {
+              for (let col = startCol; col <= endCol; col += 1) {
+                const x = col * step;
+                const y = row * step;
+                if (x < x1 || y < y1 || x >= x2 || y >= y2) continue;
+                const localX = x - x1;
+                const localY = y - y1;
+                const i = (localY * width + localX) * 4;
+                const idx = row * sampleMeta.cols + col;
+                const next = img[i + 3] > 0 ? 1 : 0;
+                const prev = sampleMask[idx];
+                if (prev !== next) {
+                  sampleMeta.painted += next ? 1 : -1;
+                  sampleMask[idx] = next;
+                }
               }
             }
-            return total ? (painted / total) * 100 : 0;
+
+            dirtyRect = null;
+            if (shouldDoFull) lastFullProgressCheckAt = now;
+            return sampleMeta.total ? (sampleMeta.painted / sampleMeta.total) * 100 : 0;
           }
 
-          async function syncProgressAndMaybeFinish() {
+          async function flushPendingState({ forceProgress = false } = {}) {
+            if (syncTimer) {
+              clearTimeout(syncTimer);
+              syncTimer = null;
+            }
+            if (!pendingCanvasSync && !pendingProgressSync) return;
             if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
             const db = await getDbReady();
-            const percent = Number(computeProgressPercent().toFixed(2));
+            if (pendingCanvasSync) {
+              const canvas = getCanvas();
+              if (canvas) {
+                const data = canvas.toDataURL('image/png');
+                await db.ref(`${EVENT_PATH}/canvas_data`).set(data);
+              }
+              pendingCanvasSync = false;
+            }
+            if (pendingProgressSync || forceProgress) {
+              const percent = Number(computeProgressPercent(forceProgress).toFixed(2));
+              state.progress = percent;
+              updateOverlayUi();
+              await db.ref(`${EVENT_PATH}/progress`).set(percent);
+              pendingProgressSync = false;
+            }
+            const percent = Number(state.progress || 0);
+            if (percent >= TARGET_PERCENT) await finalizeEventWithRewards();
+          }
+
+          function scheduleCanvasAndProgressSync() {
+            pendingCanvasSync = true;
+            pendingProgressSync = true;
+            if (!syncTimer) {
+              syncTimer = setTimeout(() => {
+                flushPendingState().catch(() => {});
+              }, 2000);
+            }
+          }
+
+          function checkCanvasProgress({ force = false } = {}) {
+            if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
+            const now = Date.now();
+            if (!force && now - lastProgressCheckAt < 500) return;
+            lastProgressCheckAt = now;
+            pendingProgressSync = true;
+            const percent = Number(computeProgressPercent(force).toFixed(2));
             state.progress = percent;
             updateOverlayUi();
-            await db.ref(`${EVENT_PATH}/progress`).set(percent);
-            if (percent >= TARGET_PERCENT) await finalizeEventWithRewards();
           }
 
           async function startDrawing(evt) {
@@ -5962,8 +6072,9 @@
             await registerParticipant();
             const color = await ensureMyColor();
             drawLine(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y, color);
-            await persistCanvasState();
-            await syncProgressAndMaybeFinish();
+            markDirtySegment(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y);
+            scheduleCanvasAndProgressSync();
+            checkCanvasProgress({ force: true });
           }
 
           async function draw(evt) {
@@ -5974,11 +6085,17 @@
             lastPoint = p;
             const color = await ensureMyColor();
             drawLine(from.x, from.y, p.x, p.y, color);
-            await persistCanvasState();
-            await syncProgressAndMaybeFinish();
+            markDirtySegment(from.x, from.y, p.x, p.y);
+            scheduleCanvasAndProgressSync();
+            checkCanvasProgress();
           }
 
-          function stopDrawing() { drawing = false; }
+          function stopDrawing() {
+            if (!drawing) return;
+            drawing = false;
+            checkCanvasProgress({ force: true });
+            flushPendingState({ forceProgress: true }).catch(() => {});
+          }
 
           function bindCanvasEvents() {
             const canvas = getCanvas();
@@ -6044,11 +6161,13 @@
             const ctx = getCtx();
             if (!canvas || !ctx) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            resetProgressSampling();
             if (!dataUrl) return;
             const img = new Image();
             img.onload = () => {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              checkCanvasProgress({ force: true });
             };
             img.src = dataUrl;
           }
