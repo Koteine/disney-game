@@ -1217,6 +1217,7 @@
         let systemNotificationsRef = null;
         let wandBlessingRef = null;
         let gameEventsRef = null;
+        let gameEventsTickInterval = null;
         let epicPaintStrokesRef = null;
         let winnerHistoryRef = null;
         let drawScheduleRef = null;
@@ -3566,10 +3567,43 @@
         }
 
         async function adminScheduleEvent() {
-            if (typeof window.adminScheduleEpicPaintEvent === 'function') {
-                return window.adminScheduleEpicPaintEvent();
+            if (currentUserId !== ADMIN_ID) return;
+
+            const startRaw = String(document.getElementById('event-start-at')?.value || '').trim();
+            const durationMins = Number(document.getElementById('event-duration-mins')?.value || 0);
+            const eventId = String(document.getElementById('event-type')?.value || EPIC_PAINT_EVENT_ID);
+
+            if (!startRaw) return alert('Выбери дату и время старта события.');
+            if (!Number.isFinite(durationMins) || durationMins < 1) return alert('Укажи длительность события (в минутах).');
+
+            const startAt = parseMoscowDateTimeLocalInput(startRaw);
+            const nowMs = typeof getServerNowMs === 'function' ? getServerNowMs() : Date.now();
+            if (!Number.isFinite(startAt) || startAt <= nowMs - 1000) return alert('Время старта должно быть в будущем.');
+
+            const existingSchedules = queuedGameEvents.filter(ev => ev.status === 'scheduled');
+            if (existingSchedules.length >= MAX_SCHEDULED_EVENTS) {
+                return alert(`Достигнут лимит очереди событий (${MAX_SCHEDULED_EVENTS}). Сначала убери лишние.`);
             }
-            return alert('Планировщик событий ещё не инициализирован.');
+
+            const eventNames = {
+                [EPIC_PAINT_EVENT_ID]: 'Эпичный закрас',
+                [WALL_BATTLE_EVENT_ID]: 'Стенка на стенку',
+                [MUSHU_EVENT_ID]: 'Пир Мушу'
+            };
+            const safeDurationMins = Math.max(1, Math.round(durationMins));
+
+            await db.ref('game_events').push({
+                id: eventId,
+                name: eventNames[eventId] || 'Игровое событие',
+                status: 'scheduled',
+                startAt,
+                endAt: startAt + (safeDurationMins * 60 * 1000),
+                durationMins: safeDurationMins,
+                createdAt: Date.now(),
+                createdBy: currentUserId
+            });
+
+            alert('Событие запланировано.');
         }
 
 
@@ -3688,6 +3722,7 @@
 
         function syncGameEvents() {
             if (gameEventsRef) gameEventsRef.off();
+            if (gameEventsTickInterval) clearInterval(gameEventsTickInterval);
             gameEventsRef = db.ref('game_events');
             gameEventsRef.on('value', snap => {
                 const events = [];
@@ -3709,6 +3744,11 @@
                 activateScheduledEventIfNeeded();
                 failExpiredEventIfNeeded();
             });
+
+            gameEventsTickInterval = setInterval(() => {
+                activateScheduledEventIfNeeded();
+                failExpiredEventIfNeeded();
+            }, 1000);
 
             if (epicPaintStrokesRef) epicPaintStrokesRef.off();
             epicPaintStrokesRef = db.ref('epic_paint/strokes');
