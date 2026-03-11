@@ -7375,7 +7375,10 @@
             return adminLaunchEpicPaintEvent();
           }
 
-          const EVENT_SCHEDULES_PATH = 'event_schedule';
+          // Исторически расписание событий хранилось в `event_schedules`.
+          // Возвращаем этот путь, чтобы не терять уже созданные записи
+          // и корректно показывать/запускать запланированные ивенты.
+          const EVENT_SCHEDULES_PATH = 'event_schedules';
           let eventSchedules = [];
           let eventSchedulesRef = null;
           let adminServerOffsetMs = 0;
