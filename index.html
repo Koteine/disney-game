@@ -877,6 +877,7 @@
                     <label style="font-size:12px; color:#777;">Сколько длится (минут)</label>
                     <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
                     <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
+                    <button onclick="adminBroadcastEventNotification()" class="admin-btn" style="background:#ef6c00; width:100%; margin:8px 0 0;">📣 Запустить рассылку</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
                 </div>
             </div>
@@ -1039,6 +1040,8 @@
 
     <script>
        const JSON_URL = 'tasks.json';
+        const BOT_TOKEN = 'ТВОЙ_ТОКЕН_ОТ_BOTFATHER';
+        const APP_LINK = 'https://t.me/DisneyGamebyKoteine_bot/ColoringGameByKoteine';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -1058,6 +1061,29 @@
         const onValue = (ref, handler) => ref.on('value', handler);
         function adminUpdate(path, patch) {
             return db.ref(path).update(patch);
+        }
+
+        async function notifyPlayer(userId, message) {
+            const chatId = String(userId || '').trim();
+            if (!chatId || !message) return false;
+
+            const replyMarkup = JSON.stringify({
+                inline_keyboard: [[{ text: 'Играть', url: APP_LINK }]]
+            });
+            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${encodeURIComponent(chatId)}&text=${encodeURIComponent(message)}&parse_mode=HTML&reply_markup=${encodeURIComponent(replyMarkup)}`;
+
+            try {
+                const response = await fetch(url, { method: 'GET' });
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => '');
+                    console.warn(`[notifyPlayer] Ошибка отправки для userId=${chatId}. status=${response.status}. ${errorText}`);
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.warn(`[notifyPlayer] Сетевая ошибка для userId=${chatId}.`, error);
+                return false;
+            }
         }
 
         function getTelegramDisplayName() {
@@ -2461,6 +2487,7 @@
                     }
                 })
             ]);
+            await notifyPlayer(cellOwnerUserId, '🔔 Игрок вызывает тебя на дуэль! Заходи скорее!');
             const ownerName = decodeURIComponent(String(ownerNameEncoded || ''));
             alert(`Импульс отправлен игроку ${ownerName || 'Игрок'} ✨`);
         }
@@ -3327,6 +3354,33 @@
                 teams: null,
                 createdBy: currentUserId
             });
+        }
+
+
+        async function adminBroadcastEventNotification() {
+            if (currentUserId !== ADMIN_ID) return;
+
+            const eventType = String(document.getElementById('event-type')?.value || '').trim();
+            const eventMessages = {
+                mushu_feast: '🐲 Мушу проголодался! Неси краски! 🥟',
+                epic_paint: '🎨 Эпичный закрас начался! 🌈',
+                wall_battle: '⚔️ Битва Стенка на стенку! 🚩'
+            };
+            const message = eventMessages[eventType];
+            if (!message) return alert('Неизвестный тип события для рассылки.');
+
+            const playersSnap = await db.ref('player_season_status').once('value');
+            const players = playersSnap.val() || {};
+            const userIds = Object.keys(players);
+            if (!userIds.length) return alert('Нет игроков для рассылки.');
+
+            let sentCount = 0;
+            for (const userId of userIds) {
+                const ok = await notifyPlayer(userId, message);
+                if (ok) sentCount += 1;
+            }
+
+            alert(`Рассылка завершена. Успешно: ${sentCount} из ${userIds.length}.`);
         }
 
         async function adminCancelScheduledEvent(eventKey) {
