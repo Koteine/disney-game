@@ -1,8 +1,7 @@
-(function (window) {
-  function init() {
-    if (typeof window.renderInventory === 'function') window.renderInventory();
-    if (typeof window.fillAdminItemsFormDefaults === 'function') window.fillAdminItemsFormDefaults();
-  }
+export function initItemsSystem() {
+  if (typeof window.renderInventory === 'function') window.renderInventory();
+  if (typeof window.fillAdminItemsFormDefaults === 'function') window.fillAdminItemsFormDefaults();
+}
 
-  window.ItemsSystemModule = { init };
-})(window);
+export const ItemsSystemModule = { init: initItemsSystem };
+window.ItemsSystemModule = ItemsSystemModule;
