@@ -3039,7 +3039,7 @@
             const startAt = eventData.activatedAt || eventData.startAt || Date.now();
             const endAt = eventData.completedAt || eventData.failedAt || Date.now();
             const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
-            const startText = new Date(startAt).toLocaleString('ru-RU');
+            const startText = new Date(startAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
             const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
             await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
         }
@@ -3459,12 +3459,12 @@
             const scheduled = queuedGameEvents.filter(ev => ev.status === 'scheduled').slice(0, MAX_SCHEDULED_EVENTS);
 
             const activeLine = active
-                ? `Активно: ${active.name || active.id} · до ${new Date(active.endAt || 0).toLocaleString('ru-RU')}`
+                ? `Активно: ${active.name || active.id} · до ${new Date(active.endAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}`
                 : 'Активного события сейчас нет.';
 
             const scheduledLines = scheduled.length
                 ? scheduled.map((ev, idx) => {
-                    const start = new Date(ev.startAt || 0).toLocaleString('ru-RU');
+                    const start = new Date(ev.startAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
                     const duration = ev.durationMins || 0;
                     return `${idx + 1}) ${ev.name || ev.id} · старт ${start} · ${duration} мин <button onclick="adminCancelScheduledEvent('${ev.key}')" style="margin-left:6px; border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`;
                 }).join('<br>')
@@ -3876,7 +3876,7 @@
                         ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">${[1,2,3,4].map(n => `<button onclick="chooseInkChallengeOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
                         ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmInkChallengeOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
-                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${new Date(challenge.optionDeadline).toLocaleString('ru-RU')}</div>` : ''}
+                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${new Date(challenge.optionDeadline).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}</div>` : ''}
                     </div>`;
                 } else if (cell.isWandBlessing) {
                     const wand = (myWandBlessing && myWandBlessing.round === cell.round) ? myWandBlessing : null;
@@ -4287,8 +4287,8 @@
                 return;
             }
             const latest = winnerHistoryItems[0];
-            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · №${latest.ticket} · ${latest.winnerName}`;
-            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
+            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} · №${latest.ticket} · ${latest.winnerName}`;
+            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
         }
 
         function toggleWinnerHistoryPanel() {
@@ -4318,7 +4318,7 @@
             const el = document.getElementById('admin-draw-status');
             if (!el) return;
             const state = currentDrawSchedule?.status || 'ready';
-            const start = currentDrawSchedule?.startTime ? new Date(currentDrawSchedule.startTime).toLocaleString('ru-RU') : '—';
+            const start = currentDrawSchedule?.startTime ? new Date(currentDrawSchedule.startTime).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : '—';
             const queued = drawSchedules.filter(d => d.status === 'scheduled').length;
             el.innerText = `Статус: ${state}. Запланировано: ${queued}. Синхронизация: raffle_state. Старт (сервер): ${start}.`;
         }
@@ -5586,7 +5586,7 @@
             function formatTicketArchiveHistoryDate(ts) {
                 const value = Number(ts || 0);
                 if (!value) return '—';
-                return new Date(value).toLocaleString('ru-RU');
+                return new Date(value).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
             }
 
             function runAdminTicketArchiveSearch() {
@@ -6691,6 +6691,9 @@
             const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
             return date.toISOString().slice(0, 16);
           });
+          window.formatMoscowDateTime = formatMoscowDateTime;
+          window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
+          window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
 
           const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
           function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
