@@ -1213,6 +1213,7 @@
         let legacyWorksRef = null;
         let inventoryRef = null;
         let challengeRef = null;
+        let systemNotificationsRef = null;
         let wandBlessingRef = null;
         let gameEventsRef = null;
         let epicPaintStrokesRef = null;
@@ -1228,6 +1229,12 @@
         let lastCompletedEpicEventKeyShown = null;
         let lastFailedEpicEventKeyShown = null;
         let epicPaintStrokes = [];
+        let epicPaintStrokeKeys = new Set();
+        let epicPaintStrokeFlushTimer = null;
+        let epicPaintPendingStrokeQueue = [];
+        let epicPaintParticipantTeamCache = {};
+        let epicPaintCoverageRaf = null;
+        let newsFeedSeenKeys = new Set();
         let epicPaintHasDismissedStart = false;
         let epicPaintViewMode = 'event';
         let myRoundHasMove = false;
@@ -1258,6 +1265,8 @@
         let duelDrawingState = { drawing: false, enabled: false, ended: false };
         let duelTimerInterval = null;
         let duelCountdownInterval = null;
+
+        const DUEL_RESULT_DISMISSED_STORAGE_KEY = 'duel_result_dismissed_ids';
 
 
         const EPIC_PAINT_EVENT_ID = 'epic_paint';
@@ -1825,7 +1834,9 @@
                 repaintOnlineTrails();
             });
 
-            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+            if (systemNotificationsRef) systemNotificationsRef.off();
+            systemNotificationsRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(20);
+            systemNotificationsRef.on('child_added', snap => {
                 const v = snap.val() || {};
                 if (!v.text) return;
                 if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
@@ -1834,13 +1845,6 @@
                 }
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
-
-            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
-                const v = snap.val() || {};
-                if (!v.text) return;
-                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
-            });
-
             if (challengeRef) challengeRef.off();
             challengeRef = db.ref(`whitelist/${currentUserId}/ink_challenge`);
             challengeRef.on('value', snap => {
@@ -1866,9 +1870,16 @@
             newsFeedRef = db.ref('news_feed').limitToLast(30);
             newsFeedRef.on('value', snap => {
                 const items = [];
+                const seenText = new Set();
+                newsFeedSeenKeys = new Set();
                 snap.forEach(item => {
                     const v = item.val();
-                    if (v?.text) items.push(v.text);
+                    const key = String(item.key || '');
+                    const text = String(v?.text || '').trim();
+                    if (!text || newsFeedSeenKeys.has(key) || seenText.has(text)) return;
+                    newsFeedSeenKeys.add(key);
+                    seenText.add(text);
+                    items.push(text);
                 });
                 const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
 
@@ -2935,11 +2946,14 @@
                         const myScore = Number(row.scores?.[me] || 0);
                         const winner = String(row.winnerId || '') === me;
                         closeCalligraphyDuelUI();
-                        if (winner) {
-                            launchCelebrationFireworks();
-                            alert(`Победа в дуэли! Точность: ${myScore}%`);
-                        } else {
-                            alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
+                        if (!isDuelResultDismissed(duelKey)) {
+                            if (winner) {
+                                launchCelebrationFireworks();
+                                alert(`Победа в дуэли! Точность: ${myScore}%`);
+                            } else {
+                                alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
+                            }
+                            rememberDismissedDuelResult(duelKey);
                         }
                     }
                     if (row.status === 'expired' && !noticeState.alertExpired[duelKey]) {
@@ -3185,46 +3199,94 @@
             canvas.addEventListener('touchcancel', end);
         }
 
+        async function flushEpicPaintStrokeQueue() {
+            if (!epicPaintPendingStrokeQueue.length) return;
+            const queue = epicPaintPendingStrokeQueue;
+            epicPaintPendingStrokeQueue = [];
+            const updates = {};
+            queue.forEach(stroke => {
+                const key = db.ref('epic_paint/strokes').push().key;
+                updates[`epic_paint/strokes/${key}`] = stroke;
+            });
+            await db.ref().update(updates);
+        }
+
+        function scheduleEpicPaintStrokeFlush() {
+            if (epicPaintStrokeFlushTimer) return;
+            epicPaintStrokeFlushTimer = setTimeout(async () => {
+                epicPaintStrokeFlushTimer = null;
+                try {
+                    await flushEpicPaintStrokeQueue();
+                } catch (e) {
+                    console.error('Epic paint stroke flush failed', e);
+                }
+            }, 80);
+        }
+
+        async function getCachedEpicPaintTeam(uid) {
+            const cacheKey = String(uid || '');
+            if (!cacheKey) return 'red';
+            if (epicPaintParticipantTeamCache[cacheKey]) return epicPaintParticipantTeamCache[cacheKey];
+            const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
+            const team = teamInfo.team || 'red';
+            epicPaintParticipantTeamCache[cacheKey] = team;
+            return team;
+        }
+
         async function pushEpicPaintStroke(x1, y1, x2, y2) {
             if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
             if (Number(currentUserId) === Number(ADMIN_ID)) return;
             const uid = currentUserId;
-            const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
-            const team = teamInfo.team || 'red';
+            const team = await getCachedEpicPaintTeam(uid);
             const color = currentGameEvent?.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
-            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: Date.now() });
-            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, team, at: Date.now() });
+            const now = Date.now();
+            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: now });
+            epicPaintPendingStrokeQueue.push({ x1, y1, x2, y2, color, uid, team, at: now });
+            scheduleEpicPaintStrokeFlush();
         }
 
-        function drawEpicPaint() {
+        function drawSingleEpicPaintStroke(ctx, stroke) {
+            if (!ctx || !stroke) return;
+            ctx.beginPath();
+            ctx.lineWidth = 16;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = stroke.color || '#ff007f';
+            ctx.moveTo(stroke.x1 || 0, stroke.y1 || 0);
+            ctx.lineTo(stroke.x2 || 0, stroke.y2 || 0);
+            ctx.stroke();
+        }
+
+        function drawEpicPaint(fullRedraw = false) {
             const canvas = document.getElementById('epic-paint-canvas');
             const progressEl = document.getElementById('epic-paint-progress');
             if (!canvas || !progressEl) return;
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (fullRedraw) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                epicPaintStrokeKeys.clear();
+            }
 
             (epicPaintStrokes || []).forEach(stroke => {
-                ctx.beginPath();
-                ctx.lineWidth = 16;
-                ctx.lineCap = 'round';
-                ctx.strokeStyle = stroke.color || '#ff007f';
-                ctx.moveTo(stroke.x1 || 0, stroke.y1 || 0);
-                ctx.lineTo(stroke.x2 || 0, stroke.y2 || 0);
-                ctx.stroke();
+                if (stroke?.__key && epicPaintStrokeKeys.has(stroke.__key)) return;
+                if (stroke?.__key) epicPaintStrokeKeys.add(stroke.__key);
+                drawSingleEpicPaintStroke(ctx, stroke);
             });
 
-            const coverage = calculateEpicPaintCoverage(canvas);
-            const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
-            const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
-            if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
-                progressEl.innerText = `Общий закрас: ${coverage.toFixed(1)}% · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
-                maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
-            } else {
-                progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
-                maybeFinalizeEpicPaintSuccess(coverage);
-            }
+            if (epicPaintCoverageRaf) cancelAnimationFrame(epicPaintCoverageRaf);
+            epicPaintCoverageRaf = requestAnimationFrame(() => {
+                const coverage = calculateEpicPaintCoverage(canvas);
+                const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
+                const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
+                if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
+                    progressEl.innerText = `Общий закрас: ${coverage.toFixed(1)}% · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
+                    maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
+                } else {
+                    progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
+                    maybeFinalizeEpicPaintSuccess(coverage);
+                }
+            });
         }
 
         function calculateEpicPaintCoverage(canvas) {
@@ -3246,9 +3308,13 @@
 
 
         function calculateTeamCoverage(strokes, team) {
-            const total = (strokes || []).length || 1;
-            const own = (strokes || []).filter(s => (s.team || 'red') === team).length;
-            return (own / total) * 100;
+            const all = strokes || [];
+            if (!all.length) return 0;
+            let own = 0;
+            for (let i = 0; i < all.length; i += 1) {
+                if ((all[i].team || 'red') === team) own += 1;
+            }
+            return (own / all.length) * 100;
         }
 
         function formatDurationMinutesRu(totalMinutes) {
@@ -3368,6 +3434,7 @@
                     archivedAt: Date.now(),
                     excluded: false
                 });
+                await addKarmaToUser(uid, 1);
                 await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
             }
 
@@ -3646,6 +3713,10 @@
                     });
                 } else {
                     epicPaintHasDismissedStart = false;
+                    epicPaintStrokes = [];
+                    epicPaintStrokeKeys.clear();
+                    epicPaintParticipantTeamCache = {};
+                    epicPaintPendingStrokeQueue = [];
                     await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
                 }
             }
@@ -3721,10 +3792,11 @@
                 const strokes = [];
                 snap.forEach(s => {
                     const v = s.val();
-                    if (v) strokes.push(v);
+                    if (v) strokes.push({ ...v, __key: s.key });
                 });
+                const needsFullRedraw = strokes.length < epicPaintStrokes.length;
                 epicPaintStrokes = strokes;
-                drawEpicPaint();
+                drawEpicPaint(needsFullRedraw);
             });
 
             db.ref('whitelist').on('value', snap => {
@@ -7684,7 +7756,9 @@
                 repaintOnlineTrails();
             });
 
-            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+            if (systemNotificationsRef) systemNotificationsRef.off();
+            systemNotificationsRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(20);
+            systemNotificationsRef.on('child_added', snap => {
                 const v = snap.val() || {};
                 if (!v.text) return;
                 if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
@@ -7719,9 +7793,16 @@
             newsFeedRef = db.ref('news_feed').limitToLast(30);
             newsFeedRef.on('value', snap => {
                 const items = [];
+                const seenText = new Set();
+                newsFeedSeenKeys = new Set();
                 snap.forEach(item => {
                     const v = item.val();
-                    if (v?.text) items.push(v.text);
+                    const key = String(item.key || '');
+                    const text = String(v?.text || '').trim();
+                    if (!text || newsFeedSeenKeys.has(key) || seenText.has(text)) return;
+                    newsFeedSeenKeys.add(key);
+                    seenText.add(text);
+                    items.push(text);
                 });
                 const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
 
@@ -7922,6 +8003,34 @@
             body.classList.toggle('expanded', willExpand);
             const btn = headerEl?.querySelector('.collapse-toggle');
             if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
+        }
+
+
+        function getDismissedDuelResultIds() {
+            try {
+                const raw = localStorage.getItem(DUEL_RESULT_DISMISSED_STORAGE_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function rememberDismissedDuelResult(duelKey) {
+            if (!duelKey) return;
+            const current = getDismissedDuelResultIds();
+            const id = String(duelKey);
+            if (current.includes(id)) return;
+            try {
+                localStorage.setItem(DUEL_RESULT_DISMISSED_STORAGE_KEY, JSON.stringify([...current, id].slice(-300)));
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
+        function isDuelResultDismissed(duelKey) {
+            if (!duelKey) return false;
+            return getDismissedDuelResultIds().includes(String(duelKey));
         }
 
         const PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY = 'player_notification_dismissed_ids';
