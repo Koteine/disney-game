@@ -1846,6 +1846,14 @@
                     return;
                 }
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
+                if (v.type === 'calligraphy_duel_invite') {
+                    setTimeout(() => {
+                        const duelNotice = document.getElementById('duel-notice');
+                        if (!duelNotice || duelNotice.style.display === 'none') {
+                            alert('🎭 Вам бросили вызов в каллиграфии! Откройте уведомление и примите решение.');
+                        }
+                    }, 100);
+                }
             });
             if (challengeRef) challengeRef.off();
             challengeRef = db.ref(`whitelist/${currentUserId}/ink_challenge`);
@@ -2525,6 +2533,21 @@
             });
         }
 
+        async function pushSystemNotification(userId, payload = {}) {
+            const targetId = String(userId || '').trim();
+            if (!targetId || !db) return;
+            const text = String(payload.text || '').trim();
+            if (!text) return;
+
+            const now = Date.now();
+            await db.ref(`system_notifications/${targetId}`).push({
+                ...payload,
+                text,
+                createdAt: Number(payload.createdAt) || now,
+                type: String(payload.type || 'info')
+            });
+        }
+
         function toggleNewsPanel() {
             toggleExpandablePanel('news-list', 'news-toggle-btn');
         }
@@ -2577,6 +2600,14 @@
                     [String(currentUserId)]: { accepted: true, nickname: players[myIndex]?.n || 'Игрок' },
                     [String(cellOwnerUserId)]: { accepted: false, nickname: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок' }
                 }
+            });
+
+            await pushSystemNotification(cellOwnerUserId, {
+                text: `🎭 ${players[myIndex]?.n || 'Игрок'} бросил(а) вам вызов в каллиграфии!`,
+                type: 'calligraphy_duel_invite',
+                duelKey,
+                fromUserId: String(currentUserId),
+                expiresAt: now + DUEL_PENDING_MS
             });
 
             await senderRef.update({ lastDuelSent: now, updatedAt: now });
@@ -7419,12 +7450,36 @@
           // Возвращаем этот путь, чтобы не терять уже созданные записи
           // и корректно показывать/запускать запланированные ивенты.
           const EVENT_SCHEDULES_PATH = 'event_schedules';
+          const LEGACY_EVENT_SCHEDULES_PATH = 'scheduled_events';
           let eventSchedules = [];
           let eventSchedulesRef = null;
+          let legacyEventSchedulesRef = null;
           let adminServerOffsetMs = 0;
 
           function getAdminNow() {
             return Date.now() + (Number(adminServerOffsetMs) || 0);
+          }
+
+
+          function normalizeEventScheduleRows(rows = []) {
+            return rows
+              .map(ev => ({
+                ...ev,
+                startAt: Number(ev.startAt) || 0,
+                durationMins: Math.max(1, Number(ev.durationMins) || 10),
+                status: String(ev.status || 'scheduled')
+              }))
+              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+          }
+
+          async function migrateLegacyEventScheduleIfNeeded(database, key) {
+            if (!database || !key) return;
+            const sourceRef = database.ref(`${LEGACY_EVENT_SCHEDULES_PATH}/${key}`);
+            const targetRef = database.ref(`${EVENT_SCHEDULES_PATH}/${key}`);
+            const [sourceSnap, targetSnap] = await Promise.all([sourceRef.once('value'), targetRef.once('value')]);
+            if (!sourceSnap.exists() || targetSnap.exists()) return;
+            await targetRef.set(sourceSnap.val());
+            await sourceRef.remove();
           }
 
           function renderEventSchedules() {
@@ -7534,12 +7589,32 @@
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
             if (eventSchedulesRef) eventSchedulesRef.off();
+            if (legacyEventSchedulesRef) legacyEventSchedulesRef.off();
+
+            const mergeCache = new Map();
+            const syncFromPath = async (snap, sourcePath) => {
+              const migrationOps = [];
+              snap.forEach(item => {
+                const key = item.key;
+                const row = { key, ...(item.val() || {}) };
+                mergeCache.set(key, row);
+                if (sourcePath === LEGACY_EVENT_SCHEDULES_PATH) {
+                  migrationOps.push(migrateLegacyEventScheduleIfNeeded(database, key));
+                }
+              });
+              if (migrationOps.length) await Promise.allSettled(migrationOps);
+              eventSchedules = normalizeEventScheduleRows(Array.from(mergeCache.values()));
+              renderEventSchedules();
+            };
+
             eventSchedulesRef = database.ref(EVENT_SCHEDULES_PATH);
             eventSchedulesRef.on('value', snap => {
-              const list = [];
-              snap.forEach(item => list.push({ key: item.key, ...(item.val() || {}) }));
-              eventSchedules = list.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
-              renderEventSchedules();
+              syncFromPath(snap, EVENT_SCHEDULES_PATH).catch(err => console.error('Failed to sync event_schedules', err));
+            });
+
+            legacyEventSchedulesRef = database.ref(LEGACY_EVENT_SCHEDULES_PATH);
+            legacyEventSchedulesRef.on('value', snap => {
+              syncFromPath(snap, LEGACY_EVENT_SCHEDULES_PATH).catch(err => console.error('Failed to sync scheduled_events', err));
             });
           }
 
