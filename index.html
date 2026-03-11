@@ -7636,10 +7636,20 @@
             }
         }
 
-        function closePlayerNotification(notifId, shouldRemember = true) {
+        async function closePlayerNotification(notifId, shouldRemember = true) {
             const node = document.getElementById(notifId);
             if (node) node.remove();
             if (shouldRemember) rememberDismissedPlayerNotification(notifId);
+
+            const notifIdStr = String(notifId || '');
+            if (!notifIdStr.startsWith('sys-') || !currentUserId || !db) return;
+            const notificationKey = notifIdStr.slice(4);
+            if (!notificationKey) return;
+            try {
+                await db.ref(`system_notifications/${currentUserId}/${notificationKey}`).remove();
+            } catch (err) {
+                console.warn('Failed to remove player notification from DB', err);
+            }
         }
 
         function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
