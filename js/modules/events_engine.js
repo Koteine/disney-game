@@ -16,8 +16,6 @@ export async function ensureDbReady(dbInstance) {
 
 export function resolveEventLauncher() {
   return (
-    window.adminScheduleEpicPaintEvent ||
-    window.adminLaunchEpicPaintEvent ||
     window.adminScheduleEvent
   );
 }
@@ -58,7 +56,7 @@ function normalizePlannedEvent(row, key) {
   const event = row && typeof row === 'object' ? row : {};
   return {
     key,
-    type: String(event.type || event.id || 'epic_paint'),
+    type: String(event.type || event.id || 'generic'),
     startAt: toEventTimeMs(event.startAt),
     durationMins: Math.max(1, Number(event.durationMins) || 10),
     status: String(event.status || 'scheduled')
@@ -93,18 +91,10 @@ async function activatePlannedEventIfDue(db) {
   if (!tx.committed) return;
 
   try {
-    if (dueEvent.type === 'mushu_feast') {
-      const durationMs = dueEvent.durationMins * 60 * 1000;
-      await db.ref('mushu_event').update({
-        status: 'active',
-        startedAt: Date.now(),
-        endAt: Date.now() + durationMs,
-        durationMs
-      });
-    } else if (typeof window.adminLaunchEpicPaintEvent === 'function') {
-      await window.adminLaunchEpicPaintEvent(dueEvent.durationMins);
+    const launchEvent = window.adminScheduleEvent;
+    if (typeof launchEvent === 'function') {
+      await launchEvent({ durationMins: dueEvent.durationMins, type: dueEvent.type, immediate: true });
     }
-
   } catch (err) {
     console.error('Failed to activate planned event:', err);
     await db.ref(`${EVENT_SCHEDULES_PATH}/${dueEvent.key}`).update({
