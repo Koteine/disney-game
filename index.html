@@ -1246,6 +1246,7 @@
         let epicPaintPendingStrokeQueue = [];
         let epicPaintParticipantTeamCache = {};
         let epicPaintCoverageRaf = null;
+        let epicPaintCanvasPixelsTotal = 0;
         let newsFeedSeenKeys = new Set();
         let epicPaintHasDismissedStart = false;
         let epicPaintViewMode = 'event';
@@ -2584,6 +2585,14 @@
             if (!currentUserId) return;
             const me = String(currentUserId);
             const noticeState = { pendingForMe: null, incoming: null, timerId: null, alertExpired: {}, alertDone: {} };
+            console.log('DEBUG: Duel listener started');
+
+            function showDuelNotification(duel) {
+                if (!duel || duel.status !== 'pending') return;
+                noticeState.incoming = duel;
+                renderNoticeState();
+            }
+            window.showDuelNotification = showDuelNotification;
 
             const renderNoticeState = () => {
                 if (noticeState.pendingForMe && noticeState.pendingForMe.status === 'pending') {
@@ -2601,6 +2610,14 @@
                 }
                 renderDuelNotice('', false);
             };
+
+            if (duelInvitesRef) duelInvitesRef.off();
+            duelInvitesRef = db.ref(DUEL_PATH).limitToLast(100);
+            duelInvitesRef.on('child_added', snap => {
+                const row = snap.val() || {};
+                if (String(row.opponentId) !== me || row.status !== 'pending') return;
+                showDuelNotification({ key: snap.key, ...row });
+            });
 
             if (duelRequestsRef) duelRequestsRef.off();
             duelRequestsRef = db.ref(DUEL_PATH).limitToLast(100);
@@ -2831,6 +2848,8 @@
             const canvas = document.getElementById('epic-paint-canvas');
             if (!canvas || canvas.dataset.ready === '1') return;
             canvas.dataset.ready = '1';
+            epicPaintCanvasPixelsTotal = Math.max(0, Number(canvas.width || 0) * Number(canvas.height || 0));
+            console.log(`DEBUG: Canvas pixels total: ${epicPaintCanvasPixelsTotal}`);
             const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
 
             const getPos = evt => {
@@ -2971,18 +2990,18 @@
         function calculateEpicPaintCoverage(canvas) {
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const sample = 6;
+            const sampledTotalPixels = Math.ceil((Number(canvas.width) || 0) / sample) * Math.ceil((Number(canvas.height) || 0) / sample);
+            if (!sampledTotalPixels) return 0;
             const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
             let painted = 0;
-            let total = 0;
             for (let y = 0; y < canvas.height; y += sample) {
                 for (let x = 0; x < canvas.width; x += sample) {
                     const idx = (y * canvas.width + x) * 4;
                     const r = img[idx], g = img[idx + 1], b = img[idx + 2];
-                    total += 1;
                     if (!(r > 246 && g > 246 && b > 246)) painted += 1;
                 }
             }
-            return total ? (painted / total) * 100 : 0;
+            return (painted / sampledTotalPixels) * 100;
         }
 
 
@@ -3358,7 +3377,14 @@
                     epicPaintStrokeKeys.clear();
                     epicPaintParticipantTeamCache = {};
                     epicPaintPendingStrokeQueue = [];
-                    await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
+                    await db.ref('epic_paint').set({
+                        strokes: null,
+                        participants: null,
+                        rewarded: null,
+                        painted_pixels: null,
+                        pixels: null,
+                        canvas_data: null
+                    });
                 }
             }
         }
