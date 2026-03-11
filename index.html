@@ -4964,8 +4964,53 @@
             alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
         }
 
+      let adminListUsersCache = [];
+      let adminListWhitelistRef = null;
+      let adminListSeasonRef = null;
+      let adminListInterval = null;
+
+      function renderAdminList() {
+            const holder = document.getElementById('active-players');
+            if (!holder) return;
+
+            const users = [...adminListUsersCache].sort((a, b) => {
+                const aIdx = Number.isInteger(a.charIndex) ? a.charIndex : 999;
+                const bIdx = Number.isInteger(b.charIndex) ? b.charIndex : 999;
+                if (aIdx !== bIdx) return aIdx - bIdx;
+                return String(a.userTgId).localeCompare(String(b.userTgId));
+            });
+
+            let h = `<b>Список художников (${users.length}):</b><br>`;
+            users.forEach(({ userTgId, charIndex }) => {
+                const charName = players[charIndex]?.n || "Неизвестный";
+                const charColor = charColors[charIndex] || "#333";
+                const profile = seasonProfilesByUserId[String(userTgId)] || {};
+                const lastSeen = Number(profile.lastSeen || profile.onlineHeartbeatAt || 0);
+                const isOnline = !!lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
+                const onlineChip = `<span style="display:inline-flex; align-items:center; gap:4px; margin-top:3px; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:700; color:${isOnline ? '#1b5e20' : '#616161'}; background:${isOnline ? '#c8e6c9' : '#eceff1'};">${isOnline ? '🟢 Онлайн' : '⚪ Оффлайн'}</span>`;
+
+                h += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
+                        <span style="text-align:left;">
+                            <b style="color:${charColor}">${charName}</b><br>
+                            <code style="color:#888; font-size:10px;">ID: ${userTgId}</code><br>
+                            ${onlineChip}
+                        </span>
+                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
+                    </div>`;
+            });
+
+            if (!users.length) h += '<small style="color:#999;">Пока список пуст.</small>';
+            holder.innerHTML = h;
+      }
+
       function syncAdminList() {
-            db.ref('whitelist').on('value', snap => {
+            if (adminListWhitelistRef) adminListWhitelistRef.off();
+            if (adminListSeasonRef) adminListSeasonRef.off();
+            if (adminListInterval) clearInterval(adminListInterval);
+
+            adminListWhitelistRef = db.ref('whitelist');
+            adminListWhitelistRef.on('value', snap => {
                 const users = [];
                 snap.forEach(u => {
                     const userData = u.val() || {};
@@ -4974,33 +5019,18 @@
                         charIndex: userData.charIndex
                     });
                 });
-
-                users.sort((a, b) => {
-                    const aIdx = Number.isInteger(a.charIndex) ? a.charIndex : 999;
-                    const bIdx = Number.isInteger(b.charIndex) ? b.charIndex : 999;
-                    if (aIdx !== bIdx) return aIdx - bIdx;
-                    return String(a.userTgId).localeCompare(String(b.userTgId));
-                });
-
-                let h = `<b>Список художников (${users.length}):</b><br>`;
-                users.forEach(({ userTgId, charIndex }) => {
-                    const charName = players[charIndex]?.n || "Неизвестный";
-                    const charColor = charColors[charIndex] || "#333";
-
-                    h += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
-                        <span style="text-align:left;">
-                            <b style="color:${charColor}">${charName}</b><br>
-                            <code style="color:#888; font-size:10px;">ID: ${userTgId}</code>
-                        </span>
-                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
-                    </div>`;
-                });
-
-                if (!users.length) h += '<small style="color:#999;">Пока список пуст.</small>';
-                document.getElementById('active-players').innerHTML = h;
+                adminListUsersCache = users;
+                renderAdminList();
             });
-        }
+
+            adminListSeasonRef = db.ref('player_season_status');
+            adminListSeasonRef.on('value', snap => {
+                seasonProfilesByUserId = snap.val() || {};
+                renderAdminList();
+            });
+
+            adminListInterval = setInterval(renderAdminList, 10000);
+      }
 
         async function archiveAndClearBoard() {
             const boardSnap = await db.ref('board').once('value');
