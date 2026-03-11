@@ -1286,6 +1286,9 @@
         const WALL_BATTLE_EVENT_ID = 'wall_battle';
         const MUSHU_EVENT_ID = 'mushu_feast';
         const EPIC_PAINT_COVERAGE_TARGET = 95;
+        const EPIC_PAINT_MIN_COMPLETION_PERCENT = 10;
+        const EPIC_PAINT_MIN_DURATION_MS = 30 * 1000;
+        const EPIC_PAINT_TOTAL_PIXELS = 250000;
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
         const MAGIC_LINK_WAIT_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -1932,7 +1935,7 @@
                     const canvas = document.createElement('canvas');
                     canvas.width = Math.round(img.width * ratio);
                     canvas.height = Math.round(img.height * ratio);
-                    const ctx = canvas.getContext('2d');
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     resolve(canvas.toDataURL('image/jpeg', quality));
                 };
@@ -2309,7 +2312,7 @@
             const canvas = document.getElementById('duel-canvas');
             if (!canvas || canvas.dataset.ready === '1') return;
             canvas.dataset.ready = '1';
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             ctx.lineWidth = 9;
@@ -2378,7 +2381,7 @@
             const canvas = document.createElement('canvas');
             canvas.width = 600;
             canvas.height = 600;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.fillStyle = '#000';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -2484,7 +2487,7 @@
             const canvas = document.getElementById('duel-canvas');
             if (!overlay || !canvas) return;
             setupDuelCanvasHandlers();
-            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+            canvas.getContext('2d', { willReadFrequently: true }).clearRect(0, 0, canvas.width, canvas.height);
             duelLocalPoints = [];
             duelDrawingState = { drawing: false, enabled: false, ended: false };
             refNode.textContent = duelData.symbol?.char || '永';
@@ -2848,7 +2851,7 @@
             const canvas = document.getElementById('epic-paint-canvas');
             if (!canvas || canvas.dataset.ready === '1') return;
             canvas.dataset.ready = '1';
-            epicPaintCanvasPixelsTotal = Math.max(0, Number(canvas.width || 0) * Number(canvas.height || 0));
+            epicPaintCanvasPixelsTotal = EPIC_PAINT_TOTAL_PIXELS;
             console.log(`DEBUG: Canvas pixels total: ${epicPaintCanvasPixelsTotal}`);
             const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
 
@@ -2958,7 +2961,7 @@
             const canvas = document.getElementById('epic-paint-canvas');
             const progressEl = document.getElementById('epic-paint-progress');
             if (!canvas || !progressEl) return;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             if (fullRedraw) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = '#ffffff';
@@ -2975,6 +2978,12 @@
             if (epicPaintCoverageRaf) cancelAnimationFrame(epicPaintCoverageRaf);
             epicPaintCoverageRaf = requestAnimationFrame(() => {
                 const coverage = calculateEpicPaintCoverage(canvas);
+                const paintedPixels = Math.round((coverage / 100) * EPIC_PAINT_TOTAL_PIXELS);
+                console.log('DEBUG EVENT:', {
+                    закрашено: paintedPixels,
+                    всего: EPIC_PAINT_TOTAL_PIXELS,
+                    процент: coverage
+                });
                 const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
                 const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
                 if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
@@ -3067,6 +3076,9 @@
             if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') return;
             if (!currentGameEventKey) return;
             if (coverage < EPIC_PAINT_COVERAGE_TARGET) return;
+            const eventStartedAt = Number(currentGameEvent.activatedAt || currentGameEvent.startAt || 0);
+            const elapsedMs = Date.now() - eventStartedAt;
+            if (coverage < EPIC_PAINT_MIN_COMPLETION_PERCENT || elapsedMs < EPIC_PAINT_MIN_DURATION_MS) return;
 
             const eventRef = db.ref(`game_events/${currentGameEventKey}`);
             const tx = await eventRef.transaction(ev => {
@@ -5778,7 +5790,7 @@
           }
 
           function getCanvas() { return $('event-canvas'); }
-          function getCtx() { return getCanvas()?.getContext('2d'); }
+          function getCtx() { return getCanvas()?.getContext('2d', { willReadFrequently: true }); }
           function getUserId() { return String(window.currentUserId || '').trim(); }
           function isAdminUser() { return Number(window.currentUserId) === Number(window.ADMIN_ID); }
 
@@ -8022,7 +8034,7 @@
                     const canvas = document.createElement('canvas');
                     canvas.width = Math.round(img.width * ratio);
                     canvas.height = Math.round(img.height * ratio);
-                    const ctx = canvas.getContext('2d');
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     resolve(canvas.toDataURL('image/jpeg', quality));
                 };
