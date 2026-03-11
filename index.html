@@ -885,7 +885,6 @@
                     <label style="font-size:12px; color:#777;">Сколько длится (минут)</label>
                     <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
                     <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
-                    <button onclick="adminBroadcastEventNotification()" class="admin-btn" style="background:#ef6c00; width:100%; margin:8px 0 0;">📣 Запустить рассылку</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
                     <div id="admin-event-queue-list" style="font-size:12px; margin-top:8px; color:#555;">Нет запланированных ивентов.</div>
                 </div>
@@ -3574,53 +3573,6 @@
         }
 
 
-        async function adminBroadcastEventNotification() {
-            if (currentUserId !== ADMIN_ID) return;
-
-            const eventType = String(document.getElementById('event-type')?.value || '').trim();
-            const eventMessages = {
-                mushu_feast: '🐲 Мушу проголодался! Неси краски! 🥟',
-                epic_paint: '🎨 Эпичный закрас начался! 🌈',
-                wall_battle: '⚔️ Битва Стенка на стенку! 🚩'
-            };
-            const message = eventMessages[eventType];
-            if (!message) return alert('Неизвестный тип события для рассылки.');
-
-            const playersSnap = await db.ref('player_season_status').once('value');
-            const players = playersSnap.val() || {};
-            const userIds = Object.keys(players);
-            if (!userIds.length) return alert('Нет игроков для рассылки.');
-
-            const requestRef = db.ref('admin_event_notifications').push();
-            await requestRef.set({
-                eventType,
-                message,
-                requestedBy: currentUserId,
-                requestedAt: Date.now(),
-                status: 'queued'
-            });
-
-            const startedAt = Date.now();
-            const timeoutMs = 60000;
-            while (Date.now() - startedAt < timeoutMs) {
-                const statusSnap = await requestRef.once('value');
-                const requestData = statusSnap.val() || {};
-                if (requestData.status === 'completed') {
-                    const sentCount = Number(requestData.sentCount || 0);
-                    const totalCount = Number(requestData.totalCount || userIds.length);
-                    alert(`Рассылка завершена. Успешно: ${sentCount} из ${totalCount}.`);
-                    return;
-                }
-                if (requestData.status === 'failed') {
-                    const reason = String(requestData.error || 'Неизвестная ошибка');
-                    alert(`Рассылка не выполнена: ${reason}`);
-                    return;
-                }
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-
-            alert('Рассылка запущена, но результат пока не получен. Проверьте позже в базе admin_event_notifications.');
-        }
 
         async function adminCancelScheduledEvent(eventKey) {
             if (currentUserId !== ADMIN_ID) return;
@@ -7485,6 +7437,7 @@
           }
 
           async function maybeActivateScheduledEvent() {
+            if (!isAdminUser()) return;
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
 
@@ -7503,26 +7456,35 @@
             });
             if (!tx.committed) return;
 
-            const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
-            const evType = String(tx.snapshot.val()?.type || 'epic_paint');
-            if (evType === 'mushu_feast') {
-              const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
-              await database.ref('mushu_event').set({ status: 'active', current_satiety: 0, target, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {}, combo_bonus: {}, startedAt: Date.now(), endAt: Date.now() + (mins * 60 * 1000), durationMs: mins * 60 * 1000 });
-            } else {
-              await database.ref('current_event').set({
-                type: 'paint',
-                status: 'active',
-                endTime: Date.now() + (mins * 60 * 1000),
-                participants: {},
-                strokes: {},
-                progress: { percent: 0 }
+            try {
+              const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
+              const evType = String(tx.snapshot.val()?.type || 'epic_paint');
+              if (evType === 'mushu_feast') {
+                const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+                await database.ref('mushu_event').set({ status: 'active', current_satiety: 0, target, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {}, combo_bonus: {}, startedAt: Date.now(), endAt: Date.now() + (mins * 60 * 1000), durationMs: mins * 60 * 1000 });
+              } else {
+                await database.ref('current_event').set({
+                  type: 'paint',
+                  status: 'active',
+                  endTime: Date.now() + (mins * 60 * 1000),
+                  participants: {},
+                  strokes: {},
+                  progress: { percent: 0 }
+                });
+              }
+
+              await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
+                status: 'completed',
+                completedAt: Date.now()
+              });
+            } catch (error) {
+              console.error('Failed to start scheduled event:', error);
+              await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
+                status: 'scheduled',
+                startError: String(error?.message || error || 'unknown_error'),
+                startErrorAt: Date.now()
               });
             }
-
-            await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
-              status: 'completed',
-              completedAt: Date.now()
-            });
           }
 
           async function syncEventSchedules() {
