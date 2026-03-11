@@ -105,10 +105,6 @@ async function activatePlannedEventIfDue(db) {
       await window.adminLaunchEpicPaintEvent(dueEvent.durationMins);
     }
 
-    await db.ref(`${EVENT_SCHEDULES_PATH}/${dueEvent.key}`).update({
-      status: 'completed',
-      completedAt: Date.now()
-    });
   } catch (err) {
     console.error('Failed to activate planned event:', err);
     await db.ref(`${EVENT_SCHEDULES_PATH}/${dueEvent.key}`).update({
@@ -120,6 +116,7 @@ async function activatePlannedEventIfDue(db) {
 }
 
 async function runEventTickOnce(dbInstance) {
+  console.log("DEBUG: Checking events at", new Date().toLocaleTimeString(), "Planned count:", plannedEvents.length);
   const db = await ensureDbReady(dbInstance || activeDb || window.db);
 
   if (!db || !plannedEvents.length) return;
@@ -277,6 +274,7 @@ export const EventsEngineModule = {
   init: initEventsEngine,
   wireAdminEventButton,
   deleteScheduledEvent: adminDeleteScheduledEvent,
-  tickDueEvents: runEventTickOnce
+  tickDueEvents: runEventTickOnce,
+  checkNow: activatePlannedEventIfDue
 };
 window.EventsEngineModule = EventsEngineModule;
