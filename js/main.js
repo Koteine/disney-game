@@ -41,14 +41,20 @@ async function resolveDbInstance() {
 }
 
 export async function initModules() {
+  console.log('DEBUG: MainDispatcher.initModules() started');
   const db = await resolveDbInstance();
   syncFirebaseGlobals(db);
+  const currentUserId = window.__gameCurrentUserId ?? window.currentUserId ?? null;
+  console.log('DEBUG: Firebase ready, starting modules with ID:', currentUserId);
 
   for (const moduleApi of REGISTERED_MODULES) {
     if (moduleApi && typeof moduleApi.init === 'function') {
+      console.log(`DEBUG: Initializing module ${moduleApi.init.name || 'anonymous'}`);
       await moduleApi.init(db);
     }
   }
+
+  console.log('DEBUG: MainDispatcher.initModules() completed');
 }
 
 function bootstrapModules() {

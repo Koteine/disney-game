@@ -10,6 +10,7 @@ async function ensureDbReady(dbInstance) {
 }
 
 export async function initItemsSystem(dbInstance) {
+  console.log('DEBUG: Module ItemsSystem received DB object:', !!dbInstance);
   await ensureDbReady(dbInstance);
 
   if (typeof window.renderInventory === 'function') window.renderInventory();

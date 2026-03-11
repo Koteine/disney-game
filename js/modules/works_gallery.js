@@ -24,8 +24,8 @@ export function applyWorksRolePolicy() {
   if (uploadCard) uploadCard.style.display = admin ? 'none' : 'block';
 
   const controls = [
-    document.getElementById('before-upload'),
-    document.getElementById('after-upload'),
+    document.getElementById('work-image-before-input'),
+    document.getElementById('work-image-after-input'),
     document.getElementById('work-submit-btn')
   ].filter(Boolean);
 
@@ -45,6 +45,7 @@ export function applyWorksRolePolicy() {
 }
 
 export async function initWorksGallery(dbInstance) {
+  console.log('DEBUG: Module WorksGallery received DB object:', !!dbInstance);
   await ensureDbReady(dbInstance);
   applyWorksRolePolicy();
 

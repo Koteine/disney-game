@@ -5311,6 +5311,12 @@
             window.__repaintOnlineTrailsImpl = repaintOnlineTrails;
 
             function syncTicketData() {
+                if (!db || typeof db.ref !== 'function') {
+                    console.warn('DEBUG: syncTicketData() called before DB ready, retry in 500ms');
+                    setTimeout(syncTicketData, 500);
+                    return;
+                }
+                console.log('DEBUG: syncTicketData() subscribing board/tickets listeners');
                 db.ref('board').on('value', snap => {
                     const data = snap.val() || {};
                     latestBoardSnapshot = data;
@@ -7339,6 +7345,7 @@
           }
 
           async function initAdminPage() {
+            console.log('DEBUG: initAdminPage() start');
             window.waitForDbReady = window.waitForDbReady || waitForDbReady;
             exposeAdminActions();
             ensureAdminTabVisibility();
@@ -7425,9 +7432,19 @@
         // BEGIN works.js
         // Логика вкладки «Работы», вынесенная из index.html
         function updateWorksTabForRole(isAdmin) {
+            console.log('DEBUG: updateWorksTabForRole admin=', !!isAdmin);
+
             const uploadCard = document.getElementById('works-upload-card');
             const title = document.getElementById('works-tab-title');
+            const beforeLabel = document.getElementById('work-before-label');
+            const beforeInput = document.getElementById('work-image-before-input');
+            const afterLabel = document.getElementById('work-after-label');
+            const afterInput = document.getElementById('work-image-after-input');
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            if (beforeLabel) beforeLabel.style.display = isAdmin ? 'none' : '';
+            if (beforeInput) beforeInput.style.display = isAdmin ? 'none' : '';
+            if (afterLabel) afterLabel.style.display = isAdmin ? 'none' : '';
+            if (afterInput) afterInput.style.display = isAdmin ? 'none' : '';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
         }
 
@@ -8195,6 +8212,11 @@
         }
 
         async function syncSeasonProfile() {
+            if (!db || typeof db.ref !== 'function') {
+                console.warn('DEBUG: updateUserStats/syncSeasonProfile called before DB ready, retry in 500ms');
+                setTimeout(() => syncSeasonProfile().catch(() => {}), 500);
+                return;
+            }
             const userId = String(currentUserPathId || currentUserId || '').trim();
             if (!userId) return;
             if (String(userId) === String(ADMIN_ID)) {

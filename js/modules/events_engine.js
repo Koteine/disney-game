@@ -49,6 +49,7 @@ export function wireAdminEventButton() {
 }
 
 export async function initEventsEngine(dbInstance) {
+  console.log('DEBUG: Module EventsEngine received DB object:', !!dbInstance);
   await ensureDbReady(dbInstance);
 
   if (typeof window.initEventSystem === 'function') {

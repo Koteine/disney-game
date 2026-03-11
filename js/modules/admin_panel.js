@@ -10,6 +10,7 @@ async function ensureDbReady(dbInstance) {
 }
 
 export async function initAdminPanel(dbInstance) {
+  console.log('DEBUG: Module AdminPanel received DB object:', !!dbInstance);
   await ensureDbReady(dbInstance);
 
   if (window.EventsEngineModule && typeof window.EventsEngineModule.wireAdminEventButton === 'function') {
