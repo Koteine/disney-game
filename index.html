@@ -148,6 +148,13 @@
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
         #dice-btn, .admin-btn { padding: 12px; font-size: 15px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 8px 0; }
         #dice-btn:disabled { background: #ccc; }
+        .duel-notice { width:95%; margin:8px auto 2px; background:#fff7fb; border:1px solid #f8bbd0; border-radius:12px; padding:10px; text-align:left; font-size:12px; color:#6a1b4d; box-shadow:0 3px 10px rgba(0,0,0,0.06); }
+        .duel-notice-title { font-weight:700; margin-bottom:6px; }
+        .duel-notice-actions { display:flex; gap:8px; margin-top:8px; }
+        .duel-notice-btn { border:none; border-radius:9px; padding:7px 10px; color:#fff; font-weight:700; font-size:12px; }
+        .duel-notice-btn.accept { background:#2e7d32; }
+        .duel-notice-btn.reject { background:#c62828; }
+        .duel-notice-btn.cancel { background:#6d4c41; }
 
         .admin-section { background: white; padding: 12px; border-radius: 12px; margin: 8px; border: 1px solid #eee; text-align: left; }
         .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
@@ -716,6 +723,7 @@
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <div id="event-celebration-overlay"></div>
             <div id="mushu-inline-invite" class="mushu-inline-invite" style="display:none;"></div>
+            <div id="duel-notice" class="duel-notice" style="display:none;"></div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
@@ -1040,8 +1048,6 @@
 
     <script>
        const JSON_URL = 'tasks.json';
-        const BOT_TOKEN = 'ТВОЙ_ТОКЕН_ОТ_BOTFATHER';
-        const APP_LINK = 'https://t.me/DisneyGamebyKoteine_bot/ColoringGameByKoteine';
         const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -1061,29 +1067,6 @@
         const onValue = (ref, handler) => ref.on('value', handler);
         function adminUpdate(path, patch) {
             return db.ref(path).update(patch);
-        }
-
-        async function notifyPlayer(userId, message) {
-            const chatId = String(userId || '').trim();
-            if (!chatId || !message) return false;
-
-            const replyMarkup = JSON.stringify({
-                inline_keyboard: [[{ text: 'Играть', url: APP_LINK }]]
-            });
-            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${encodeURIComponent(chatId)}&text=${encodeURIComponent(message)}&parse_mode=HTML&reply_markup=${encodeURIComponent(replyMarkup)}`;
-
-            try {
-                const response = await fetch(url, { method: 'GET' });
-                if (!response.ok) {
-                    const errorText = await response.text().catch(() => '');
-                    console.warn(`[notifyPlayer] Ошибка отправки для userId=${chatId}. status=${response.status}. ${errorText}`);
-                    return false;
-                }
-                return true;
-            } catch (error) {
-                console.warn(`[notifyPlayer] Сетевая ошибка для userId=${chatId}.`, error);
-                return false;
-            }
         }
 
         function getTelegramDisplayName() {
@@ -1126,6 +1109,15 @@
             });
         }
 
+        function startOnlineHeartbeat() {
+            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
+            const ref = db.ref(`player_season_status/${currentUserId}`);
+            const beat = () => ref.update({ lastSeen: firebase.database.ServerValue.TIMESTAMP, updatedAt: Date.now() }).catch(() => {});
+            beat();
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(beat, ONLINE_HEARTBEAT_MS);
+        }
+
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
 
         function generateBrightColors(count) {
@@ -1142,6 +1134,7 @@
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
         let archivedTicketsData = [];
         let liveBoardTicketsData = [];
+        let latestBoardSnapshot = {};
         let shownMagicLinks = {};
         let magicLinksRef = null;
         let newsFeedRef = null;
@@ -1182,6 +1175,10 @@
         let seasonProfilesByUserId = {};
         let lastMagicLinksRound = null;
         let duelInvitesRef = null;
+        let duelRequestsRef = null;
+        let duelIncomingHandled = {};
+        let duelStatusUnsubMap = {};
+        let heartbeatInterval = null;
         let activeDuelRef = null;
         let activeDuelKey = null;
         let duelLocalPoints = [];
@@ -1219,7 +1216,11 @@
             { char: '永', title: 'Вечность' }
         ];
         const IMPULSE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-        const DUEL_PATH = 'calligraphy_duels';
+        const DUEL_PATH = 'duels';
+        const DUEL_PENDING_MS = 15 * 60 * 1000;
+        const DUEL_SEND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+        const ONLINE_HEARTBEAT_MS = 30 * 1000;
+        const ONLINE_TRAIL_MS = 60 * 1000;
         const DUEL_REWARD_ITEMS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
 
         const magicBondTasks = [
@@ -1503,6 +1504,7 @@
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
                 await initializeTelegramSeasonUser();
+                startOnlineHeartbeat();
                 if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
                 setupEpicPaintCanvas();
                 resizeEpicPaintCanvasForPhone();
@@ -1743,6 +1745,7 @@
             seasonProfilesRef = db.ref('player_season_status');
             seasonProfilesRef.on('value', snap => {
                 seasonProfilesByUserId = snap.val() || {};
+                repaintOnlineTrails();
             });
 
             db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
@@ -2448,48 +2451,47 @@
         async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded) {
             if (!cellOwnerUserId) return;
             if (Number(cellOwnerUserId) === Number(currentUserId)) return alert('Себе импульс не отправляется 🙂');
-            const seasonRef = db.ref(`player_season_status/${currentUserId}`);
-            const seasonSnap = await seasonRef.once('value');
-            const season = seasonSnap.val() || {};
+
+            const pendingSnap = await db.ref(DUEL_PATH).orderByChild('challengerId').equalTo(String(currentUserId)).once('value');
+            let hasPending = false;
+            pendingSnap.forEach(ch => {
+                const row = ch.val() || {};
+                if (row.status === 'pending') hasPending = true;
+            });
+            if (hasPending) return alert('Сначала дождитесь ответа на текущий вызов или отмените его.');
+
+            const senderRef = db.ref(`player_season_status/${currentUserId}`);
+            const senderSnap = await senderRef.once('value');
+            const sender = senderSnap.val() || {};
             const now = Date.now();
-            const lastImpulse = Number(season.last_impulse_time) || 0;
-            const diff = now - lastImpulse;
-            if (diff < IMPULSE_COOLDOWN_MS) {
-                const remain = IMPULSE_COOLDOWN_MS - diff;
+            const lastDuelSent = Number(sender.lastDuelSent || 0);
+            if (lastDuelSent && (now - lastDuelSent) < DUEL_SEND_COOLDOWN_MS) {
+                const remain = DUEL_SEND_COOLDOWN_MS - (now - lastDuelSent);
                 const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
                 const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
-                return alert(`Твоя кисть еще сохнет. Жди ${hh}:${mm}`);
+                return alert(`Новый вызов можно отправить через ${hh}:${mm}`);
             }
 
             const symbol = CALLIGRAPHY_SYMBOLS[Math.floor(Math.random() * CALLIGRAPHY_SYMBOLS.length)];
             const duelKey = db.ref(DUEL_PATH).push().key;
-            const payload = {
-                type: 'calligraphy_duel_invite',
-                text: `${players[myIndex]?.n || 'Игрок'} бросает тебе вызов в Дуэли Каллиграфов! Принять?`,
-                fromUserId: String(currentUserId),
-                duelKey,
+            await db.ref(`${DUEL_PATH}/${duelKey}`).set({
+                createdAt: now,
+                status: 'pending',
                 symbol,
-                cellIndex: Number(cellIndex),
-                createdAt: now
-            };
-            await Promise.all([
-                db.ref(`system_notifications/${cellOwnerUserId}`).push(payload),
-                db.ref(`player_season_status/${currentUserId}`).update({ last_impulse_time: now, updatedAt: now }),
-                db.ref(`${DUEL_PATH}/${duelKey}`).set({
-                    createdAt: now,
-                    status: 'pending',
-                    symbol,
-                    challengerId: String(currentUserId),
-                    opponentId: String(cellOwnerUserId),
-                    players: {
-                        [String(currentUserId)]: { accepted: true, nickname: players[myIndex]?.n || 'Игрок' },
-                        [String(cellOwnerUserId)]: { accepted: false, nickname: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок' }
-                    }
-                })
-            ]);
-            await notifyPlayer(cellOwnerUserId, '🔔 Игрок вызывает тебя на дуэль! Заходи скорее!');
+                challengerId: String(currentUserId),
+                opponentId: String(cellOwnerUserId),
+                expiresAt: now + DUEL_PENDING_MS,
+                senderName: players[myIndex]?.n || 'Игрок',
+                opponentName: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок',
+                players: {
+                    [String(currentUserId)]: { accepted: true, nickname: players[myIndex]?.n || 'Игрок' },
+                    [String(cellOwnerUserId)]: { accepted: false, nickname: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок' }
+                }
+            });
+
+            await senderRef.update({ lastDuelSent: now, updatedAt: now });
             const ownerName = decodeURIComponent(String(ownerNameEncoded || ''));
-            alert(`Импульс отправлен игроку ${ownerName || 'Игрок'} ✨`);
+            alert(`Вызов отправлен игроку ${ownerName || 'Игрок'} ✨`);
         }
 
         async function acceptCalligraphyDuel(duelKey) {
@@ -2739,35 +2741,120 @@
             duelDrawingState.enabled = false;
         }
 
+        function formatDuelRemain(ms) {
+            const totalSec = Math.max(0, Math.ceil(ms / 1000));
+            const min = Math.floor(totalSec / 60);
+            const sec = totalSec % 60;
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+
+        function renderDuelNotice(html = '', visible = false) {
+            const box = document.getElementById('duel-notice');
+            if (!box) return;
+            if (!visible || !html) {
+                box.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            box.innerHTML = html;
+            box.style.display = 'block';
+        }
+
+        async function rejectCalligraphyDuel(duelKey) {
+            if (!duelKey) return;
+            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
+            await ref.transaction(row => {
+                if (!row || row.status !== 'pending') return row;
+                row.status = 'rejected';
+                row.rejectedAt = Date.now();
+                row.rejectedBy = String(currentUserId);
+                return row;
+            });
+        }
+
+        async function cancelCalligraphyDuel(duelKey) {
+            if (!duelKey) return;
+            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
+            let shouldResetCooldown = false;
+            await ref.transaction(row => {
+                if (!row || row.status !== 'pending') return row;
+                if (String(row.challengerId) !== String(currentUserId)) return row;
+                row.status = 'cancelled';
+                row.cancelledAt = Date.now();
+                row.cancelledBy = String(currentUserId);
+                shouldResetCooldown = true;
+                return row;
+            });
+            if (shouldResetCooldown) {
+                await db.ref(`player_season_status/${currentUserId}/lastDuelSent`).remove();
+            }
+        }
+
         function subscribeToCalligraphyDuelInvites() {
             if (!currentUserId) return;
-            if (duelInvitesRef) duelInvitesRef.off();
-            duelInvitesRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(30);
-            duelInvitesRef.on('child_added', snap => {
-                const v = snap.val() || {};
-                if (v.type !== 'calligraphy_duel_invite') return;
-                const fromName = players[myIndex]?.n || 'Игрок';
-                const ok = confirm(`${v.text || `${fromName} бросает тебе вызов в Дуэли Каллиграфов! Принять?`}`);
-                if (ok) acceptCalligraphyDuel(v.duelKey);
-                db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
-            });
+            const me = String(currentUserId);
+            const noticeState = { pendingForMe: null, incoming: null, timerId: null, alertExpired: {}, alertDone: {} };
 
-            if (activeDuelRef) activeDuelRef.off();
-            activeDuelRef = db.ref(DUEL_PATH).limitToLast(20);
-            activeDuelRef.on('child_added', snap => {
-                const duel = snap.val() || {};
-                const me = String(currentUserId);
-                if (![String(duel.challengerId), String(duel.opponentId)].includes(me)) return;
-                db.ref(`${DUEL_PATH}/${snap.key}`).on('value', duelSnap => {
-                    const row = duelSnap.val() || {};
-                    if (row.status === 'active' && activeDuelKey !== duelSnap.key) {
-                        openCalligraphyDuelUI(duelSnap.key, row);
+            const renderNoticeState = () => {
+                if (noticeState.pendingForMe && noticeState.pendingForMe.status === 'pending') {
+                    const duel = noticeState.pendingForMe;
+                    const remain = Number(duel.expiresAt || 0) - Date.now();
+                    renderDuelNotice(`<div class="duel-notice-title">⏳ Вызов отправлен</div><div>Ожидание ответа: <b>${formatDuelRemain(remain)}</b></div><div class="duel-notice-actions"><button class="duel-notice-btn cancel" onclick="cancelCalligraphyDuel('${duel.key}')">Отменить вызов</button></div>`, true);
+                    return;
+                }
+                if (noticeState.incoming && noticeState.incoming.status === 'pending') {
+                    const duel = noticeState.incoming;
+                    const remain = Number(duel.expiresAt || 0) - Date.now();
+                    const senderName = duel.senderName || 'Игрок';
+                    renderDuelNotice(`<div class="duel-notice-title">🎭 ${senderName} вызывает тебя на дуэль!</div><div>Примешь? (Осталось ${formatDuelRemain(remain)})</div><div class="duel-notice-actions"><button class="duel-notice-btn accept" onclick="acceptCalligraphyDuel('${duel.key}')">Принять</button><button class="duel-notice-btn reject" onclick="rejectCalligraphyDuel('${duel.key}')">Отклонить</button></div>`, true);
+                    return;
+                }
+                renderDuelNotice('', false);
+            };
+
+            if (duelRequestsRef) duelRequestsRef.off();
+            duelRequestsRef = db.ref(DUEL_PATH).limitToLast(100);
+            duelRequestsRef.on('value', snap => {
+                const rows = [];
+                snap.forEach(ch => rows.push({ key: ch.key, ...(ch.val() || {}) }));
+                const minePending = rows
+                    .filter(r => String(r.challengerId) === me)
+                    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
+                const incomingPending = rows
+                    .filter(r => String(r.opponentId) === me && r.status === 'pending')
+                    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
+                noticeState.pendingForMe = minePending && minePending.status === 'pending' ? minePending : null;
+                noticeState.incoming = incomingPending;
+
+                const now = Date.now();
+                rows.forEach(row => {
+                    const duelKey = row.key;
+                    if (![String(row.challengerId), String(row.opponentId)].includes(me)) return;
+
+                    if (row.status === 'pending' && Number(row.expiresAt || 0) > 0 && now > Number(row.expiresAt)) {
+                        db.ref(`${DUEL_PATH}/${duelKey}`).transaction(curr => {
+                            if (!curr || curr.status !== 'pending') return curr;
+                            curr.status = 'expired';
+                            curr.expiredAt = Date.now();
+                            curr.expiredBy = 'timer';
+                            return curr;
+                        }).then(async tx => {
+                            if (tx.committed && String(row.challengerId) === me) {
+                                await db.ref(`player_season_status/${me}/lastDuelSent`).remove();
+                            }
+                        }).catch(() => {});
+                        return;
+                    }
+
+                    if (row.status === 'active' && activeDuelKey !== duelKey) {
+                        openCalligraphyDuelUI(duelKey, row);
                     }
                     const allFinished = Object.values(row.players || {}).length >= 2 && Object.values(row.players || {}).every(p => Array.isArray(p.points) && p.points.length > 0);
                     if (row.status === 'active' && allFinished) {
-                        finishCalligraphyDuel(duelSnap.key).catch(err => console.error('finish duel failed', err));
+                        finishCalligraphyDuel(duelKey).catch(err => console.error('finish duel failed', err));
                     }
-                    if (row.status === 'done') {
+                    if (row.status === 'done' && !noticeState.alertDone[duelKey]) {
+                        noticeState.alertDone[duelKey] = true;
                         const myScore = Number(row.scores?.[me] || 0);
                         const winner = String(row.winnerId || '') === me;
                         closeCalligraphyDuelUI();
@@ -2778,8 +2865,22 @@
                             alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
                         }
                     }
+                    if (row.status === 'expired' && !noticeState.alertExpired[duelKey]) {
+                        noticeState.alertExpired[duelKey] = true;
+                        if (String(row.challengerId) === me) {
+                            alert('Мастер не ответил, вы можете вызвать кого-то другого');
+                        }
+                        if (String(row.opponentId) === me) {
+                            alert('Вас не дождались, дуэль отменена');
+                        }
+                    }
                 });
+
+                renderNoticeState();
             });
+
+            if (noticeState.timerId) clearInterval(noticeState.timerId);
+            noticeState.timerId = setInterval(renderNoticeState, 1000);
         }
 
         function toggleAdminEmergencyActions() {
@@ -3679,6 +3780,7 @@
                 myRoundHasMove = (userState.last_round === currentRoundNum);
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
+                repaintOnlineTrails();
                 updateEventUiState();
             }, 1000);
         }
@@ -5307,9 +5409,26 @@
                 });
             }
 
+            function repaintOnlineTrails() {
+                const grid = document.getElementById('grid');
+                if (!grid) return;
+                for (let i = 0; i < 50; i++) {
+                    const cell = latestBoardSnapshot[i];
+                    const node = grid.children[i];
+                    if (!node || !cell) continue;
+                    const c = charColors[cell.owner];
+                    const ownerId = String(cell.userId || '');
+                    const profile = seasonProfilesByUserId[ownerId] || {};
+                    const lastSeen = Number(profile.lastSeen || 0);
+                    const isOnlineTrail = lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
+                    node.style.background = isOnlineTrail ? (c + '4D') : '#ffffff';
+                }
+            }
+
             function syncTicketData() {
                 db.ref('board').on('value', snap => {
                     const data = snap.val() || {};
+                    latestBoardSnapshot = data;
                     const grid = document.getElementById('grid');
                     if (grid) grid.innerHTML = "";
                     liveBoardTicketsData = [];
@@ -5329,7 +5448,11 @@
 
                         if (cell) {
                             const c = charColors[cell.owner];
-                            d.style.background = c + "22";
+                            const ownerId = String(cell.userId || '');
+                            const profile = seasonProfilesByUserId[ownerId] || {};
+                            const lastSeen = Number(profile.lastSeen || 0);
+                            const isOnlineTrail = lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
+                            d.style.background = isOnlineTrail ? (c + '4D') : '#ffffff';
                             d.style.borderColor = c;
                             const mark = cell.isTrap ? '💣'
                                 : cell.isMagic ? '🔮'
@@ -7441,6 +7564,7 @@
             seasonProfilesRef = db.ref('player_season_status');
             seasonProfilesRef.on('value', snap => {
                 seasonProfilesByUserId = snap.val() || {};
+                repaintOnlineTrails();
             });
 
             db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
