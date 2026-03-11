@@ -1109,17 +1109,69 @@
             });
         }
 
+        async function syncPresenceActivity(force = false) {
+            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
+            const now = Date.now();
+            if (!force && (now - lastPresenceActivitySyncAt) < PRESENCE_ACTIVITY_SYNC_MS) return;
+            lastPresenceActivitySyncAt = now;
+            const payload = {
+                updatedAt: now,
+                lastActiveAt: now,
+                onlineHeartbeatAt: now,
+                isInApp: true
+            };
+            if (force) payload.lastSeen = firebase.database.ServerValue.TIMESTAMP;
+            await db.ref(`player_season_status/${currentUserId}`).update(payload).catch(() => {});
+        }
+
         function startOnlineHeartbeat() {
             if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
             const ref = db.ref(`player_season_status/${currentUserId}`);
-            const beat = () => ref.update({
-                lastSeen: firebase.database.ServerValue.TIMESTAMP,
-                onlineHeartbeatAt: Date.now(),
-                updatedAt: Date.now()
-            }).catch(() => {});
+            const beat = () => {
+                const now = Date.now();
+                lastPresenceActivitySyncAt = now;
+                return ref.update({
+                    lastSeen: firebase.database.ServerValue.TIMESTAMP,
+                    lastActiveAt: now,
+                    onlineHeartbeatAt: now,
+                    updatedAt: now,
+                    isInApp: true
+                }).catch(() => {});
+            };
             beat();
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(beat, ONLINE_HEARTBEAT_MS);
+        }
+
+        function startPresenceActivityTracking() {
+            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
+            const markActive = () => { syncPresenceActivity(false); };
+            ['pointerdown', 'touchstart', 'keydown', 'scroll'].forEach((evt) => {
+                window.addEventListener(evt, markActive, { passive: true });
+            });
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    syncPresenceActivity(true);
+                    return;
+                }
+                db.ref(`player_season_status/${currentUserId}`).update({
+                    isInApp: false,
+                    updatedAt: Date.now()
+                }).catch(() => {});
+            });
+            window.addEventListener('beforeunload', () => {
+                db.ref(`player_season_status/${currentUserId}`).update({
+                    isInApp: false,
+                    updatedAt: Date.now()
+                }).catch(() => {});
+            });
+            markActive();
+        }
+
+        function startOnlineTrailsRepaintLoop() {
+            repaintOnlineTrails();
+            if (onlineTrailsRepaintInterval) clearInterval(onlineTrailsRepaintInterval);
+            onlineTrailsRepaintInterval = setInterval(repaintOnlineTrails, 10000);
         }
 
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
@@ -1192,6 +1244,8 @@
         let duelIncomingHandled = {};
         let duelStatusUnsubMap = {};
         let heartbeatInterval = null;
+        let onlineTrailsRepaintInterval = null;
+        let lastPresenceActivitySyncAt = 0;
         let activeDuelRef = null;
         let activeDuelKey = null;
         let duelLocalPoints = [];
@@ -1233,7 +1287,9 @@
         const DUEL_PENDING_MS = 15 * 60 * 1000;
         const DUEL_SEND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
         const ONLINE_HEARTBEAT_MS = 30 * 1000;
-        const ONLINE_TRAIL_MS = 60 * 1000;
+        const ONLINE_TRAIL_APPEAR_MS = 30 * 1000;
+        const ONLINE_IDLE_OFFLINE_MS = 5 * 60 * 1000;
+        const PRESENCE_ACTIVITY_SYNC_MS = 20 * 1000;
         const DUEL_REWARD_ITEMS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
 
         const magicBondTasks = [
@@ -1518,6 +1574,8 @@
                 tasks = await res.json();
                 await initializeTelegramSeasonUser();
                 startOnlineHeartbeat();
+                startPresenceActivityTracking();
+                startOnlineTrailsRepaintLoop();
                 if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
                 setupEpicPaintCanvas();
                 resizeEpicPaintCanvasForPhone();
@@ -4986,7 +5044,7 @@
                 const charColor = charColors[charIndex] || "#333";
                 const profile = seasonProfilesByUserId[String(userTgId)] || {};
                 const lastSeen = Number(profile.lastSeen || profile.onlineHeartbeatAt || 0);
-                const isOnline = !!lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
+                const isOnline = !!lastSeen && (Date.now() - lastSeen) <= ONLINE_IDLE_OFFLINE_MS && profile.isInApp !== false;
                 const onlineChip = `<span style="display:inline-flex; align-items:center; gap:4px; margin-top:3px; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:700; color:${isOnline ? '#1b5e20' : '#616161'}; background:${isOnline ? '#c8e6c9' : '#eceff1'};">${isOnline ? '🟢 Онлайн' : '⚪ Оффлайн'}</span>`;
 
                 h += `
@@ -5452,6 +5510,17 @@
                 });
             }
 
+            function isPlayerWetTrailVisible(profile) {
+                const lastSeen = Number(profile?.lastSeen || profile?.onlineHeartbeatAt || 0);
+                const lastActiveAt = Number(profile?.lastActiveAt || profile?.onlineHeartbeatAt || lastSeen || 0);
+                if (!lastSeen || !lastActiveAt || profile?.isInApp === false) return false;
+                const now = Date.now();
+                const isOfflineByHeartbeat = (now - lastSeen) > ONLINE_IDLE_OFFLINE_MS;
+                const isOfflineByInactivity = (now - lastActiveAt) > ONLINE_IDLE_OFFLINE_MS;
+                if (isOfflineByHeartbeat || isOfflineByInactivity) return false;
+                return (now - lastSeen) >= ONLINE_TRAIL_APPEAR_MS;
+            }
+
             function repaintOnlineTrails() {
                 const grid = document.getElementById('grid');
                 if (!grid) return;
@@ -5462,9 +5531,8 @@
                     const c = charColors[cell.owner];
                     const ownerId = String(cell.userId || '');
                     const profile = seasonProfilesByUserId[ownerId] || {};
-                    const lastSeen = Number(profile.lastSeen || 0);
-                    const isOnlineTrail = lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
-                    node.style.background = isOnlineTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
+                    const hasWetTrail = isPlayerWetTrailVisible(profile);
+                    node.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
                 }
             }
 
@@ -5493,9 +5561,8 @@
                             const c = charColors[cell.owner];
                             const ownerId = String(cell.userId || '');
                             const profile = seasonProfilesByUserId[ownerId] || {};
-                            const lastSeen = Number(profile.lastSeen || 0);
-                            const isOnlineTrail = lastSeen && (Date.now() - lastSeen) < ONLINE_TRAIL_MS;
-                            d.style.background = isOnlineTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
+                            const hasWetTrail = isPlayerWetTrailVisible(profile);
+                            d.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
                             d.style.borderColor = c;
                             const mark = cell.isTrap ? '💣'
                                 : cell.isMagic ? '🔮'
