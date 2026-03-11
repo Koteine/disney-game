@@ -220,7 +220,7 @@ const JSON_URL = 'tasks.json';
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
         const MAGIC_LINK_WAIT_WINDOW_MS = 2 * 60 * 60 * 1000;
-        // Предметы вынесены в items.js (window.itemTypes).
+        // Предметы описаны во встроенном модуле items.js ниже в этом же файле (window.itemTypes).
 
         /************************************************************************************************************
          *                            МЕХАНИКА: ВОЛШЕБНАЯ ПАЛОЧКА (УПРОЩЕНИЯ ЗАДАНИЙ)                                  *
@@ -231,7 +231,7 @@ const JSON_URL = 'tasks.json';
             "Меньше — не значит хуже — ты можешь выбрать работу формата менее А4.",
             "Золотая пыльца — игроку выдают предмет \"золотая пыльца\", он кладется в рюкзачок и его можно использовать на протяжении всей игры, но только один раз, после чего предмет исчезнет."
         ];
-        // Опции кляксы вынесены в items.js (window.inkChallengeOptions).
+        // Опции кляксы описаны во встроенном модуле items.js ниже в этом же файле (window.inkChallengeOptions).
 
         /************************************************************************************************************
          *                             МЕХАНИКА: КАЛЛИГРАФИЯ / ДУЭЛЬНЫЕ СИМВОЛЫ                                        *
@@ -633,7 +633,7 @@ const JSON_URL = 'tasks.json';
         }
 
 
-        // Механики предметов (инвентарь, активация и выдача эффектов) подключаются из items.js.
+        // Механики предметов (инвентарь, активация и выдача эффектов) берутся из встроенного блока items.js в этом же файле.
 
 
         async function chooseInkChallengeOption(cellIdx, optionNumber) {
@@ -5769,7 +5769,7 @@ const JSON_URL = 'tasks.json';
             if (!startRaw) return alert('Выбери дату и время старта раунда.');
             if (!durationMs || durationMs < 60000) return alert('Минимальная длительность раунда — 1 минута.');
             const startAt = parseMoscowDateTimeLocalInput(startRaw);
-            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
+            if (!Number.isFinite(startAt) || startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
 
             const payload = {
               status: 'scheduled',
@@ -6067,6 +6067,10 @@ const JSON_URL = 'tasks.json';
           function renderRoundSchedules() {
             const statusEl = document.getElementById('admin-round-status');
             const scheduled = roundSchedules.filter(r => r.status === 'scheduled');
+            const recentProcessed = roundSchedules
+              .filter(r => r.status === 'completed' || r.status === 'starting' || r.status === 'cancelled')
+              .sort((a, b) => (b.startAt || 0) - (a.startAt || 0))
+              .slice(0, 5);
 
             const content = scheduled.length
               ? scheduled.map((r, i) => {
@@ -6079,21 +6083,31 @@ const JSON_URL = 'tasks.json';
                 }).join('')
               : 'Запланированных раундов нет.';
 
-            if (statusEl) {
-              statusEl.innerHTML = `Запланировано (${scheduled.length}):<br>${content}`;
-            }
+            if (!statusEl) return;
+
+            const processedContent = recentProcessed.length
+              ? recentProcessed.map((r, i) => {
+                  const start = formatMoscowDateTime(r.startAt || 0);
+                  const statusText = r.status === 'completed'
+                    ? `запущен (Раунд №${r.launchedRound || '—'})`
+                    : (r.status === 'cancelled' ? 'отменён' : 'в запуске');
+                  return `<div style="margin-bottom:4px; color:#6a1b9a;">${i + 1}) ${start} — ${statusText}</div>`;
+                }).join('')
+              : 'Нет.';
+
+            statusEl.innerHTML = `Запланировано (${scheduled.length}):<br>${content}<br><br>Последние изменения расписания:<br>${processedContent}`;
           }
 
 
           async function maybeActivateScheduledRound() {
             const due = roundSchedules
-              .filter(r => r.status === 'scheduled' && (r.startAt || 0) <= Date.now())
+              .filter(r => r.status === 'scheduled' && (r.startAt || 0) <= getAdminNow())
               .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
             if (!due?.key) return;
 
             const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
               if (!v || v.status !== 'scheduled') return v;
-              if (Date.now() < (v.startAt || 0)) return v;
+              if (getAdminNow() < (v.startAt || 0)) return v;
               return { ...v, status: 'starting', startedAt: Date.now() };
             });
             if (!tx.committed) return;
