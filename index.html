@@ -1054,7 +1054,13 @@
         const db = firebase.database();
         const tg = window.Telegram.WebApp;
         const ADMIN_ID = 341995937;
+        window.__gameDbInstance = db;
+        window.db = db;
+        window.__gameAdminId = ADMIN_ID;
+        window.ADMIN_ID = ADMIN_ID;
         let currentUserId = 0;
+        window.__gameCurrentUserId = currentUserId;
+        window.currentUserId = currentUserId;
         let currentUserPathId = '';
         let currentUserRole = 'player';
         let telegramUser = {};
@@ -1062,6 +1068,8 @@
         function refreshTelegramContext() {
             telegramUser = tg.initDataUnsafe?.user || {};
             currentUserId = Number(telegramUser.id) || 0;
+            window.__gameCurrentUserId = currentUserId;
+            window.currentUserId = currentUserId;
             currentUserPathId = String(telegramUser.id || '').trim();
             currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? 'admin' : 'player';
         }
@@ -8845,11 +8853,11 @@
         init();
     </script>
 
-    <script src="js/modules/rules_tab.js"></script>
-    <script src="js/modules/items_system.js"></script>
-    <script src="js/modules/events_engine.js"></script>
-    <script src="js/modules/admin_panel.js"></script>
-    <script src="js/modules/works_gallery.js"></script>
-    <script src="js/main.js"></script>
+    <script type="module" src="js/modules/rules_tab.js"></script>
+    <script type="module" src="js/modules/items_system.js"></script>
+    <script type="module" src="js/modules/events_engine.js"></script>
+    <script type="module" src="js/modules/admin_panel.js"></script>
+    <script type="module" src="js/modules/works_gallery.js"></script>
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
