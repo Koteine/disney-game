@@ -12,6 +12,9 @@ async function ensureDbReady(dbInstance) {
 export async function initItemsSystem(dbInstance) {
   console.log('DEBUG: Module ItemsSystem received DB object:', !!dbInstance);
   await ensureDbReady(dbInstance);
+  const resolvedCurrentUserId = window.__gameCurrentUserId ?? window.currentUserId ?? null;
+  window.currentUserId = resolvedCurrentUserId;
+  console.log('DEBUG: ItemsSystem currentUserId:', resolvedCurrentUserId);
 
   if (typeof window.renderInventory === 'function') window.renderInventory();
   if (typeof window.fillAdminItemsFormDefaults === 'function') window.fillAdminItemsFormDefaults();

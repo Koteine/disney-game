@@ -252,6 +252,9 @@ export async function initEventsEngine(dbInstance) {
   console.log('DEBUG: Module EventsEngine received DB object:', !!dbInstance);
   const db = await ensureDbReady(dbInstance);
   activeDb = db;
+  const resolvedCurrentUserId = window.__gameCurrentUserId ?? window.currentUserId ?? null;
+  window.currentUserId = resolvedCurrentUserId;
+  console.log('DEBUG: EventsEngine currentUserId:', resolvedCurrentUserId);
 
   if (typeof window.initEventSystem === 'function') {
     await window.initEventSystem();
