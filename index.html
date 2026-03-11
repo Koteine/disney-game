@@ -6075,6 +6075,7 @@
             };
             const pushedRef = await db.ref('round_schedules').push(payload);
             roundSchedules = [...roundSchedules, { key: pushedRef.key, ...payload }].sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+            persistRoundSchedulesBackup(roundSchedules);
             renderRoundSchedules();
             alert('Раунд запланирован.');
           }
@@ -6314,6 +6315,49 @@
 
           let roundSchedules = [];
           let roundSchedulesRef = null;
+          const ROUND_SCHEDULES_STORAGE_KEY = 'disney_round_schedules_backup_v1';
+
+          function sanitizeRoundSchedulesForBackup(items) {
+            return (Array.isArray(items) ? items : [])
+              .map((item) => {
+                if (!item || typeof item !== 'object' || !item.key) return null;
+                return {
+                  key: item.key,
+                  status: item.status || 'scheduled',
+                  startAt: Number(item.startAt || 0),
+                  durationMs: Number(item.durationMs || 0),
+                  createdAt: Number(item.createdAt || 0),
+                  createdBy: item.createdBy || null,
+                  cancelledAt: Number(item.cancelledAt || 0) || null,
+                  cancelledBy: item.cancelledBy || null,
+                  startedAt: Number(item.startedAt || 0) || null,
+                  completedAt: Number(item.completedAt || 0) || null,
+                  launchedRound: item.launchedRound ?? null
+                };
+              })
+              .filter(Boolean)
+              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+          }
+
+          function persistRoundSchedulesBackup(items) {
+            try {
+              localStorage.setItem(ROUND_SCHEDULES_STORAGE_KEY, JSON.stringify(sanitizeRoundSchedulesForBackup(items)));
+            } catch (e) {
+              console.warn('Не удалось сохранить резерв расписания раундов:', e);
+            }
+          }
+
+          function restoreRoundSchedulesBackup() {
+            try {
+              const raw = localStorage.getItem(ROUND_SCHEDULES_STORAGE_KEY);
+              if (!raw) return [];
+              const parsed = JSON.parse(raw);
+              return sanitizeRoundSchedulesForBackup(parsed);
+            } catch (e) {
+              console.warn('Не удалось прочитать резерв расписания раундов:', e);
+              return [];
+            }
+          }
 
           function renderRoundSchedules() {
             const statusEl = document.getElementById('admin-round-status');
@@ -6355,6 +6399,17 @@
               completedAt: Date.now(),
               launchedRound: roundNum || null
             });
+
+            roundSchedules = roundSchedules.map((r) => {
+              if (r.key !== due.key) return r;
+              return {
+                ...r,
+                status: 'completed',
+                completedAt: Date.now(),
+                launchedRound: roundNum || null
+              };
+            });
+            persistRoundSchedulesBackup(roundSchedules);
           }
 
           function syncRoundSchedules() {
@@ -6364,6 +6419,7 @@
               const items = [];
               snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
               roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+              persistRoundSchedulesBackup(roundSchedules);
               renderRoundSchedules();
             });
           }
@@ -6609,6 +6665,11 @@
 
             ensureDateTimeInputDefault('round-start-at');
             ensureDateTimeInputDefault('event-start-at');
+            const cachedRoundSchedules = restoreRoundSchedulesBackup();
+            if (cachedRoundSchedules.length) {
+              roundSchedules = cachedRoundSchedules;
+              renderRoundSchedules();
+            }
             syncRoundSchedules();
             syncEventSchedules();
             maybeActivateScheduledEvent().catch(() => {});
