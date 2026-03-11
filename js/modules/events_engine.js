@@ -2,7 +2,11 @@ export function isAdmin() {
   return Number(window.currentUserId) === Number(window.ADMIN_ID);
 }
 
-export async function ensureDbReady() {
+export async function ensureDbReady(dbInstance) {
+  if (dbInstance) {
+    window.db = dbInstance;
+    return dbInstance;
+  }
   if (typeof window.waitForDbReady === 'function') {
     return window.waitForDbReady();
   }
@@ -32,7 +36,7 @@ export function wireAdminEventButton() {
     if (!isAdmin()) return;
 
     try {
-      await ensureDbReady();
+      await ensureDbReady(window.db);
       const run = resolveEventLauncher();
       if (typeof run !== 'function') {
         throw new Error('Event launcher is not available');
@@ -44,9 +48,11 @@ export function wireAdminEventButton() {
   });
 }
 
-export function initEventsEngine() {
+export async function initEventsEngine(dbInstance) {
+  await ensureDbReady(dbInstance);
+
   if (typeof window.initEventSystem === 'function') {
-    window.initEventSystem().catch((err) => console.error('initEventSystem failed:', err));
+    await window.initEventSystem();
   }
 
   wireAdminEventButton();

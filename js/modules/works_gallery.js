@@ -2,6 +2,17 @@ export function isAdmin() {
   return Number(window.currentUserId) === Number(window.ADMIN_ID);
 }
 
+async function ensureDbReady(dbInstance) {
+  if (dbInstance) {
+    window.db = dbInstance;
+    return dbInstance;
+  }
+  if (typeof window.waitForDbReady === 'function') {
+    return window.waitForDbReady();
+  }
+  return window.db || null;
+}
+
 export function applyWorksRolePolicy() {
   const admin = isAdmin();
 
@@ -33,7 +44,8 @@ export function applyWorksRolePolicy() {
   }
 }
 
-export function initWorksGallery() {
+export async function initWorksGallery(dbInstance) {
+  await ensureDbReady(dbInstance);
   applyWorksRolePolicy();
 
   if (typeof window.renderSubmissions === 'function') window.renderSubmissions();

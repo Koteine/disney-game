@@ -1,4 +1,17 @@
-export function initItemsSystem() {
+async function ensureDbReady(dbInstance) {
+  if (dbInstance) {
+    window.db = dbInstance;
+    return dbInstance;
+  }
+  if (typeof window.waitForDbReady === 'function') {
+    return window.waitForDbReady();
+  }
+  return window.db || null;
+}
+
+export async function initItemsSystem(dbInstance) {
+  await ensureDbReady(dbInstance);
+
   if (typeof window.renderInventory === 'function') window.renderInventory();
   if (typeof window.fillAdminItemsFormDefaults === 'function') window.fillAdminItemsFormDefaults();
 }
