@@ -887,6 +887,7 @@
                     <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
                     <button onclick="adminBroadcastEventNotification()" class="admin-btn" style="background:#ef6c00; width:100%; margin:8px 0 0;">📣 Запустить рассылку</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
+                    <div id="admin-event-queue-list" style="font-size:12px; margin-top:8px; color:#555;">Нет запланированных ивентов.</div>
                 </div>
             </div>
             <div id="admin-draw-panel" class="admin-inner-panel">
@@ -899,6 +900,7 @@
                     <button onclick="adminScheduleDraw()" class="admin-btn" style="background:#ff7043; width:100%; margin:0;">🕒 Запланировать розыгрыш</button>
                     <button onclick="adminAnnulDrawResults()" class="admin-btn" style="background:#c62828; width:100%; margin:8px 0 0 0;">⛔ Аннулировать результаты розыгрыша</button>
                     <div id="admin-draw-status" style="font-size:12px; margin-top:8px; color:#555;">Розыгрыш не запланирован.</div>
+                    <div id="admin-draw-queue-list" style="font-size:12px; margin-top:8px; color:#555;">Запланированных розыгрышей нет.</div>
                 </div>
             </div>
             <div class="admin-section">
@@ -3532,7 +3534,7 @@
             const latestCompleted = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
             const latestFailed = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'failed').sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
 
-            const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
+            const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown && (Date.now() - Number(latestCompleted.completedAt || 0)) < 120000);
             successAlert.style.display = showSuccess ? 'block' : 'none';
             if (showSuccess) {
                 successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
@@ -3565,40 +3567,10 @@
         }
 
         async function adminScheduleEvent() {
-            if (currentUserId !== ADMIN_ID) return;
-            const eventType = document.getElementById('event-type').value;
-            const startAtValue = document.getElementById('event-start-at').value;
-            const durationMins = Number(document.getElementById('event-duration-mins').value || 0);
-            if (![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(eventType)) return alert('Неизвестный тип события.');
-            if (!startAtValue) return alert('Выбери дату и время старта события.');
-            if (!durationMins || durationMins < 1) return alert('Укажи длительность события в минутах.');
-
-            const startAt = new Date(startAtValue).getTime();
-            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
-            const endAt = startAt + durationMins * 60000;
-
-            const eventsSnap = await db.ref('game_events').once('value');
-            let scheduledCount = 0;
-            eventsSnap.forEach(ev => {
-                const v = ev.val() || {};
-                if (v.status === 'scheduled') scheduledCount += 1;
-            });
-            if (scheduledCount >= MAX_SCHEDULED_EVENTS) {
-                return alert(`Можно запланировать не более ${MAX_SCHEDULED_EVENTS} событий.`);
+            if (typeof window.adminScheduleEpicPaintEvent === 'function') {
+                return window.adminScheduleEpicPaintEvent();
             }
-
-            await db.ref('game_events').push({
-                id: eventType,
-                name: eventType === WALL_BATTLE_EVENT_ID ? 'Раскрас «Стенка на стенку»' : (eventType === MUSHU_EVENT_ID ? '🐉 Кормление Мушу' : 'Эпичный закрас'),
-                status: 'scheduled',
-                createdAt: Date.now(),
-                startAt,
-                endAt,
-                durationMins,
-                nextTeam: 'red',
-                teams: null,
-                createdBy: currentUserId
-            });
+            return alert('Планировщик событий ещё не инициализирован.');
         }
 
 
@@ -4648,19 +4620,63 @@
             toggleExpandablePanel('winner-history-list', 'winner-history-toggle-btn');
         }
 
-        async function maybeActivateScheduledDraw() {}
         async function maybeFinalizeScheduledDraw() {}
+
+        let drawSchedules = [];
+        let drawSchedulesRef = null;
+
+        function renderDrawSchedules() {
+            const el = document.getElementById('admin-draw-queue-list');
+            if (!el) return;
+            const scheduled = drawSchedules.filter(d => d.status === 'scheduled');
+            if (!scheduled.length) {
+                el.innerHTML = 'Запланированных розыгрышей нет.';
+                return;
+            }
+            el.innerHTML = scheduled.map((d, i) => {
+                const start = formatMoscowDateTime(d.startAt || 0);
+                return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start} <button onclick="adminCancelScheduledDraw('${d.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button></div>`;
+            }).join('');
+        }
 
         function updateAdminDrawStatus() {
             const el = document.getElementById('admin-draw-status');
             if (!el) return;
             const state = currentDrawSchedule?.status || 'ready';
             const start = currentDrawSchedule?.startTime ? new Date(currentDrawSchedule.startTime).toLocaleString('ru-RU') : '—';
-            el.innerText = `Статус: ${state}. Синхронизация: raffle_state. Старт (сервер): ${start}.`;
+            const queued = drawSchedules.filter(d => d.status === 'scheduled').length;
+            el.innerText = `Статус: ${state}. Запланировано: ${queued}. Синхронизация: raffle_state. Старт (сервер): ${start}.`;
         }
 
         async function adminScheduleDraw() {
-            return alert('Запланированный запуск отключён. Используй кнопку «Начать магию» — запуск идёт через raffle_state для всех одновременно.');
+            if (currentUserId !== ADMIN_ID) return;
+            const startRaw = String(document.getElementById('draw-start-at')?.value || '').trim();
+            if (!startRaw) return alert('Выбери дату и время старта розыгрыша.');
+            const startAt = parseMoscowDateTimeLocalInput(startRaw);
+            if (!Number.isFinite(startAt) || startAt <= getServerNowMs() - 1000) return alert('Время старта должно быть в будущем.');
+            await db.ref('draw_schedules').push({ status: 'scheduled', startAt, createdAt: Date.now(), createdBy: currentUserId });
+            alert('Розыгрыш запланирован.');
+        }
+
+        async function adminCancelScheduledDraw(key) {
+            if (currentUserId !== ADMIN_ID || !key) return;
+            await db.ref(`draw_schedules/${key}`).transaction(v => {
+                if (!v || v.status !== 'scheduled') return v;
+                return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
+            });
+        }
+
+        async function maybeActivateScheduledDraw() {
+            const due = drawSchedules.filter(d => d.status === 'scheduled' && Number(d.startAt || 0) <= getServerNowMs()).sort((a,b)=>(a.startAt||0)-(b.startAt||0))[0];
+            if (!due?.key) return;
+            const tx = await db.ref(`draw_schedules/${due.key}`).transaction(v => {
+                if (!v || v.status !== 'scheduled') return v;
+                if (Number(v.startAt || 0) > getServerNowMs()) return v;
+                return { ...v, status: 'starting', startedAt: Date.now() };
+            });
+            if (!tx.committed) return;
+            await adminPickWinnerNow();
+            await db.ref(`draw_schedules/${due.key}`).update({ status: 'completed', completedAt: Date.now() });
         }
 
         async function adminAnnulDrawResults() {
@@ -4698,6 +4714,16 @@
                 renderWinnerHistory();
             });
 
+            if (drawSchedulesRef) drawSchedulesRef.off();
+            drawSchedulesRef = db.ref('draw_schedules');
+            drawSchedulesRef.on('value', snap => {
+                const items = [];
+                snap.forEach(item => items.push({ key: item.key, ...(item.val() || {}) }));
+                drawSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+                renderDrawSchedules();
+                updateAdminDrawStatus();
+            });
+
             if (drawScheduleRef) drawScheduleRef.off();
             drawScheduleRef = db.ref('raffle_state');
             drawScheduleRef.on('value', async (snap) => {
@@ -4733,6 +4759,7 @@
                 }
 
                 if (currentDrawSchedule.status === 'ready') {
+                    maybeActivateScheduledDraw().catch(() => {});
                     activeMagicDrawId = null;
                     stopContinuousWheelSpin();
                     closeWinnerToast();
@@ -7581,6 +7608,7 @@
             window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
             window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;
             window.renderPlayerTicketsList = renderPlayerTicketsList;
+            window.adminCancelScheduledDraw = adminCancelScheduledDraw;
           }
 
           async function initAdminPage() {
