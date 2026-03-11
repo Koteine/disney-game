@@ -148,13 +148,6 @@
         .nav-item.active { color: var(--p-pink); font-weight: bold; }
         #dice-btn, .admin-btn { padding: 12px; font-size: 15px; border-radius: 12px; border: none; background: var(--p-pink); color: white; font-weight: bold; width: 95%; margin: 8px 0; }
         #dice-btn:disabled { background: #ccc; }
-        .duel-notice { width:95%; margin:8px auto 2px; background:#fff7fb; border:1px solid #f8bbd0; border-radius:12px; padding:10px; text-align:left; font-size:12px; color:#6a1b4d; box-shadow:0 3px 10px rgba(0,0,0,0.06); }
-        .duel-notice-title { font-weight:700; margin-bottom:6px; }
-        .duel-notice-actions { display:flex; gap:8px; margin-top:8px; }
-        .duel-notice-btn { border:none; border-radius:9px; padding:7px 10px; color:#fff; font-weight:700; font-size:12px; }
-        .duel-notice-btn.accept { background:#2e7d32; }
-        .duel-notice-btn.reject { background:#c62828; }
-        .duel-notice-btn.cancel { background:#6d4c41; }
 
         .admin-section { background: white; padding: 12px; border-radius: 12px; margin: 8px; border: 1px solid #eee; text-align: left; }
         .admin-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 8px; font-size: 14px; }
@@ -593,7 +586,7 @@
         }
         .magic-ticket-star.size-1 { --star-size: 36px; }
 
-        .-inline-invite {
+        .mushu-inline-invite {
             margin: 8px auto 10px;
             width: 95%;
             background: linear-gradient(130deg, #fff3e0, #ffe0b2);
@@ -602,9 +595,9 @@
             box-shadow: 0 8px 20px rgba(239, 108, 0, .18);
             padding: 10px;
             color: #5d4037;
-            animation: InvitePulse 1.8s ease-in-out infinite;
+            animation: mushuInvitePulse 1.8s ease-in-out infinite;
         }
-        .-inline-btn {
+        .mushu-inline-btn {
             margin-top: 8px;
             width: 100%;
             border: none;
@@ -614,11 +607,11 @@
             font-weight: 800;
             background: linear-gradient(135deg, #ef6c00, #d84315);
         }
-        @keyframes InvitePulse {
+        @keyframes mushuInvitePulse {
             0%,100% { transform: scale(1); box-shadow: 0 8px 20px rgba(239, 108, 0, .16); }
             50% { transform: scale(1.015); box-shadow: 0 12px 26px rgba(239, 108, 0, .26); }
         }
-        .-overlay {
+        .mushu-overlay {
             position: fixed;
             inset: 0;
             z-index: 3900;
@@ -629,35 +622,35 @@
             padding: 12px;
             overflow: hidden;
         }
-        .-progress-bar { width: 100%; height: 14px; border-radius: 999px; background: rgba(255,255,255,.2); overflow: hidden; border: 1px solid rgba(255,255,255,.35); }
-        .-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd54f, #ff8f00); transition: width .35s ease; }
-        .-fuse-timer { margin-top:8px; border:1px solid rgba(255,224,178,.5); border-radius: 12px; padding:8px; background: rgba(0,0,0,.2); }
-        .-fuse-track { position:relative; height: 10px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
-        .-fuse-burn { position:absolute; inset:0 auto 0 0; width:100%; background: linear-gradient(90deg,#ffca28,#ef6c00,#6d4c41); transition: width .9s linear; }
-        .-fuse-spark { position:absolute; top:50%; right:-8px; width:14px; height:14px; border-radius:50%; background:#ffd54f; box-shadow:0 0 10px #ffeb3b, 0 0 18px #ff9800; transform: translateY(-50%); animation:Spark 0.7s infinite alternate; }
-        .-time-critical { animation: TimerShake .4s infinite; color:#ff8a80; }
-        .-dragon-zone { flex:1; min-height:56vh; display:flex; align-items:center; justify-content:center; position:relative; padding: 0 0 8px; overflow: hidden; }
-        .-dragon { width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; }
-        #-container.-container { background-image: url('.png'); width: 100vh; height: 100vh; margin: 0 auto; position: absolute; top: 45%; left: 50%; display:flex; justify-content:center; align-items:center; background-size: contain; background-repeat: no-repeat; background-position:center center; transform-origin: center center; animation: -breathe 6s ease-in-out infinite; filter: drop-shadow(0 8px 26px rgba(255,183,77,.42)); max-width:min(96vw,880px); max-height:min(92vh,880px); z-index:10; }
-        .-dragon.-chew #-container { animation: -chew .9s ease; }
-        .smoke-particle { position:absolute; width:14px; height:14px; border-radius:50%; background: radial-gradient(circle at 38% 38%, rgba(255,255,255,.9), rgba(210,210,210,.52), rgba(180,180,180,0)); opacity:0; animation: -smoke 3.8s linear infinite; pointer-events:none; }
+        .mushu-progress-bar { width: 100%; height: 14px; border-radius: 999px; background: rgba(255,255,255,.2); overflow: hidden; border: 1px solid rgba(255,255,255,.35); }
+        .mushu-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd54f, #ff8f00); transition: width .35s ease; }
+        .mushu-fuse-timer { margin-top:8px; border:1px solid rgba(255,224,178,.5); border-radius: 12px; padding:8px; background: rgba(0,0,0,.2); }
+        .mushu-fuse-track { position:relative; height: 10px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; }
+        .mushu-fuse-burn { position:absolute; inset:0 auto 0 0; width:100%; background: linear-gradient(90deg,#ffca28,#ef6c00,#6d4c41); transition: width .9s linear; }
+        .mushu-fuse-spark { position:absolute; top:50%; right:-8px; width:14px; height:14px; border-radius:50%; background:#ffd54f; box-shadow:0 0 10px #ffeb3b, 0 0 18px #ff9800; transform: translateY(-50%); animation:mushuSpark 0.7s infinite alternate; }
+        .mushu-time-critical { animation: mushuTimerShake .4s infinite; color:#ff8a80; }
+        .mushu-dragon-zone { flex:1; min-height:56vh; display:flex; align-items:center; justify-content:center; position:relative; padding: 0 0 8px; overflow: hidden; }
+        .mushu-dragon { width:100%; height:100%; position:relative; display:flex; align-items:center; justify-content:center; }
+        #mushu-container.mushu-container { background-image: url('mushu.png'); width: 100vh; height: 100vh; margin: 0 auto; position: absolute; top: 45%; left: 50%; display:flex; justify-content:center; align-items:center; background-size: contain; background-repeat: no-repeat; background-position:center center; transform-origin: center center; animation: mushu-breathe 6s ease-in-out infinite; filter: drop-shadow(0 8px 26px rgba(255,183,77,.42)); max-width:min(96vw,880px); max-height:min(92vh,880px); z-index:10; }
+        .mushu-dragon.mushu-chew #mushu-container { animation: mushu-chew .9s ease; }
+        .smoke-particle { position:absolute; width:14px; height:14px; border-radius:50%; background: radial-gradient(circle at 38% 38%, rgba(255,255,255,.9), rgba(210,210,210,.52), rgba(180,180,180,0)); opacity:0; animation: mushu-smoke 3.8s linear infinite; pointer-events:none; }
         .smoke-particle.left { left: 47%; top: 35%; }
         .smoke-particle.right { left: 53%; top: 35%; animation-delay: 1.1s; }
-        .-mouth-zone { position:absolute; width:24%; height:19%; top:35%; left:50%; transform:translateX(-50%); border:none; border-radius:999px; background: rgba(255,255,255,.05); z-index:11; }
-        .-spark { position:absolute; width:18px; height:18px; border-radius:50%; background: radial-gradient(circle,#fff59d,#ffca28 50%,transparent 70%); box-shadow:0 0 14px #ffd54f; animation:SparkFly 550ms ease-out forwards; pointer-events:none; }
-        .-fruit-panel { position: relative; z-index: 30; padding-bottom:10px; }
-        .-fruit-list { display:flex; justify-content:center; margin-top:8px; }
-        .-fruit-chip { width:64px; height:64px; display:flex; align-items:center; justify-content:center; border-radius:50%; border:2px solid #ffd54f; background: radial-gradient(circle at 30% 30%, #fff8e1, #ffcc80 65%, #ffb74d); font-size:34px; line-height:1; text-align:center; touch-action:none; user-select:none; box-shadow:0 6px 14px rgba(0,0,0,.25); cursor:grab; }
-        .-fruit-chip.dragging { opacity:.45; }
-        .-fruit-ghost { position: fixed; z-index: 4300; pointer-events:none; font-size: 34px; transform: translate(-50%, -50%); }
-        .-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: BreathFx 1400ms ease-out forwards; }
-        @keyframes -breathe { 0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(0); } 50% { transform: translate(-50%, -50%) scale(1.05) rotate(0.5deg); } }
-        @keyframes -chew { 0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); } 20% { transform: translate(-50%, -50%) scale(1.08) rotate(-1deg); } 45% { transform: translate(-50%, -50%) scale(1.04) rotate(1deg); } 70% { transform: translate(-50%, -50%) scale(1.07) rotate(-0.8deg); } 100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); } }
-        @keyframes -smoke { 0% { transform: translateY(0) scale(0.9); opacity: 0; } 25% { opacity: 0.52; } 100% { transform: translateY(-34px) scale(1.45); opacity: 0; } }
-        @keyframes Spark { from{ transform: translateY(-50%) scale(.7);} to{ transform: translateY(-50%) scale(1.15);} }
-        @keyframes SparkFly { 0% { opacity:1; transform: scale(.4);} 100% { opacity:0; transform: translateY(-24px) scale(1.8);} }
-        @keyframes TimerShake { 0%,100%{ transform:translateX(0);} 30%{ transform:translateX(-1px);} 60%{ transform:translateX(1px);} }
-        @keyframes BreathFx { 0% { opacity: 0; transform: scale(.45); } 22% { opacity: 1; } 100% { opacity: 0; transform: scale(1.45); } }
+        .mushu-mouth-zone { position:absolute; width:24%; height:19%; top:35%; left:50%; transform:translateX(-50%); border:none; border-radius:999px; background: rgba(255,255,255,.05); z-index:11; }
+        .mushu-spark { position:absolute; width:18px; height:18px; border-radius:50%; background: radial-gradient(circle,#fff59d,#ffca28 50%,transparent 70%); box-shadow:0 0 14px #ffd54f; animation:mushuSparkFly 550ms ease-out forwards; pointer-events:none; }
+        .mushu-fruit-panel { position: relative; z-index: 30; padding-bottom:10px; }
+        .mushu-fruit-list { display:flex; justify-content:center; margin-top:8px; }
+        .mushu-fruit-chip { width:64px; height:64px; display:flex; align-items:center; justify-content:center; border-radius:50%; border:2px solid #ffd54f; background: radial-gradient(circle at 30% 30%, #fff8e1, #ffcc80 65%, #ffb74d); font-size:34px; line-height:1; text-align:center; touch-action:none; user-select:none; box-shadow:0 6px 14px rgba(0,0,0,.25); cursor:grab; }
+        .mushu-fruit-chip.dragging { opacity:.45; }
+        .mushu-fruit-ghost { position: fixed; z-index: 4300; pointer-events:none; font-size: 34px; transform: translate(-50%, -50%); }
+        .mushu-breath { position: fixed; inset: 0; z-index: 4200; pointer-events: none; background: radial-gradient(circle at center, rgba(255, 223, 112, .55), rgba(255, 152, 0, .22), transparent 68%); animation: mushuBreathFx 1400ms ease-out forwards; }
+        @keyframes mushu-breathe { 0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(0); } 50% { transform: translate(-50%, -50%) scale(1.05) rotate(0.5deg); } }
+        @keyframes mushu-chew { 0% { transform: translate(-50%, -50%) scale(1) rotate(0deg); } 20% { transform: translate(-50%, -50%) scale(1.08) rotate(-1deg); } 45% { transform: translate(-50%, -50%) scale(1.04) rotate(1deg); } 70% { transform: translate(-50%, -50%) scale(1.07) rotate(-0.8deg); } 100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); } }
+        @keyframes mushu-smoke { 0% { transform: translateY(0) scale(0.9); opacity: 0; } 25% { opacity: 0.52; } 100% { transform: translateY(-34px) scale(1.45); opacity: 0; } }
+        @keyframes mushuSpark { from{ transform: translateY(-50%) scale(.7);} to{ transform: translateY(-50%) scale(1.15);} }
+        @keyframes mushuSparkFly { 0% { opacity:1; transform: scale(.4);} 100% { opacity:0; transform: translateY(-24px) scale(1.8);} }
+        @keyframes mushuTimerShake { 0%,100%{ transform:translateX(0);} 30%{ transform:translateX(-1px);} 60%{ transform:translateX(1px);} }
+        @keyframes mushuBreathFx { 0% { opacity: 0; transform: scale(.45); } 22% { opacity: 1; } 100% { opacity: 0; transform: scale(1.45); } }
 
 
         .gallery-rotation-scroll { margin: 6px 8px 10px; padding:10px 12px; border:1px solid #d7b98e; border-radius:12px; background:linear-gradient(180deg,#fff8e8,#f8ead2); color:#6d4c41; font-size:12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.4); }
@@ -722,7 +715,7 @@
             <div id="event-success-alert" class="event-alert" style="background:#e8f5e9; border-color:#a5d6a7;"></div>
             <div id="event-fail-alert" class="event-alert" style="background:#ffebee; border-color:#ffcdd2;"></div>
             <div id="event-celebration-overlay"></div>
-            <div id="duel-notice" class="duel-notice" style="display:none;"></div>
+            <div id="mushu-inline-invite" class="mushu-inline-invite" style="display:none;"></div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
@@ -744,8 +737,11 @@
         <div id="tab-event" class="tab-content">
             <h1>🎨 Событие</h1>
             <div class="works-card">
-                <div id="event-space-title" style="font-weight:700; color:#6a1b9a; margin-bottom:8px;">Игровые события временно отключены</div>
+                <div id="event-space-title" style="font-weight:700; color:#6a1b9a; margin-bottom:8px;">Событие не активно</div>
+                <div id="epic-paint-timer" class="epic-paint-timer">⏳ До конца: —</div>
                 <button onclick="backToGameFromEvent()" class="admin-btn" style="margin:0 0 8px 0; background:#607D8B;">⬅️ Назад к полю</button>
+                <canvas id="epic-paint-canvas" width="1000" height="2000"></canvas>
+                <div id="epic-paint-progress">Закрашено: 0%</div>
             </div>
         </div>
 
@@ -872,15 +868,16 @@
                 <div class="admin-section">
                     <b>Запуск игровых событий:</b>
                     <select id="event-type" class="admin-input" style="margin-top:8px;">
-                        <option value="disabled">Игровые события отключены</option>
+                        <option value="epic_paint">Эпичный закрас</option>
+                        <option value="wall_battle">Раскрас «Стенка на стенку»</option>
+                        <option value="mushu_feast">🐉 Кормление Мушу</option>
                     </select>
                     <label style="font-size:12px; color:#777;">Когда начнется событие</label>
                     <input type="datetime-local" id="event-start-at" class="admin-input">
                     <label style="font-size:12px; color:#777;">Сколько длится (минут)</label>
                     <input type="number" id="event-duration-mins" class="admin-input" min="1" value="20">
-                    <button id="admin-schedule-event-btn" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
+                    <button onclick="adminScheduleEvent()" class="admin-btn" style="background:#8e24aa; width:100%; margin:0;">🚀 Запустить событие</button>
                     <div id="admin-event-status" style="font-size:12px; margin-top:8px; color:#555;">Нет активного события.</div>
-                    <div id="admin-event-queue-list" style="font-size:12px; margin-top:8px; color:#555;">Нет запланированных ивентов.</div>
                 </div>
             </div>
             <div id="admin-draw-panel" class="admin-inner-panel">
@@ -893,7 +890,6 @@
                     <button onclick="adminScheduleDraw()" class="admin-btn" style="background:#ff7043; width:100%; margin:0;">🕒 Запланировать розыгрыш</button>
                     <button onclick="adminAnnulDrawResults()" class="admin-btn" style="background:#c62828; width:100%; margin:8px 0 0 0;">⛔ Аннулировать результаты розыгрыша</button>
                     <div id="admin-draw-status" style="font-size:12px; margin-top:8px; color:#555;">Розыгрыш не запланирован.</div>
-                    <div id="admin-draw-queue-list" style="font-size:12px; margin-top:8px; color:#555;">Запланированных розыгрышей нет.</div>
                 </div>
             </div>
             <div class="admin-section">
@@ -1012,7 +1008,9 @@
                     <p><b>🎆 Волшебная палочка:</b> благословляет игрока и может удвоить его билет за раунд.</p>
                 </div>
                 <div id="rules-panel-events" class="admin-inner-panel" style="display:none; text-align:left; margin-top:8px;">
-                    <p><b>⚠️ Игровые события:</b> система событий отключена до переработки.</p>
+                    <p><b>🎨 Эпичный закрас:</b> общий холст, который все закрашивают вместе до нужного процента.</p>
+                    <p><b>🐉 Покорми Мушу:</b> игроки кормят Мушу фруктами; при достижении цели участники получают награды.</p>
+                    <p><b>🛡️ Стенка на стенку:</b> командное событие, где победа команды приносит бонусные билеты.</p>
                 </div>
                 <div id="rules-panel-cells" class="admin-inner-panel" style="display:none; text-align:left; margin-top:8px;">
                     <p><b>🔮 Магическая связь:</b> выдает парное задание с другим игроком или сольный магический квест.</p>
@@ -1046,13 +1044,7 @@
         const db = firebase.database();
         const tg = window.Telegram.WebApp;
         const ADMIN_ID = 341995937;
-        window.__gameDbInstance = db;
-        window.db = db;
-        window.__gameAdminId = ADMIN_ID;
-        window.ADMIN_ID = ADMIN_ID;
         let currentUserId = 0;
-        window.__gameCurrentUserId = currentUserId;
-        window.currentUserId = currentUserId;
         let currentUserPathId = '';
         let currentUserRole = 'player';
         let telegramUser = {};
@@ -1060,8 +1052,6 @@
         function refreshTelegramContext() {
             telegramUser = tg.initDataUnsafe?.user || {};
             currentUserId = Number(telegramUser.id) || 0;
-            window.__gameCurrentUserId = currentUserId;
-            window.currentUserId = currentUserId;
             currentUserPathId = String(telegramUser.id || '').trim();
             currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? 'admin' : 'player';
         }
@@ -1110,79 +1100,6 @@
             });
         }
 
-        async function syncPresenceActivity(force = false) {
-            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
-            const now = Date.now();
-            if (!force && (now - lastPresenceActivitySyncAt) < PRESENCE_ACTIVITY_SYNC_MS) return;
-            lastPresenceActivitySyncAt = now;
-            const payload = {
-                updatedAt: now,
-                lastActiveAt: now,
-                onlineHeartbeatAt: now,
-                isInApp: true
-            };
-            if (force) payload.lastSeen = firebase.database.ServerValue.TIMESTAMP;
-            await db.ref(`player_season_status/${currentUserId}`).update(payload).catch(() => {});
-        }
-
-        function startOnlineHeartbeat() {
-            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
-            const ref = db.ref(`player_season_status/${currentUserId}`);
-            const beat = () => {
-                const now = Date.now();
-                lastPresenceActivitySyncAt = now;
-                return ref.update({
-                    lastSeen: firebase.database.ServerValue.TIMESTAMP,
-                    lastActiveAt: now,
-                    onlineHeartbeatAt: now,
-                    updatedAt: now,
-                    isInApp: true
-                }).catch(() => {});
-            };
-            beat();
-            if (heartbeatInterval) clearInterval(heartbeatInterval);
-            heartbeatInterval = setInterval(beat, ONLINE_HEARTBEAT_MS);
-        }
-
-        function startPresenceActivityTracking() {
-            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
-            const markActive = () => { syncPresenceActivity(false); };
-            ['pointerdown', 'touchstart', 'keydown', 'scroll'].forEach((evt) => {
-                window.addEventListener(evt, markActive, { passive: true });
-            });
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    syncPresenceActivity(true);
-                    return;
-                }
-                db.ref(`player_season_status/${currentUserId}`).update({
-                    isInApp: false,
-                    updatedAt: Date.now()
-                }).catch(() => {});
-            });
-            window.addEventListener('beforeunload', () => {
-                db.ref(`player_season_status/${currentUserId}`).update({
-                    isInApp: false,
-                    updatedAt: Date.now()
-                }).catch(() => {});
-            });
-            markActive();
-        }
-
-        function repaintOnlineTrails() {
-            const repaintImpl = window.__repaintOnlineTrailsImpl;
-            if (typeof repaintImpl === 'function') {
-                repaintImpl();
-            }
-        }
-
-        function startOnlineTrailsRepaintLoop() {
-            repaintOnlineTrails();
-            if (onlineTrailsRepaintInterval) clearInterval(onlineTrailsRepaintInterval);
-            onlineTrailsRepaintInterval = setInterval(repaintOnlineTrails, 10000);
-        }
-
-
         const players = [{n:"Ван Гог"},{n:"Пикассо"},{n:"Мокрая кисть"},{n:"Мадам Акварель"},{n:"Острый Карандашик"},{n:"Маркерный Маг"},{n:"Маляр-Виртуоз"},{n:"Бешеная Кисточка"},{n:"Клякса"},{n:"Ультрамариновый Ниндзя"},{n:"Королева Фуксия"},{n:"Неоновый Пиксель"},{n:"Солнечная Охра"},{n:"Изумрудный Штрих"},{n:"Алый Контур"},{n:"Великий Скетчер"},{n:"Белоснежка и 7 Слоёв"},{n:"Арт-Хаос"},{n:"Холст-На-Вынос"},{n:"Цветной Енот"},{n:"Бликовая Истерика"},{n:"Арт-Террорист"},{n:"Опасный Пигмент"},{n:"Брызги Фантазии"},{n:"Кислотный Эскиз"},{n:"Гроза Бумаги"},{n:"Тонировщик 3000"},{n:"Ночной Дожор Скетчей"},{n:"Чернильная Фея"},{n:"Пикассо из пригорода"},{n:"Спящий Набросок"},{n:"Злодейский Подтон"},{n:"Охотник за Референсом"},{n:"Блик на Носу"},{n:"Святой Фотошоп"},{n:"Светлячок-Арт"},{n:"Ванильный Холст"},{n:"Сломанный Грифель"},{n:"Фоновый Гном"},{n:"Эстет"},{n:"Ворчащий Мольберт"},{n:"Звездная Пыльца"},{n:"Сечение"},{n:"Призрачный Эскиз"},{n:"Дыхание Акварели"},{n:"Пончик-Колорист"},{n:"Медовый Мазок"},{n:"Слой №137"},{n:"Хранитель Кривых Рук"},{n:"Слеза Перфекциониста"},{n:"Слой-Невидимка"},{n:"Ластик-Мститель"},{n:"Пиксельный Барон"},{n:"Святая Posca"},{n:"Мышиный Самурай"},{n:"Повелитель Заливки"},{n:"Муза в Запое"},{n:"Минималист Поневоле"},{n:"Белоснежка и 7 Дедлайнов"},{n:"Джинн из Тюбика"},{n:"Мирный Тюбик"},{n:"Великий Нехочуха"},{n:"Бумажный Дух"},{n:"Критик из Интернета"},{n:"Теневой Кардинал"},{n:"Pinterest дива"},{n:"Минималист от Лени"},{n:"Чеширский Слой"}];
 
         function generateBrightColors(count) {
@@ -1194,21 +1111,11 @@
             return palette;
         }
 
-        function colorWithAlpha(color, alpha = 0.3) {
-            const c = String(color || '').trim();
-            if (!c) return `rgba(33, 150, 243, ${alpha})`;
-            const hslMatch = c.match(/^hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)$/i);
-            if (hslMatch) return `hsla(${hslMatch[1]}, ${hslMatch[2]}%, ${hslMatch[3]}%, ${alpha})`;
-            if (/^#([\da-f]{6}|[\da-f]{3})$/i.test(c)) return `${c}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`;
-            return c;
-        }
-
         const charColors = generateBrightColors(players.length);
 
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
         let archivedTicketsData = [];
         let liveBoardTicketsData = [];
-        let latestBoardSnapshot = {};
         let shownMagicLinks = {};
         let magicLinksRef = null;
         let newsFeedRef = null;
@@ -1216,10 +1123,9 @@
         let legacyWorksRef = null;
         let inventoryRef = null;
         let challengeRef = null;
-        let systemNotificationsRef = null;
         let wandBlessingRef = null;
         let gameEventsRef = null;
-        let gameEventsTickInterval = null;
+        let epicPaintStrokesRef = null;
         let winnerHistoryRef = null;
         let drawScheduleRef = null;
         let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0 };
@@ -1231,8 +1137,11 @@
         let queuedGameEvents = [];
         let lastCompletedEpicEventKeyShown = null;
         let lastFailedEpicEventKeyShown = null;
-        let newsFeedSeenKeys = new Set();
+        let epicPaintStrokes = [];
+        let epicPaintHasDismissedStart = false;
+        let epicPaintViewMode = 'event';
         let myRoundHasMove = false;
+        let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
         let currentWheelRotation = 0;
         let wheelSpinInterval = null;
         let wheelSystemInterval = null;
@@ -1247,12 +1156,6 @@
         let seasonProfilesByUserId = {};
         let lastMagicLinksRound = null;
         let duelInvitesRef = null;
-        let duelRequestsRef = null;
-        let duelIncomingHandled = {};
-        let duelStatusUnsubMap = {};
-        let heartbeatInterval = null;
-        let onlineTrailsRepaintInterval = null;
-        let lastPresenceActivitySyncAt = 0;
         let activeDuelRef = null;
         let activeDuelKey = null;
         let duelLocalPoints = [];
@@ -1260,9 +1163,11 @@
         let duelTimerInterval = null;
         let duelCountdownInterval = null;
 
-        const DUEL_RESULT_DISMISSED_STORAGE_KEY = 'duel_result_dismissed_ids';
 
-
+        const EPIC_PAINT_EVENT_ID = 'epic_paint';
+        const WALL_BATTLE_EVENT_ID = 'wall_battle';
+        const MUSHU_EVENT_ID = 'mushu_feast';
+        const EPIC_PAINT_COVERAGE_TARGET = 95;
         const MAX_SCHEDULED_EVENTS = 10;
         const MAX_TICKETS = 2000;
         const MAGIC_LINK_WAIT_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -1288,13 +1193,7 @@
             { char: '永', title: 'Вечность' }
         ];
         const IMPULSE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-        const DUEL_PATH = 'duels';
-        const DUEL_PENDING_MS = 15 * 60 * 1000;
-        const DUEL_SEND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-        const ONLINE_HEARTBEAT_MS = 30 * 1000;
-        const ONLINE_TRAIL_APPEAR_MS = 30 * 1000;
-        const ONLINE_IDLE_OFFLINE_MS = 5 * 60 * 1000;
-        const PRESENCE_ACTIVITY_SYNC_MS = 20 * 1000;
+        const DUEL_PATH = 'calligraphy_duels';
         const DUEL_REWARD_ITEMS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
 
         const magicBondTasks = [
@@ -1578,16 +1477,18 @@
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
                 await initializeTelegramSeasonUser();
-                startOnlineHeartbeat();
-                startPresenceActivityTracking();
-                startOnlineTrailsRepaintLoop();
                 if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
+                setupEpicPaintCanvas();
+                resizeEpicPaintCanvasForPhone();
+                window.addEventListener('resize', resizeEpicPaintCanvasForPhone);
+                window.addEventListener('orientationchange', resizeEpicPaintCanvasForPhone);
                 document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
                 checkAccess();
                 syncData();
                 syncGameEvents();
                 syncWheelSystems();
-                initDuelsListener();
+                window.initMushuEventSystem?.();
+                subscribeToCalligraphyDuelInvites();
                 document.getElementById('duel-close-btn')?.addEventListener('click', closeCalligraphyDuelUI);
             } catch(e) { console.error(e); }
         }
@@ -1716,10 +1617,196 @@
         }
 
 
+        function updateWorksTabForRole(isAdmin) {
+            const uploadCard = document.getElementById('works-upload-card');
+            const title = document.getElementById('works-tab-title');
+            if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+        }
 
+        function checkAccess() {
+            if (currentUserId === ADMIN_ID) {
+                document.getElementById('nav-admin-btn').style.display='flex';
+                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="adminResetRaffleState()" class="admin-btn" style="background:#546e7a;">♻️ Сброс</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
+                syncAdminList();
+                fillAdminNickOptions();
+                ensureDateTimeInputDefault('event-start-at');
+                ensureDateTimeInputDefault('draw-start-at');
+                ensureDateTimeInputDefault('round-start-at');
+                document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                updateWorksTabForRole(true);
+                setAuthorizedView(true);
+                if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
+                if (typeof renderGalleryTab === 'function') renderGalleryTab();
+            }
+            db.ref('whitelist/' + currentUserId).on('value', s => {
+                if (s.exists()) {
+                    myIndex = s.val().charIndex;
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    updateWorksTabForRole(false);
+                    setAuthorizedView(true);
+                    if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
+                    if (typeof renderGalleryTab === 'function') renderGalleryTab();
+                    return;
+                }
 
+                myIndex = -1;
+                if (currentUserId !== ADMIN_ID) {
+                    updateWorksTabForRole(false);
+                    document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
+                    setAuthorizedView(false);
+                }
+            });
+        }
 
+        function syncData() {
+            db.ref('current_round').on('value', snap => {
+                if (!snap.exists()) return;
 
+                currentRoundNum = snap.val().number;
+                roundEndTime = snap.val().endTime;
+                document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
+                updateTimerDisplay();
+
+                if (magicLinksRef) magicLinksRef.off();
+                shownMagicLinks = {};
+                pendingMagicLinkCleanupRound = currentRoundNum;
+                expireStaleMagicLinksForRound(currentRoundNum, 'app_enter').catch(err => console.error('expireStaleMagicLinksForRound failed:', err));
+                magicLinksRef = db.ref(`magic_links/${currentRoundNum}`);
+                magicLinksRef.on('value', linksSnap => {
+                    if (!linksSnap.exists()) return;
+
+                    linksSnap.forEach(linkSnap => {
+                        const link = linkSnap.val();
+                        if (!link || shownMagicLinks[linkSnap.key]) return;
+
+                        const related = Number(link.playerA?.userId) === Number(currentUserId) || Number(link.playerB?.userId) === Number(currentUserId);
+                        if (!related) return;
+
+                        if (link.status === 'paired') {
+                            shownMagicLinks[linkSnap.key] = true;
+                            if (Number(link.playerB?.userId) === Number(currentUserId)) {
+                                alert(`✨ Ты в Магической связи с ${link.playerA?.name || 'Неизвестный игрок'}! Вот ваш список кооперативных заданий в карточке клетки 🔮`);
+                            } else {
+                                const partner = link.playerB;
+                                alert(`✨ Магическая связь активна!
+Твой напарник: ${partner?.name || 'Неизвестный'}
+Выберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                            }
+                            return;
+                        }
+
+                        if (link.status === 'expired_single' && Number(link.playerA?.userId) === Number(currentUserId)) {
+                            shownMagicLinks[linkSnap.key] = true;
+                            alert('Упс! Магическая связь не нашла пару, выполняй задание в одиночку');
+                        }
+                    });
+                });
+            });
+
+            syncTicketData();
+
+            if (inventoryRef) inventoryRef.off();
+            inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
+            inventoryRef.on('value', snap => {
+                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
+                renderInventory();
+            });
+
+            if (seasonProfilesRef) seasonProfilesRef.off();
+            seasonProfilesRef = db.ref('player_season_status');
+            seasonProfilesRef.on('value', snap => {
+                seasonProfilesByUserId = snap.val() || {};
+            });
+
+            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+                const v = snap.val() || {};
+                if (!v.text) return;
+                if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
+                    db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
+                    return;
+                }
+                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
+            });
+
+            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+                const v = snap.val() || {};
+                if (!v.text) return;
+                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
+            });
+
+            if (challengeRef) challengeRef.off();
+            challengeRef = db.ref(`whitelist/${currentUserId}/ink_challenge`);
+            challengeRef.on('value', snap => {
+                myInkChallenge = snap.val() || null;
+                updateInkDeadlineHint();
+                if (!myInkChallenge || myInkChallenge.round !== currentRoundNum || myInkChallenge.isResolved) return;
+                if (window.lastShownInkChallengeRound === currentRoundNum) return;
+                window.lastShownInkChallengeRound = currentRoundNum;
+                alert('Хах! Кому-то ты не угодил! Твою работу покрыли кляксами! Открой свою клетку, чтобы выбрать усложнение.');
+            });
+
+            if (wandBlessingRef) wandBlessingRef.off();
+            wandBlessingRef = db.ref(`whitelist/${currentUserId}/wand_blessing`);
+            wandBlessingRef.on('value', snap => {
+                myWandBlessing = snap.val() || null;
+                if (!myWandBlessing || myWandBlessing.round !== currentRoundNum || myWandBlessing.isResolved) return;
+                if (window.lastShownWandBlessingRound === currentRoundNum) return;
+                window.lastShownWandBlessingRound = currentRoundNum;
+                alert('Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай.');
+            });
+
+            if (newsFeedRef) newsFeedRef.off();
+            newsFeedRef = db.ref('news_feed').limitToLast(30);
+            newsFeedRef.on('value', snap => {
+                const items = [];
+                snap.forEach(item => {
+                    const v = item.val();
+                    if (v?.text) items.push(v.text);
+                });
+                const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
+
+                const preview = document.getElementById('news-preview');
+                const list = document.getElementById('news-list');
+                preview.innerText = ordered[0] || 'Пока новостей нет — откройте первую клетку! ✨';
+                list.innerHTML = ordered.map((text, idx) => `<div class="news-item">${idx + 1}. ${text}</div>`).join('');
+            });
+
+            if (submissionsRef) submissionsRef.off();
+            submissionsRef = db.ref('submissions');
+            submissionsRef.on('value', snap => {
+                const items = [];
+                snap.forEach(s => {
+                    const value = s.val() || {};
+                    items.push({ id: s.key, ...value });
+                });
+                allSubmissions = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                renderSubmissions();
+                fillSubmissionTaskOptions();
+            });
+        }
+
+        function getTaskLabelByCell(cell) {
+            if (!cell) return 'Неизвестное задание';
+            if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
+            if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
+            if (cell.isMagic && cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) return `🔮 Магическая связь: одиночное задание — ${tasks[cell.taskIdx]?.text || 'Обычное задание'}`;
+            if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
+            if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
+            if (cell.isWordSketch) return '🧩 Словесный скетч: мини-игра без дополнительного задания';
+            if (cell.isMagnet) return `👯 Тянет к тебе как магнитом: ${cell.magnetTaskLabel || 'повтори задание выбранного игрока'}`;
+            if (cell.isInkChallenge) return `🫧 Клякса-диверсант: ${cell.inkOptionLabel || 'усложнение выбирается в карточке клетки'}`;
+            if (cell.isWandBlessing) return `🎆 Волшебная палочка: ${cell.wandOptionLabel || 'выбери упрощение в карточке клетки'}`;
+            if (cell.isGold) return '👑 Золотая клетка: свободная тема';
+            const t = tasks[cell.taskIdx];
+            return t?.text || 'Обычное задание';
+        }
+
+        function getSubmissionStatusInfo(status) {
+            if (status === 'accepted') return { text: 'Принято', className: 'status-accepted' };
+            if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
+            return { text: 'На проверке', className: 'status-pending' };
+        }
 
 
         function getLatestSubmissionForCell(roundNum, cellIdx, userId = currentUserId) {
@@ -1799,16 +1886,152 @@
             statusEl.style.color = '#2e7d32';
         }
 
+        function updateInkDeadlineHint() {
+            const el = document.getElementById('ink-deadline-hint');
+            if (!el) return;
+            if (!myInkChallenge || myInkChallenge.selectedOption !== 4 || myInkChallenge.isResolved) {
+                el.innerText = '';
+                return;
+            }
+            const ms = (myInkChallenge.optionDeadline || 0) - Date.now();
+            if (ms <= 0) {
+                el.innerText = '⏰ Дедлайн по кляксе истёк.';
+                return;
+            }
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            el.innerText = `⏳ Клякса: до конца дедлайна ${h}ч ${m}м.`;
+        }
 
+        function fillSubmissionTaskOptions() {
+            const select = document.getElementById('work-task-select');
+            if (!select) return;
 
+            const myCells = allTicketsData.filter(t => {
+                const sameUserId = Number(t.userId) === Number(currentUserId);
+                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
+                if (!sameUserId && !sameOwner) return false;
+                if (!Number.isInteger(t.cellIdx) || t.cellIdx < 0) return false;
+                if (t.excluded) return false;
+                if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
+                return true;
+            });
+            if (!myCells.length) {
+                select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
+                select.disabled = true;
+                refreshUploadStateForSelectedTask();
+                return;
+            }
 
+            const selectable = myCells.filter(cell => {
+                const latest = getLatestSubmissionForCell(cell.round, cell.cellIdx);
+                return !latest || latest.status !== 'pending';
+            });
+
+            updateInkDeadlineHint();
+            if (!selectable.length) {
+                select.disabled = true;
+                select.innerHTML = '<option value="">Все доступные клетки уже на проверке</option>';
+                refreshUploadStateForSelectedTask();
+                return;
+            }
+
+            select.disabled = false;
+            select.innerHTML = selectable.map(cell => {
+                const shortTask = getTaskLabelByCell(cell).slice(0, 90);
+                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+            }).join('');
+            refreshUploadStateForSelectedTask();
+        }
+
+        function renderSubmissions() {
+            const list = document.getElementById('works-list');
+            if (!list) return;
+            const isAdmin = (currentUserId === ADMIN_ID);
+            const visible = allSubmissions.filter(item => isAdmin || item.userId === currentUserId);
+
+            if (!visible.length) {
+                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
+                return;
+            }
+
+            list.innerHTML = visible.map(item => {
+                const status = getSubmissionStatusInfo(item.status);
+                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${players[item.owner]?.n || 'Неизвестный'}</b> · TG ID: ${item.userId || '—'}</div>` : '';
+                const reviewControls = isAdmin ? `
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <button onclick="setSubmissionStatus('${item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
+                        <button onclick="setSubmissionStatus('${item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
+                    </div>` : '';
+                const beforeBodyId = `sub-before-${item.id}`;
+                const afterBodyId = `sub-after-${item.id}`;
+
+                return `
+                    <div class="works-card">
+                        ${playerLine}
+                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                            <div><b>Раунд ${item.round || '—'}, клетка №${(item.cellIdx ?? -1) + 1}</b></div>
+                            <span class="status-chip ${status.className}">${status.text}</span>
+                        </div>
+                        <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
+                        ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
+
+                        <div class="work-stage-block">
+                            <div class="collapse-head" onclick="toggleCollapse('${beforeBodyId}', this)">
+                                <span>🖼️ Фото «До»</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${beforeBodyId}" class="collapse-body">
+                                ${item.beforeImageData ? `<img src="${item.beforeImageData}" alt="Работа до" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «До» не загружено.</div>'}
+                            </div>
+                        </div>
+
+                        <div class="work-stage-block">
+                            <div class="collapse-head" onclick="toggleCollapse('${afterBodyId}', this)">
+                                <span>🎨 Фото «После»</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${afterBodyId}" class="collapse-body">
+                                ${(item.afterImageData || item.imageData) ? `<img src="${item.afterImageData || item.imageData}" alt="Работа после" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «После» не загружено.</div>'}
+                            </div>
+                        </div>
+                        ${reviewControls}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleCollapse(bodyId, headerEl) {
+            const body = document.getElementById(bodyId);
+            if (!body) return;
+            const willExpand = !body.classList.contains('expanded');
+            body.classList.toggle('expanded', willExpand);
+            const btn = headerEl?.querySelector('.collapse-toggle');
+            if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
+        }
 
         function closePlayerNotification(notifId) {
             const node = document.getElementById(notifId);
             if (node) node.remove();
         }
 
+        function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
+            if (!id || !text) return;
+            const wrap = document.getElementById('player-notification-wrap');
+            if (!wrap) return;
+            if (document.getElementById(id)) return;
+            const card = document.createElement('div');
+            card.id = id;
+            card.className = 'player-notification';
+            card.style.borderColor = borderColor;
+            card.innerHTML = `<button class="player-notification-close" onclick="closePlayerNotification('${id}')">✕</button><div style="font-size:13px; line-height:1.4; color:#4a148c;">${text}</div>`;
+            wrap.appendChild(card);
+        }
 
+        function hasFullSubmissionForRound(roundNum, userId = currentUserId) {
+            return allSubmissions.some(s => s.userId === userId && s.round === roundNum && s.beforeImageData && s.afterImageData);
+        }
 
         async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
             const boardSnap = await db.ref('board').once('value');
@@ -1895,6 +2118,14 @@
             await postNews(`🚫 ${players[myIndex].n} пропустил(а) сдачу работы за раунд №${previousRound}. Билеты аннулированы, участие в игре остановлено.`);
         }
 
+        function readImageAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
 
         async function compressImage(dataUrl, maxSide = 1200, quality = 0.82) {
             return new Promise((resolve) => {
@@ -1904,7 +2135,7 @@
                     const canvas = document.createElement('canvas');
                     canvas.width = Math.round(img.width * ratio);
                     canvas.height = Math.round(img.height * ratio);
-                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     resolve(canvas.toDataURL('image/jpeg', quality));
                 };
@@ -2175,21 +2406,6 @@
             });
         }
 
-        async function pushSystemNotification(userId, payload = {}) {
-            const targetId = String(userId || '').trim();
-            if (!targetId || !db) return;
-            const text = String(payload.text || '').trim();
-            if (!text) return;
-
-            const now = Date.now();
-            await db.ref(`system_notifications/${targetId}`).push({
-                ...payload,
-                text,
-                createdAt: Number(payload.createdAt) || now,
-                type: String(payload.type || 'info')
-            });
-        }
-
         function toggleNewsPanel() {
             toggleExpandablePanel('news-list', 'news-toggle-btn');
         }
@@ -2206,55 +2422,47 @@
         async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded) {
             if (!cellOwnerUserId) return;
             if (Number(cellOwnerUserId) === Number(currentUserId)) return alert('Себе импульс не отправляется 🙂');
-
-            const pendingSnap = await db.ref(DUEL_PATH).orderByChild('challengerId').equalTo(String(currentUserId)).once('value');
-            let hasPending = false;
-            pendingSnap.forEach(ch => {
-                const row = ch.val() || {};
-                if (row.status === 'pending') hasPending = true;
-            });
-            if (hasPending) return alert('Сначала дождитесь ответа на текущий вызов или отмените его.');
-
-            const senderRef = db.ref(`player_season_status/${currentUserId}`);
-            const senderSnap = await senderRef.once('value');
-            const sender = senderSnap.val() || {};
+            const seasonRef = db.ref(`player_season_status/${currentUserId}`);
+            const seasonSnap = await seasonRef.once('value');
+            const season = seasonSnap.val() || {};
             const now = Date.now();
-            const lastDuelSent = Number(sender.lastDuelSent || 0);
-            if (lastDuelSent && (now - lastDuelSent) < DUEL_SEND_COOLDOWN_MS) {
-                const remain = DUEL_SEND_COOLDOWN_MS - (now - lastDuelSent);
+            const lastImpulse = Number(season.last_impulse_time) || 0;
+            const diff = now - lastImpulse;
+            if (diff < IMPULSE_COOLDOWN_MS) {
+                const remain = IMPULSE_COOLDOWN_MS - diff;
                 const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
                 const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
-                return alert(`Новый вызов можно отправить через ${hh}:${mm}`);
+                return alert(`Твоя кисть еще сохнет. Жди ${hh}:${mm}`);
             }
 
             const symbol = CALLIGRAPHY_SYMBOLS[Math.floor(Math.random() * CALLIGRAPHY_SYMBOLS.length)];
             const duelKey = db.ref(DUEL_PATH).push().key;
-            await db.ref(`${DUEL_PATH}/${duelKey}`).set({
-                createdAt: now,
-                status: 'pending',
-                symbol,
-                challengerId: String(currentUserId),
-                opponentId: String(cellOwnerUserId),
-                expiresAt: now + DUEL_PENDING_MS,
-                senderName: players[myIndex]?.n || 'Игрок',
-                opponentName: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок',
-                players: {
-                    [String(currentUserId)]: { accepted: true, nickname: players[myIndex]?.n || 'Игрок' },
-                    [String(cellOwnerUserId)]: { accepted: false, nickname: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок' }
-                }
-            });
-
-            await pushSystemNotification(cellOwnerUserId, {
-                text: `🎭 ${players[myIndex]?.n || 'Игрок'} бросил(а) вам вызов в каллиграфии!`,
+            const payload = {
                 type: 'calligraphy_duel_invite',
-                duelKey,
+                text: `${players[myIndex]?.n || 'Игрок'} бросает тебе вызов в Дуэли Каллиграфов! Принять?`,
                 fromUserId: String(currentUserId),
-                expiresAt: now + DUEL_PENDING_MS
-            });
-
-            await senderRef.update({ lastDuelSent: now, updatedAt: now });
+                duelKey,
+                symbol,
+                cellIndex: Number(cellIndex),
+                createdAt: now
+            };
+            await Promise.all([
+                db.ref(`system_notifications/${cellOwnerUserId}`).push(payload),
+                db.ref(`player_season_status/${currentUserId}`).update({ last_impulse_time: now, updatedAt: now }),
+                db.ref(`${DUEL_PATH}/${duelKey}`).set({
+                    createdAt: now,
+                    status: 'pending',
+                    symbol,
+                    challengerId: String(currentUserId),
+                    opponentId: String(cellOwnerUserId),
+                    players: {
+                        [String(currentUserId)]: { accepted: true, nickname: players[myIndex]?.n || 'Игрок' },
+                        [String(cellOwnerUserId)]: { accepted: false, nickname: decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок' }
+                    }
+                })
+            ]);
             const ownerName = decodeURIComponent(String(ownerNameEncoded || ''));
-            alert(`Вызов отправлен игроку ${ownerName || 'Игрок'} ✨`);
+            alert(`Импульс отправлен игроку ${ownerName || 'Игрок'} ✨`);
         }
 
         async function acceptCalligraphyDuel(duelKey) {
@@ -2281,7 +2489,7 @@
             const canvas = document.getElementById('duel-canvas');
             if (!canvas || canvas.dataset.ready === '1') return;
             canvas.dataset.ready = '1';
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const ctx = canvas.getContext('2d');
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             ctx.lineWidth = 9;
@@ -2350,7 +2558,7 @@
             const canvas = document.createElement('canvas');
             canvas.width = 600;
             canvas.height = 600;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#000';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -2375,7 +2583,7 @@
                 const now = Date.now();
                 const lockAge = now - Number(row.resolvingAt || 0);
                 const canTakeOverStaleLock = row.status === 'resolving' && lockAge > 30000;
-                if (row.status !== 'active' && !canTakeOverStaleLock) return;
+                if (row.status !== 'active' && !canTakeOverStaleLock) return row;
                 row.status = 'resolving';
                 row.resolvingAt = now;
                 row.resolvingBy = String(currentUserId || 'system');
@@ -2384,7 +2592,7 @@
             if (!lockTx.committed) return;
 
             const duel = lockTx.snapshot.val();
-            if (!duel || duel.status !== 'resolving' || String(duel.resolvingBy || '') !== String(currentUserId || 'system')) return;
+            if (!duel) return;
             const symbolChar = duel.symbol?.char || '永';
             const reference = createReferencePointsFromSymbol(symbolChar);
             const participants = Object.keys(duel.players || {});
@@ -2456,7 +2664,7 @@
             const canvas = document.getElementById('duel-canvas');
             if (!overlay || !canvas) return;
             setupDuelCanvasHandlers();
-            canvas.getContext('2d', { willReadFrequently: true }).clearRect(0, 0, canvas.width, canvas.height);
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
             duelLocalPoints = [];
             duelDrawingState = { drawing: false, enabled: false, ended: false };
             refNode.textContent = duelData.symbol?.char || '永';
@@ -2504,173 +2712,47 @@
             duelDrawingState.enabled = false;
         }
 
-        function formatDuelRemain(ms) {
-            const totalSec = Math.max(0, Math.ceil(ms / 1000));
-            const min = Math.floor(totalSec / 60);
-            const sec = totalSec % 60;
-            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-        }
-
-        function renderDuelNotice(html = '', visible = false) {
-            const box = document.getElementById('duel-notice');
-            if (!box) return;
-            if (!visible || !html) {
-                box.style.display = 'none';
-                box.innerHTML = '';
-                return;
-            }
-            box.innerHTML = html;
-            box.style.display = 'block';
-        }
-
-        async function rejectCalligraphyDuel(duelKey) {
-            if (!duelKey) return;
-            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
-            await ref.transaction(row => {
-                if (!row || row.status !== 'pending') return row;
-                row.status = 'rejected';
-                row.rejectedAt = Date.now();
-                row.rejectedBy = String(currentUserId);
-                return row;
-            });
-        }
-
-        async function cancelCalligraphyDuel(duelKey) {
-            if (!duelKey) return;
-            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
-            let shouldResetCooldown = false;
-            await ref.transaction(row => {
-                if (!row || row.status !== 'pending') return row;
-                if (String(row.challengerId) !== String(currentUserId)) return row;
-                row.status = 'cancelled';
-                row.cancelledAt = Date.now();
-                row.cancelledBy = String(currentUserId);
-                shouldResetCooldown = true;
-                return row;
-            });
-            if (shouldResetCooldown) {
-                await db.ref(`player_season_status/${currentUserId}/lastDuelSent`).remove();
-            }
-        }
-
-        function initDuelsListener() {
-            if (!db || !currentUserId) {
-                setTimeout(initDuelsListener, 500);
-                return;
-            }
-            subscribeToCalligraphyDuelInvites();
-        }
-
         function subscribeToCalligraphyDuelInvites() {
             if (!currentUserId) return;
-            const me = String(currentUserId);
-            const noticeState = { pendingForMe: null, incoming: null, timerId: null, alertExpired: {}, alertDone: {} };
-            console.log('DEBUG: Duel listener started');
-
-            function showDuelNotification(duel) {
-                if (!duel || duel.status !== 'pending') return;
-                noticeState.incoming = duel;
-                renderNoticeState();
-            }
-            window.showDuelNotification = showDuelNotification;
-
-            const renderNoticeState = () => {
-                if (noticeState.pendingForMe && noticeState.pendingForMe.status === 'pending') {
-                    const duel = noticeState.pendingForMe;
-                    const remain = Number(duel.expiresAt || 0) - Date.now();
-                    renderDuelNotice(`<div class="duel-notice-title">⏳ Вызов отправлен</div><div>Ожидание ответа: <b>${formatDuelRemain(remain)}</b></div><div class="duel-notice-actions"><button class="duel-notice-btn cancel" onclick="cancelCalligraphyDuel('${duel.key}')">Отменить вызов</button></div>`, true);
-                    return;
-                }
-                if (noticeState.incoming && noticeState.incoming.status === 'pending') {
-                    const duel = noticeState.incoming;
-                    const remain = Number(duel.expiresAt || 0) - Date.now();
-                    const senderName = duel.senderName || 'Игрок';
-                    renderDuelNotice(`<div class="duel-notice-title">🎭 ${senderName} вызывает тебя на дуэль!</div><div>Примешь? (Осталось ${formatDuelRemain(remain)})</div><div class="duel-notice-actions"><button class="duel-notice-btn accept" onclick="acceptCalligraphyDuel('${duel.key}')">Принять</button><button class="duel-notice-btn reject" onclick="rejectCalligraphyDuel('${duel.key}')">Отклонить</button></div>`, true);
-                    return;
-                }
-                renderDuelNotice('', false);
-            };
-
             if (duelInvitesRef) duelInvitesRef.off();
-            duelInvitesRef = db.ref(DUEL_PATH).limitToLast(100);
+            duelInvitesRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(30);
             duelInvitesRef.on('child_added', snap => {
-                const row = snap.val() || {};
-                if (String(row.opponentId) !== me || row.status !== 'pending') return;
-                showDuelNotification({ key: snap.key, ...row });
+                const v = snap.val() || {};
+                if (v.type !== 'calligraphy_duel_invite') return;
+                const fromName = players[myIndex]?.n || 'Игрок';
+                const ok = confirm(`${v.text || `${fromName} бросает тебе вызов в Дуэли Каллиграфов! Принять?`}`);
+                if (ok) acceptCalligraphyDuel(v.duelKey);
+                db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
             });
 
-            if (duelRequestsRef) duelRequestsRef.off();
-            duelRequestsRef = db.ref(DUEL_PATH).limitToLast(100);
-            duelRequestsRef.on('value', snap => {
-                const rows = [];
-                snap.forEach(ch => rows.push({ key: ch.key, ...(ch.val() || {}) }));
-                const minePending = rows
-                    .filter(r => String(r.challengerId) === me)
-                    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
-                const incomingPending = rows
-                    .filter(r => String(r.opponentId) === me && r.status === 'pending')
-                    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
-                noticeState.pendingForMe = minePending && minePending.status === 'pending' ? minePending : null;
-                noticeState.incoming = incomingPending;
-
-                const now = Date.now();
-                rows.forEach(row => {
-                    const duelKey = row.key;
-                    if (![String(row.challengerId), String(row.opponentId)].includes(me)) return;
-
-                    if (row.status === 'pending' && Number(row.expiresAt || 0) > 0 && now > Number(row.expiresAt)) {
-                        db.ref(`${DUEL_PATH}/${duelKey}`).transaction(curr => {
-                            if (!curr || curr.status !== 'pending') return curr;
-                            curr.status = 'expired';
-                            curr.expiredAt = Date.now();
-                            curr.expiredBy = 'timer';
-                            return curr;
-                        }).then(async tx => {
-                            if (tx.committed && String(row.challengerId) === me) {
-                                await db.ref(`player_season_status/${me}/lastDuelSent`).remove();
-                            }
-                        }).catch(() => {});
-                        return;
-                    }
-
-                    if (row.status === 'active' && activeDuelKey !== duelKey) {
-                        openCalligraphyDuelUI(duelKey, row);
+            if (activeDuelRef) activeDuelRef.off();
+            activeDuelRef = db.ref(DUEL_PATH).limitToLast(20);
+            activeDuelRef.on('child_added', snap => {
+                const duel = snap.val() || {};
+                const me = String(currentUserId);
+                if (![String(duel.challengerId), String(duel.opponentId)].includes(me)) return;
+                db.ref(`${DUEL_PATH}/${snap.key}`).on('value', duelSnap => {
+                    const row = duelSnap.val() || {};
+                    if (row.status === 'active' && activeDuelKey !== duelSnap.key) {
+                        openCalligraphyDuelUI(duelSnap.key, row);
                     }
                     const allFinished = Object.values(row.players || {}).length >= 2 && Object.values(row.players || {}).every(p => Array.isArray(p.points) && p.points.length > 0);
                     if (row.status === 'active' && allFinished) {
-                        finishCalligraphyDuel(duelKey).catch(err => console.error('finish duel failed', err));
+                        finishCalligraphyDuel(duelSnap.key).catch(err => console.error('finish duel failed', err));
                     }
-                    if (row.status === 'done' && !noticeState.alertDone[duelKey]) {
-                        noticeState.alertDone[duelKey] = true;
+                    if (row.status === 'done') {
                         const myScore = Number(row.scores?.[me] || 0);
                         const winner = String(row.winnerId || '') === me;
                         closeCalligraphyDuelUI();
-                        if (!isDuelResultDismissed(duelKey)) {
-                            if (winner) {
-                                launchCelebrationFireworks();
-                                alert(`Победа в дуэли! Точность: ${myScore}%`);
-                            } else {
-                                alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
-                            }
-                            rememberDismissedDuelResult(duelKey);
-                        }
-                    }
-                    if (row.status === 'expired' && !noticeState.alertExpired[duelKey]) {
-                        noticeState.alertExpired[duelKey] = true;
-                        if (String(row.challengerId) === me) {
-                            alert('Мастер не ответил, вы можете вызвать кого-то другого');
-                        }
-                        if (String(row.opponentId) === me) {
-                            alert('Вас не дождались, дуэль отменена');
+                        if (winner) {
+                            launchCelebrationFireworks();
+                            alert(`Победа в дуэли! Точность: ${myScore}%`);
+                        } else {
+                            alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
                         }
                     }
                 });
-
-                renderNoticeState();
             });
-
-            if (noticeState.timerId) clearInterval(noticeState.timerId);
-            noticeState.timerId = setInterval(renderNoticeState, 1000);
         }
 
         function toggleAdminEmergencyActions() {
@@ -2791,7 +2873,30 @@
             btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
         }
 
+        function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
+            const input = document.getElementById(inputId);
+            if (!input || input.value) return;
+            const dt = new Date(Date.now() + plusMs);
+            input.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        }
 
+        function switchAdminInnerTab(tabName) {
+            const roundsBtn = document.getElementById('admin-inner-rounds-btn');
+            const eventsBtn = document.getElementById('admin-inner-events-btn');
+            const drawBtn = document.getElementById('admin-inner-draw-btn');
+            const roundsPanel = document.getElementById('admin-rounds-panel');
+            const eventsPanel = document.getElementById('admin-events-panel');
+            const drawPanel = document.getElementById('admin-draw-panel');
+            const isRounds = tabName === 'rounds';
+            const isEvents = tabName === 'events';
+            const isDraw = tabName === 'draw';
+            roundsBtn?.classList.toggle('active', isRounds);
+            eventsBtn?.classList.toggle('active', isEvents);
+            drawBtn?.classList.toggle('active', isDraw);
+            roundsPanel?.classList.toggle('active', isRounds);
+            eventsPanel?.classList.toggle('active', isEvents);
+            drawPanel?.classList.toggle('active', isDraw);
+        }
 
         function getPlayerColorByUid(uid) {
             const entry = Object.entries(window.cachedWhitelistData || {}).find(([id]) => Number(id) === Number(uid));
@@ -2800,9 +2905,578 @@
             if (Number(uid) === currentUserId && Number.isInteger(myIndex)) return charColors[myIndex] || '#ff007f';
             return '#ff007f';
         }
-        function updateEventUiState() {}
 
-        function syncGameEvents() {}
+        function getWallBattleTeamColor(team) { return team === 'blue' ? '#1e88e5' : '#e53935'; }
+
+        async function joinCurrentEventTeam() {
+            if (!currentGameEventKey || !currentGameEvent || currentGameEvent.status !== 'active') return null;
+            const existing = (await db.ref(`game_events/${currentGameEventKey}/teams/${currentUserId}`).once('value')).val();
+            if (existing?.team) return existing.team;
+            let assigned = null;
+            await db.ref(`game_events/${currentGameEventKey}`).transaction(ev => {
+                if (!ev || ev.status !== 'active') return ev;
+                const teams = ev.teams || {};
+                if (teams[currentUserId]?.team) { assigned = teams[currentUserId].team; return ev; }
+                const nextTeam = ev.nextTeam === 'blue' ? 'blue' : 'red';
+                assigned = nextTeam;
+                return { ...ev, teams: { ...teams, [currentUserId]: { team: nextTeam, joinedAt: Date.now() } }, nextTeam: nextTeam === 'red' ? 'blue' : 'red' };
+            });
+            return assigned;
+        }
+
+        async function addInventoryItemForUser(uid, itemType, count = 1) {
+            if (!uid || !itemType || !count) return;
+            await db.ref(`whitelist/${uid}/inventory/${itemType}`).transaction(v => (Number(v) || 0) + count);
+        }
+
+        function setupEpicPaintCanvas() {
+            const canvas = document.getElementById('epic-paint-canvas');
+            if (!canvas || canvas.dataset.ready === '1') return;
+            canvas.dataset.ready = '1';
+            const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+
+            const getPos = evt => {
+                const rect = canvas.getBoundingClientRect();
+                const touch = evt.touches?.[0] || evt.changedTouches?.[0];
+                const cx = touch ? touch.clientX : evt.clientX;
+                const cy = touch ? touch.clientY : evt.clientY;
+                return {
+                    x: ((cx - rect.left) / rect.width) * canvas.width,
+                    y: ((cy - rect.top) / rect.height) * canvas.height
+                };
+            };
+
+            const begin = async evt => {
+                if (!currentGameEvent || currentGameEvent.status !== 'active' || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id)) return;
+                if (isAdminUser()) return;
+                evt.preventDefault();
+                const team = await joinCurrentEventTeam();
+                if (!team) return;
+                const { x, y } = getPos(evt);
+                epicPaintDrawState.drawing = true;
+                epicPaintDrawState.lastX = x;
+                epicPaintDrawState.lastY = y;
+                pushEpicPaintStroke(x, y, x, y);
+            };
+
+            const move = evt => {
+                if (!epicPaintDrawState.drawing) return;
+                evt.preventDefault();
+                const { x, y } = getPos(evt);
+                pushEpicPaintStroke(epicPaintDrawState.lastX, epicPaintDrawState.lastY, x, y);
+                epicPaintDrawState.lastX = x;
+                epicPaintDrawState.lastY = y;
+            };
+
+            const end = () => { epicPaintDrawState.drawing = false; };
+
+            canvas.addEventListener('mousedown', begin);
+            canvas.addEventListener('mousemove', move);
+            canvas.addEventListener('mouseup', end);
+            canvas.addEventListener('mouseleave', end);
+            canvas.addEventListener('touchstart', begin, { passive: false });
+            canvas.addEventListener('touchmove', move, { passive: false });
+            canvas.addEventListener('touchend', end);
+            canvas.addEventListener('touchcancel', end);
+        }
+
+        async function pushEpicPaintStroke(x1, y1, x2, y2) {
+            if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
+            if (Number(currentUserId) === Number(ADMIN_ID)) return;
+            const uid = currentUserId;
+            const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
+            const team = teamInfo.team || 'red';
+            const color = currentGameEvent?.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
+            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: Date.now() });
+            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, team, at: Date.now() });
+        }
+
+        function drawEpicPaint() {
+            const canvas = document.getElementById('epic-paint-canvas');
+            const progressEl = document.getElementById('epic-paint-progress');
+            if (!canvas || !progressEl) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            (epicPaintStrokes || []).forEach(stroke => {
+                ctx.beginPath();
+                ctx.lineWidth = 16;
+                ctx.lineCap = 'round';
+                ctx.strokeStyle = stroke.color || '#ff007f';
+                ctx.moveTo(stroke.x1 || 0, stroke.y1 || 0);
+                ctx.lineTo(stroke.x2 || 0, stroke.y2 || 0);
+                ctx.stroke();
+            });
+
+            const coverage = calculateEpicPaintCoverage(canvas);
+            const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
+            const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
+            if (currentGameEvent?.id === WALL_BATTLE_EVENT_ID) {
+                progressEl.innerText = `Общий закрас: ${coverage.toFixed(1)}% · красные: ${redCoverage.toFixed(1)}% · синие: ${blueCoverage.toFixed(1)}%`;
+                maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
+            } else {
+                progressEl.innerText = `Закрашено: ${coverage.toFixed(1)}% · цель ${EPIC_PAINT_COVERAGE_TARGET}%`;
+                maybeFinalizeEpicPaintSuccess(coverage);
+            }
+        }
+
+        function calculateEpicPaintCoverage(canvas) {
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const sample = 6;
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let painted = 0;
+            let total = 0;
+            for (let y = 0; y < canvas.height; y += sample) {
+                for (let x = 0; x < canvas.width; x += sample) {
+                    const idx = (y * canvas.width + x) * 4;
+                    const r = img[idx], g = img[idx + 1], b = img[idx + 2];
+                    total += 1;
+                    if (!(r > 246 && g > 246 && b > 246)) painted += 1;
+                }
+            }
+            return total ? (painted / total) * 100 : 0;
+        }
+
+
+        function calculateTeamCoverage(strokes, team) {
+            const total = (strokes || []).length || 1;
+            const own = (strokes || []).filter(s => (s.team || 'red') === team).length;
+            return (own / total) * 100;
+        }
+
+        function formatDurationMinutesRu(totalMinutes) {
+            const mins = Math.max(1, Math.round(Number(totalMinutes) || 0));
+            const hours = Math.floor(mins / 60);
+            const remMins = mins % 60;
+            if (!hours) return `${mins} мин`;
+            return remMins ? `${hours} ч ${remMins} мин` : `${hours} ч`;
+        }
+
+        function formatCountdownMs(ms) {
+            const totalSeconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function resizeEpicPaintCanvasForPhone() {
+            const canvas = document.getElementById('epic-paint-canvas');
+            if (!canvas) return;
+            const controlsReserve = 290;
+            const availableHeight = Math.max(220, window.innerHeight - controlsReserve);
+            canvas.style.width = '100%';
+            canvas.style.height = `${availableHeight}px`;
+        }
+
+        function updateEpicPaintTimerDisplay() {
+            const timerEl = document.getElementById('epic-paint-timer');
+            if (!timerEl) return;
+            const isActive = currentGameEvent && currentGameEvent.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
+            if (!isActive) {
+                timerEl.textContent = '⏳ До конца: —';
+                return;
+            }
+            const leftMs = Number(currentGameEvent.endAt || 0) - Date.now();
+            timerEl.textContent = `⏳ До конца: ${formatCountdownMs(leftMs)}`;
+        }
+
+        async function postEpicEventSummary(eventData, isSuccess, rewardedPlayersCount) {
+            if (!eventData) return;
+            const startAt = eventData.activatedAt || eventData.startAt || Date.now();
+            const endAt = eventData.completedAt || eventData.failedAt || Date.now();
+            const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
+            const startText = new Date(startAt).toLocaleString('ru-RU');
+            const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
+            await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
+        }
+
+        async function maybeFinalizeEpicPaintSuccess(coverage) {
+            if (!currentGameEvent || currentGameEvent.id !== EPIC_PAINT_EVENT_ID || currentGameEvent.status !== 'active') return;
+            if (!currentGameEventKey) return;
+            if (coverage < EPIC_PAINT_COVERAGE_TARGET) return;
+
+            const eventRef = db.ref(`game_events/${currentGameEventKey}`);
+            const tx = await eventRef.transaction(ev => {
+                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+                return {
+                    ...ev,
+                    status: 'completed',
+                    completedAt: Date.now(),
+                    resultText: 'Игроки успели закрасить поле на 95%+' 
+                };
+            });
+            if (!tx.committed) return;
+
+            const rewardedPlayersCount = await grantEpicPaintRewards();
+            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
+        }
+
+        async function grantEpicPaintRewards() {
+            if (!currentGameEventKey) return 0;
+            const [participantsSnap, strokesSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+                db.ref('epic_paint/participants').once('value'),
+                db.ref('epic_paint/strokes').once('value'),
+                db.ref('whitelist').once('value'),
+                db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+            ]);
+
+            const whitelist = whitelistSnap.val() || {};
+            const alreadyRewarded = rewardedSnap.val() || {};
+            const participantUidSet = new Set();
+
+            participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
+            strokesSnap.forEach(strokeSnap => {
+                const stroke = strokeSnap.val() || {};
+                if (stroke.uid !== undefined && stroke.uid !== null) participantUidSet.add(String(stroke.uid));
+            });
+
+            const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
+            if (!participantUids.length) return 0;
+
+            let rewardedCount = 0;
+            for (const uidKey of participantUids) {
+                if (alreadyRewarded[uidKey]) continue;
+                const uid = Number(uidKey);
+                const user = whitelist[uidKey] || whitelist[uid] || {};
+                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                if (!Number.isInteger(owner) || !players[owner]) continue;
+
+                const awarded = await claimSequentialTickets(2);
+                if (!Array.isArray(awarded) || awarded.length < 2) continue;
+                rewardedCount += 1;
+                const ticketValue = `${awarded[0]} и ${awarded[1]}`;
+                await db.ref('tickets_archive').push({
+                    owner,
+                    userId: uid,
+                    ticket: ticketValue,
+                    taskIdx: -1,
+                    round: currentRoundNum,
+                    cell: 0,
+                    cellIdx: -1,
+                    isEventReward: true,
+                    eventId: EPIC_PAINT_EVENT_ID,
+                    ticketSourceLabel: 'Билет события',
+                    archivedAt: Date.now(),
+                    excluded: false
+                });
+                await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
+            }
+
+            return rewardedCount;
+        }
+
+        async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage) {
+            if (!currentGameEvent || currentGameEvent.id !== WALL_BATTLE_EVENT_ID || currentGameEvent.status !== 'active') return;
+            if (!currentGameEventKey) return;
+            if (coverage < EPIC_PAINT_COVERAGE_TARGET && redCoverage < 75 && blueCoverage < 75) return;
+
+            const winnerTeam = redCoverage >= blueCoverage ? 'red' : 'blue';
+            const eventRef = db.ref(`game_events/${currentGameEventKey}`);
+            const tx = await eventRef.transaction(ev => {
+                if (!ev || ev.id !== WALL_BATTLE_EVENT_ID || ev.status !== 'active') return ev;
+                return { ...ev, status: 'completed', completedAt: Date.now(), winnerTeam, resultText: `Победила команда ${winnerTeam}` };
+            });
+            if (!tx.committed) return;
+
+            const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
+            await postNews(`🏁 «Стенка на стенку» завершена: победила ${winnerTeam === 'red' ? 'красная' : 'синяя'} команда. Победители получили награды.`);
+            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
+        }
+
+        async function grantWallBattleRewards(winnerTeam) {
+            if (!currentGameEventKey) return 0;
+            const [teamsSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+                db.ref(`game_events/${currentGameEventKey}/teams`).once('value'),
+                db.ref('whitelist').once('value'),
+                db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+            ]);
+            const teams = teamsSnap.val() || {};
+            const whitelist = whitelistSnap.val() || {};
+            const alreadyRewarded = rewardedSnap.val() || {};
+            let rewardedCount = 0;
+
+            for (const [uidKey, teamInfo] of Object.entries(teams)) {
+                if (teamInfo?.team !== winnerTeam) continue;
+                if (alreadyRewarded[uidKey]) continue;
+                const uid = Number(uidKey);
+                const user = whitelist[uidKey] || whitelist[uid] || {};
+                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                if (!Number.isInteger(owner) || !players[owner]) continue;
+                const awarded = await claimSequentialTickets(1);
+                if (!awarded?.length) continue;
+                await addInventoryItemForUser(uid, 'magnifier', 1);
+                await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
+                await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
+                rewardedCount += 1;
+            }
+            return rewardedCount;
+        }
+
+        function openEventSpace() {
+            const navBtn = document.getElementById('nav-event-btn');
+            if (navBtn) switchTab('tab-event', navBtn);
+        }
+
+        function backToGameFromEvent() {
+            const gameBtn = document.querySelector(".nav-item[onclick*=\"tab-game\"]");
+            if (gameBtn) switchTab('tab-game', gameBtn);
+        }
+
+        function updateEventUiState() {
+            const startAlert = document.getElementById('event-start-alert');
+            const successAlert = document.getElementById('event-success-alert');
+            const failAlert = document.getElementById('event-fail-alert');
+            const eventTitle = document.getElementById('event-space-title');
+            const navEventBtn = document.getElementById('nav-event-btn');
+            const isActive = currentGameEvent && currentGameEvent.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id);
+
+            if (navEventBtn) navEventBtn.style.display = isActive ? 'flex' : 'none';
+            if (eventTitle) eventTitle.innerText = isActive ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
+            updateEpicPaintTimerDisplay();
+            resizeEpicPaintCanvasForPhone();
+
+            if (isActive) {
+                startAlert.style.display = 'block';
+                startAlert.classList.add('epic');
+                const extra = currentGameEvent.id === WALL_BATTLE_EVENT_ID
+                    ? '<div class="event-sub">Команды распределяются по очереди: красные, затем синие.</div>'
+                    : '';
+                startAlert.innerHTML = `
+                    <div class="event-title">🎨 ${currentGameEvent.name || 'Событие'} уже в разгаре!</div>
+                    <div class="event-sub">Перейди в отдельное пространство события.</div>
+                    ${extra}
+                    <button class="event-join-btn" onclick="dismissEpicPaintStartAlert()">✨ В событие</button>
+                    <button class="event-join-btn" style="margin-top:7px; background:linear-gradient(135deg,#26a69a,#42a5f5);" onclick="chooseRoundInsteadOfEvent()">🎲 Остаться на поле</button>
+                `;
+            } else {
+                startAlert.style.display = 'none';
+                startAlert.classList.remove('epic');
+            }
+
+            const latestCompleted = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
+            const latestFailed = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'failed').sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
+
+            const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
+            successAlert.style.display = showSuccess ? 'block' : 'none';
+            if (showSuccess) {
+                successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
+                    ? '🏁 Командная битва завершена! Победители получили по 1 билету и Лупе.'
+                    : '🎆 Событие прошло круто! Все участники получили по 2 билетика.';
+                launchCelebrationFireworks();
+                playFireworksSound();
+                lastCompletedEpicEventKeyShown = latestCompleted.key;
+                setTimeout(() => { if (successAlert) successAlert.style.display = 'none'; }, 12000);
+            }
+
+            const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
+            failAlert.style.display = showFail ? 'block' : 'none';
+            if (showFail) {
+                failAlert.innerText = 'Событие завершилось без выполнения цели.';
+                lastFailedEpicEventKeyShown = latestFailed.key;
+                setTimeout(() => { if (failAlert) failAlert.style.display = 'none'; }, 10000);
+            }
+        }
+
+        async function dismissEpicPaintStartAlert() {
+            epicPaintHasDismissedStart = true;
+            await joinCurrentEventTeam();
+            openEventSpace();
+        }
+
+        function chooseRoundInsteadOfEvent() {
+            epicPaintHasDismissedStart = true;
+            backToGameFromEvent();
+        }
+
+        async function adminScheduleEvent() {
+            if (currentUserId !== ADMIN_ID) return;
+            const eventType = document.getElementById('event-type').value;
+            const startAtValue = document.getElementById('event-start-at').value;
+            const durationMins = Number(document.getElementById('event-duration-mins').value || 0);
+            if (![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(eventType)) return alert('Неизвестный тип события.');
+            if (!startAtValue) return alert('Выбери дату и время старта события.');
+            if (!durationMins || durationMins < 1) return alert('Укажи длительность события в минутах.');
+
+            const startAt = new Date(startAtValue).getTime();
+            if (!Number.isFinite(startAt) || startAt <= Date.now() - 1000) return alert('Время старта должно быть в будущем.');
+            const endAt = startAt + durationMins * 60000;
+
+            const eventsSnap = await db.ref('game_events').once('value');
+            let scheduledCount = 0;
+            eventsSnap.forEach(ev => {
+                const v = ev.val() || {};
+                if (v.status === 'scheduled') scheduledCount += 1;
+            });
+            if (scheduledCount >= MAX_SCHEDULED_EVENTS) {
+                return alert(`Можно запланировать не более ${MAX_SCHEDULED_EVENTS} событий.`);
+            }
+
+            await db.ref('game_events').push({
+                id: eventType,
+                name: eventType === WALL_BATTLE_EVENT_ID ? 'Раскрас «Стенка на стенку»' : (eventType === MUSHU_EVENT_ID ? '🐉 Кормление Мушу' : 'Эпичный закрас'),
+                status: 'scheduled',
+                createdAt: Date.now(),
+                startAt,
+                endAt,
+                durationMins,
+                nextTeam: 'red',
+                teams: null,
+                createdBy: currentUserId
+            });
+        }
+
+        async function adminCancelScheduledEvent(eventKey) {
+            if (currentUserId !== ADMIN_ID) return;
+            if (!eventKey) return;
+            if (!confirm('Отменить это запланированное событие?')) return;
+            await db.ref(`game_events/${eventKey}`).transaction(ev => {
+                if (!ev || ev.status !== 'scheduled') return ev;
+                return { ...ev, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
+            });
+        }
+
+        async function activateScheduledEventIfNeeded() {
+            const active = queuedGameEvents.find(ev => ev.status === 'active');
+            if (active) return;
+
+            const now = Date.now();
+            const due = queuedGameEvents
+                .filter(ev => ev.status === 'scheduled' && (ev.startAt || 0) <= now)
+                .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+            if (!due?.key) return;
+
+            const tx = await db.ref(`game_events/${due.key}`).transaction(ev => {
+                if (!ev || ev.status !== 'scheduled') return ev;
+                if (Date.now() < (ev.startAt || 0)) return ev;
+                return { ...ev, status: 'active', activatedAt: Date.now(), nextTeam: 'red', teams: null };
+            });
+
+            if (tx.committed) {
+                if (due.id === MUSHU_EVENT_ID) {
+                    const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+                    const usersSnap = await db.ref('users').once('value');
+                    const participantIds = [];
+                    usersSnap.forEach((row) => {
+                        const id = String(row.key || '').trim();
+                        if (id) participantIds.push(id);
+                    });
+                    const luckyCupcakeUid = participantIds.length ? participantIds[Math.floor(Math.random() * participantIds.length)] : null;
+                    const personalFruits = {};
+                    participantIds.forEach((id) => {
+                        if (id === luckyCupcakeUid) {
+                            personalFruits[id] = { id: 'golden_cupcake', pickedAt: Date.now() };
+                            return;
+                        }
+                        const base = ['apple', 'cherry', 'pear', 'peach'][Math.floor(Math.random() * 4)];
+                        personalFruits[id] = { id: base };
+                    });
+                    await db.ref('mushu_event').set({
+                        status: 'active',
+                        current_satiety: 0,
+                        target,
+                        participants: {},
+                        fed_users: {},
+                        personal_fruits: personalFruits,
+                        lucky_cupcake_uid: luckyCupcakeUid,
+                        rewards: {},
+                        rewarded_users: {},
+                        feed_log: {},
+                        combo_bonus: {},
+                        startedAt: Date.now(),
+                        endAt: Number(due.endAt || 0),
+                        durationMs: Math.max(60000, Number(due.endAt || 0) - Date.now())
+                    });
+                } else {
+                    epicPaintHasDismissedStart = false;
+                    await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
+                }
+            }
+        }
+
+        async function failExpiredEventIfNeeded() {
+            const nowMs = typeof getServerNowMs === 'function' ? getServerNowMs() : Date.now();
+            const active = queuedGameEvents.find(ev => ev.status === 'active' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id));
+            if (!active?.key) return;
+            if (nowMs < (active.endAt || 0)) return;
+
+            if ([EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(active.id)) {
+                const canvas = document.getElementById('epic-paint-canvas');
+                if (canvas) {
+                    const coverage = calculateEpicPaintCoverage(canvas);
+                    const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
+                    const blueCoverage = calculateTeamCoverage(epicPaintStrokes, 'blue');
+                    if (active.id === WALL_BATTLE_EVENT_ID) {
+                        await maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage);
+                    } else {
+                        await maybeFinalizeEpicPaintSuccess(coverage);
+                    }
+                    const stillActiveSnap = await db.ref(`game_events/${active.key}/status`).once('value');
+                    if (stillActiveSnap.val() !== 'active') return;
+                }
+            }
+
+            const tx = await db.ref(`game_events/${active.key}`).transaction(ev => {
+                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+                if (nowMs < (ev.endAt || 0)) return ev;
+                return { ...ev, status: 'failed', failedAt: nowMs, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' };
+            });
+            if (tx.committed) {
+                if (active.id === MUSHU_EVENT_ID) {
+                    const failedAt = nowMs;
+                    await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' });
+                    const failedEventId = String(active.activatedAt || active.startAt || failedAt);
+                    const failedLogTx = await db.ref(`mushu_event/feed_result_posted/${failedEventId}`).transaction((v) => v || { at: failedAt, eventId: failedEventId, status: 'failed' });
+                    if (failedLogTx.committed) await postNews('🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟');
+                } else {
+                    await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
+                }
+            }
+        }
+
+        function syncGameEvents() {
+            if (gameEventsRef) gameEventsRef.off();
+            gameEventsRef = db.ref('game_events');
+            gameEventsRef.on('value', snap => {
+                const events = [];
+                snap.forEach(item => {
+                    const value = item.val() || {};
+                    events.push({ key: item.key, ...value });
+                });
+                queuedGameEvents = events.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+
+                const active = queuedGameEvents.find(ev => ev.status === 'active') || null;
+                currentGameEvent = active;
+                currentGameEventKey = active?.key || null;
+                if (!currentGameEvent || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id) || currentGameEvent.status !== 'active') {
+                    epicPaintHasDismissedStart = false;
+                }
+
+                updateEventUiState();
+                updateAdminEventStatus();
+                activateScheduledEventIfNeeded();
+                failExpiredEventIfNeeded();
+            });
+
+            if (epicPaintStrokesRef) epicPaintStrokesRef.off();
+            epicPaintStrokesRef = db.ref('epic_paint/strokes');
+            epicPaintStrokesRef.on('value', snap => {
+                const strokes = [];
+                snap.forEach(s => {
+                    const v = s.val();
+                    if (v) strokes.push(v);
+                });
+                epicPaintStrokes = strokes;
+                drawEpicPaint();
+            });
+
+            db.ref('whitelist').on('value', snap => {
+                window.cachedWhitelistData = snap.val() || {};
+            });
+        }
 
         function updateAdminEventStatus() {
             const el = document.getElementById('admin-event-status');
@@ -2812,12 +3486,12 @@
             const scheduled = queuedGameEvents.filter(ev => ev.status === 'scheduled').slice(0, MAX_SCHEDULED_EVENTS);
 
             const activeLine = active
-                ? `Активно: ${active.name || active.id} · до ${new Date(active.endAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}`
+                ? `Активно: ${active.name || active.id} · до ${new Date(active.endAt || 0).toLocaleString('ru-RU')}`
                 : 'Активного события сейчас нет.';
 
             const scheduledLines = scheduled.length
                 ? scheduled.map((ev, idx) => {
-                    const start = new Date(ev.startAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+                    const start = new Date(ev.startAt || 0).toLocaleString('ru-RU');
                     const duration = ev.durationMins || 0;
                     return `${idx + 1}) ${ev.name || ev.id} · старт ${start} · ${duration} мин <button onclick="adminCancelScheduledEvent('${ev.key}')" style="margin-left:6px; border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`;
                 }).join('<br>')
@@ -2929,7 +3603,6 @@
                 myRoundHasMove = (userState.last_round === currentRoundNum);
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
-                repaintOnlineTrails();
                 updateEventUiState();
             }, 1000);
         }
@@ -3229,7 +3902,7 @@
                         ${picked ? `<div style="font-size:12px; color:#4a148c;"><b>Утверждено:</b> вариант №${picked}</div>` : `
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;">${[1,2,3,4].map(n => `<button onclick="chooseInkChallengeOption(${i}, ${n})" style="border:1px solid #ce93d8; background:${draft === n ? '#f3e5f5' : '#fff'}; color:#6a1b9a; border-radius:8px; padding:8px;">${draft === n ? '✅ Выбрано' : 'Выбрать'} №${n}</button>`).join('')}</div>
                         ${draft ? `<div style="margin-top:8px; font-size:12px; color:#4a148c;">Текущий выбор: вариант №${draft}. Нажми ниже, чтобы зафиксировать без возможности перевыбора.</div><button onclick="confirmInkChallengeOption(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#6a1b9a;">🔒 Утвердить выбор</button>` : `<div style="margin-top:8px; font-size:12px; color:#7b1fa2;">Сначала выбери вариант из списка, затем утверди выбор.</div>`}`}
-                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${new Date(challenge.optionDeadline).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}</div>` : ''}
+                        ${(challenge?.selectedOption === 4 && challenge?.optionDeadline) ? `<div style="margin-top:8px; font-size:12px; color:#d84315;">⏳ Дедлайн: ${new Date(challenge.optionDeadline).toLocaleString('ru-RU')}</div>` : ''}
                     </div>`;
                 } else if (cell.isWandBlessing) {
                     const wand = (myWandBlessing && myWandBlessing.round === cell.round) ? myWandBlessing : null;
@@ -3640,71 +4313,27 @@
                 return;
             }
             const latest = winnerHistoryItems[0];
-            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} · №${latest.ticket} · ${latest.winnerName}`;
-            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
+            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · №${latest.ticket} · ${latest.winnerName}`;
+            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
         }
 
         function toggleWinnerHistoryPanel() {
             toggleExpandablePanel('winner-history-list', 'winner-history-toggle-btn');
         }
 
+        async function maybeActivateScheduledDraw() {}
         async function maybeFinalizeScheduledDraw() {}
-
-        let drawSchedules = [];
-        let drawSchedulesRef = null;
-
-        function renderDrawSchedules() {
-            const el = document.getElementById('admin-draw-queue-list');
-            if (!el) return;
-            const scheduled = drawSchedules.filter(d => d.status === 'scheduled');
-            if (!scheduled.length) {
-                el.innerHTML = 'Запланированных розыгрышей нет.';
-                return;
-            }
-            el.innerHTML = scheduled.map((d, i) => {
-                const start = formatMoscowDateTime(d.startAt || 0);
-                return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start} <button onclick="adminCancelScheduledDraw('${d.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button></div>`;
-            }).join('');
-        }
 
         function updateAdminDrawStatus() {
             const el = document.getElementById('admin-draw-status');
             if (!el) return;
             const state = currentDrawSchedule?.status || 'ready';
-            const start = currentDrawSchedule?.startTime ? new Date(currentDrawSchedule.startTime).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : '—';
-            const queued = drawSchedules.filter(d => d.status === 'scheduled').length;
-            el.innerText = `Статус: ${state}. Запланировано: ${queued}. Синхронизация: raffle_state. Старт (сервер): ${start}.`;
+            const start = currentDrawSchedule?.startTime ? new Date(currentDrawSchedule.startTime).toLocaleString('ru-RU') : '—';
+            el.innerText = `Статус: ${state}. Синхронизация: raffle_state. Старт (сервер): ${start}.`;
         }
 
         async function adminScheduleDraw() {
-            if (currentUserId !== ADMIN_ID) return;
-            const startRaw = String(document.getElementById('draw-start-at')?.value || '').trim();
-            if (!startRaw) return alert('Выбери дату и время старта розыгрыша.');
-            const startAt = parseMoscowDateTimeLocalInput(startRaw);
-            if (!Number.isFinite(startAt) || startAt <= getServerNowMs() - 1000) return alert('Время старта должно быть в будущем.');
-            await db.ref('draw_schedules').push({ status: 'scheduled', startAt, createdAt: Date.now(), createdBy: currentUserId });
-            alert('Розыгрыш запланирован.');
-        }
-
-        async function adminCancelScheduledDraw(key) {
-            if (currentUserId !== ADMIN_ID || !key) return;
-            await db.ref(`draw_schedules/${key}`).transaction(v => {
-                if (!v || v.status !== 'scheduled') return v;
-                return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: currentUserId };
-            });
-        }
-
-        async function maybeActivateScheduledDraw() {
-            const due = drawSchedules.filter(d => d.status === 'scheduled' && Number(d.startAt || 0) <= getServerNowMs()).sort((a,b)=>(a.startAt||0)-(b.startAt||0))[0];
-            if (!due?.key) return;
-            const tx = await db.ref(`draw_schedules/${due.key}`).transaction(v => {
-                if (!v || v.status !== 'scheduled') return v;
-                if (Number(v.startAt || 0) > getServerNowMs()) return v;
-                return { ...v, status: 'starting', startedAt: Date.now() };
-            });
-            if (!tx.committed) return;
-            await adminPickWinnerNow();
-            await db.ref(`draw_schedules/${due.key}`).update({ status: 'completed', completedAt: Date.now() });
+            return alert('Запланированный запуск отключён. Используй кнопку «Начать магию» — запуск идёт через raffle_state для всех одновременно.');
         }
 
         async function adminAnnulDrawResults() {
@@ -3742,16 +4371,6 @@
                 renderWinnerHistory();
             });
 
-            if (drawSchedulesRef) drawSchedulesRef.off();
-            drawSchedulesRef = db.ref('draw_schedules');
-            drawSchedulesRef.on('value', snap => {
-                const items = [];
-                snap.forEach(item => items.push({ key: item.key, ...(item.val() || {}) }));
-                drawSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
-                renderDrawSchedules();
-                updateAdminDrawStatus();
-            });
-
             if (drawScheduleRef) drawScheduleRef.off();
             drawScheduleRef = db.ref('raffle_state');
             drawScheduleRef.on('value', async (snap) => {
@@ -3787,7 +4406,6 @@
                 }
 
                 if (currentDrawSchedule.status === 'ready') {
-                    maybeActivateScheduledDraw().catch(() => {});
                     activeMagicDrawId = null;
                     stopContinuousWheelSpin();
                     closeWinnerToast();
@@ -4155,53 +4773,8 @@
             alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
         }
 
-      let adminListUsersCache = [];
-      let adminListWhitelistRef = null;
-      let adminListSeasonRef = null;
-      let adminListInterval = null;
-
-      function renderAdminList() {
-            const holder = document.getElementById('active-players');
-            if (!holder) return;
-
-            const users = [...adminListUsersCache].sort((a, b) => {
-                const aIdx = Number.isInteger(a.charIndex) ? a.charIndex : 999;
-                const bIdx = Number.isInteger(b.charIndex) ? b.charIndex : 999;
-                if (aIdx !== bIdx) return aIdx - bIdx;
-                return String(a.userTgId).localeCompare(String(b.userTgId));
-            });
-
-            let h = `<b>Список художников (${users.length}):</b><br>`;
-            users.forEach(({ userTgId, charIndex }) => {
-                const charName = players[charIndex]?.n || "Неизвестный";
-                const charColor = charColors[charIndex] || "#333";
-                const profile = seasonProfilesByUserId[String(userTgId)] || {};
-                const lastSeen = Number(profile.lastSeen || profile.onlineHeartbeatAt || 0);
-                const isOnline = !!lastSeen && (Date.now() - lastSeen) <= ONLINE_IDLE_OFFLINE_MS && profile.isInApp !== false;
-                const onlineChip = `<span style="display:inline-flex; align-items:center; gap:4px; margin-top:3px; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:700; color:${isOnline ? '#1b5e20' : '#616161'}; background:${isOnline ? '#c8e6c9' : '#eceff1'};">${isOnline ? '🟢 Онлайн' : '⚪ Оффлайн'}</span>`;
-
-                h += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
-                        <span style="text-align:left;">
-                            <b style="color:${charColor}">${charName}</b><br>
-                            <code style="color:#888; font-size:10px;">ID: ${userTgId}</code><br>
-                            ${onlineChip}
-                        </span>
-                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
-                    </div>`;
-            });
-
-            if (!users.length) h += '<small style="color:#999;">Пока список пуст.</small>';
-            holder.innerHTML = h;
-      }
-
       function syncAdminList() {
-            if (adminListWhitelistRef) adminListWhitelistRef.off();
-            if (adminListSeasonRef) adminListSeasonRef.off();
-            if (adminListInterval) clearInterval(adminListInterval);
-
-            adminListWhitelistRef = db.ref('whitelist');
-            adminListWhitelistRef.on('value', snap => {
+            db.ref('whitelist').on('value', snap => {
                 const users = [];
                 snap.forEach(u => {
                     const userData = u.val() || {};
@@ -4210,18 +4783,33 @@
                         charIndex: userData.charIndex
                     });
                 });
-                adminListUsersCache = users;
-                renderAdminList();
-            });
 
-            adminListSeasonRef = db.ref('player_season_status');
-            adminListSeasonRef.on('value', snap => {
-                seasonProfilesByUserId = snap.val() || {};
-                renderAdminList();
-            });
+                users.sort((a, b) => {
+                    const aIdx = Number.isInteger(a.charIndex) ? a.charIndex : 999;
+                    const bIdx = Number.isInteger(b.charIndex) ? b.charIndex : 999;
+                    if (aIdx !== bIdx) return aIdx - bIdx;
+                    return String(a.userTgId).localeCompare(String(b.userTgId));
+                });
 
-            adminListInterval = setInterval(renderAdminList, 10000);
-      }
+                let h = `<b>Список художников (${users.length}):</b><br>`;
+                users.forEach(({ userTgId, charIndex }) => {
+                    const charName = players[charIndex]?.n || "Неизвестный";
+                    const charColor = charColors[charIndex] || "#333";
+
+                    h += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
+                        <span style="text-align:left;">
+                            <b style="color:${charColor}">${charName}</b><br>
+                            <code style="color:#888; font-size:10px;">ID: ${userTgId}</code>
+                        </span>
+                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
+                    </div>`;
+                });
+
+                if (!users.length) h += '<small style="color:#999;">Пока список пуст.</small>';
+                document.getElementById('active-players').innerHTML = h;
+            });
+        }
 
         async function archiveAndClearBoard() {
             const boardSnap = await db.ref('board').once('value');
@@ -4266,6 +4854,7 @@
                 submissions: null,
                 game_event: null,
                 game_events: null,
+                epic_paint: null,
                 ticket_counter: 0,
                 wheel_event: null,
                 wheel_draw: null,
@@ -4642,44 +5231,9 @@
                 });
             }
 
-            function isPlayerWetTrailVisible(profile) {
-                const lastSeen = Number(profile?.lastSeen || profile?.onlineHeartbeatAt || 0);
-                const lastActiveAt = Number(profile?.lastActiveAt || profile?.onlineHeartbeatAt || lastSeen || 0);
-                if (!lastSeen || !lastActiveAt || profile?.isInApp === false) return false;
-                const now = Date.now();
-                const isOfflineByHeartbeat = (now - lastSeen) > ONLINE_IDLE_OFFLINE_MS;
-                const isOfflineByInactivity = (now - lastActiveAt) > ONLINE_IDLE_OFFLINE_MS;
-                if (isOfflineByHeartbeat || isOfflineByInactivity) return false;
-                return (now - lastSeen) >= ONLINE_TRAIL_APPEAR_MS;
-            }
-
-            function repaintOnlineTrails() {
-                const grid = document.getElementById('grid');
-                if (!grid) return;
-                for (let i = 0; i < 50; i++) {
-                    const cell = latestBoardSnapshot[i];
-                    const node = grid.children[i];
-                    if (!node || !cell) continue;
-                    const c = charColors[cell.owner];
-                    const ownerId = String(cell.userId || '');
-                    if (ownerId && String(currentUserId || '') === ownerId) continue;
-                    const profile = seasonProfilesByUserId[ownerId] || {};
-                    const hasWetTrail = isPlayerWetTrailVisible(profile);
-                    node.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
-                }
-            }
-            window.__repaintOnlineTrailsImpl = repaintOnlineTrails;
-
             function syncTicketData() {
-                if (!db || typeof db.ref !== 'function') {
-                    console.warn('DEBUG: syncTicketData() called before DB ready, retry in 500ms');
-                    setTimeout(syncTicketData, 500);
-                    return;
-                }
-                console.log('DEBUG: syncTicketData() subscribing board/tickets listeners');
                 db.ref('board').on('value', snap => {
                     const data = snap.val() || {};
-                    latestBoardSnapshot = data;
                     const grid = document.getElementById('grid');
                     if (grid) grid.innerHTML = "";
                     liveBoardTicketsData = [];
@@ -4699,14 +5253,7 @@
 
                         if (cell) {
                             const c = charColors[cell.owner];
-                            const ownerId = String(cell.userId || '');
-                            const profile = seasonProfilesByUserId[ownerId] || {};
-                            const hasWetTrail = isPlayerWetTrailVisible(profile);
-                            if (ownerId && String(currentUserId || '') === ownerId) {
-                                d.style.background = '#ffffff';
-                            } else {
-                                d.style.background = hasWetTrail ? colorWithAlpha(c, 0.3) : '#ffffff';
-                            }
+                            d.style.background = c + "22";
                             d.style.borderColor = c;
                             const mark = cell.isTrap ? '💣'
                                 : cell.isMagic ? '🔮'
@@ -4766,7 +5313,7 @@
             }
 
             function getTicketTaskLabel(t) {
-                if (t.isEventReward) return t.eventId === '' ? 'Награда за событие «»' : 'Награда за событие «»';
+                if (t.isEventReward) return t.eventId === 'wall_battle' ? 'Награда за событие «Стенка на стенку»' : 'Награда за событие «Эпичный закрас»';
                 if (typeof t.taskLabel === 'string' && t.taskLabel.trim()) return t.taskLabel;
                 if (Number.isInteger(t.taskIdx) && t.taskIdx >= 0 && Array.isArray(tasks) && tasks[t.taskIdx]) {
                     return tasks[t.taskIdx].text || 'Обычное задание';
@@ -4943,7 +5490,7 @@
             function formatTicketArchiveHistoryDate(ts) {
                 const value = Number(ts || 0);
                 if (!value) return '—';
-                return new Date(value).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+                return new Date(value).toLocaleString('ru-RU');
             }
 
             function runAdminTicketArchiveSearch() {
@@ -5095,22 +5642,10 @@
           let eventRef = null;
           let timerHandle = null;
           let state = { status: 'idle', type: EVENT_TYPE, endTime: 0, progress: 0, participants: {} };
-          let remoteProgressRef = null;
-          let isProgressLeader = false;
-          const PROGRESS_PATH = 'game_events/current_progress';
           let drawing = false;
           let lastPoint = { x: 0, y: 0 };
           let finishing = false;
           let myColor = null;
-          let pendingCanvasSync = false;
-          let pendingProgressSync = false;
-          let syncTimer = null;
-          let progressCheckInterval = null;
-          let lastProgressCheckAt = 0;
-          let lastFullProgressCheckAt = 0;
-          let dirtyRect = null;
-          let sampleMask = null;
-          let sampleMeta = { step: 4, cols: 0, rows: 0, total: 0, painted: 0 };
 
           const $ = (id) => document.getElementById(id);
 
@@ -5121,7 +5656,7 @@
           }
 
           function getCanvas() { return $('event-canvas'); }
-          function getCtx() { return getCanvas()?.getContext('2d', { willReadFrequently: true }); }
+          function getCtx() { return getCanvas()?.getContext('2d'); }
           function getUserId() { return String(window.currentUserId || '').trim(); }
           function isAdminUser() { return Number(window.currentUserId) === Number(window.ADMIN_ID); }
 
@@ -5131,7 +5666,7 @@
               status: String(e.status || 'idle'),
               type: String(e.type || EVENT_TYPE),
               endTime: Number(e.endTime || 0),
-              progress: Number(typeof e.progress === 'object' ? e.progress?.percent : e.progress || 0),
+              progress: Number(e.progress || 0),
               participants: e.participants || {},
               canvas_data: e.canvas_data || ''
             };
@@ -5153,29 +5688,7 @@
             }
             const leftMs = Number(state.endTime) - Date.now();
             timerEl.textContent = formatLeft(leftMs);
-            if (leftMs <= 0) checkEventStatus().catch(() => {});
-          }
-
-
-          async function resolveProgressLeadership() {
-            isProgressLeader = isAdminUser();
-            return isProgressLeader;
-          }
-
-          function normalizeProgressValue(value) {
-            if (typeof value === 'number' && Number.isFinite(value)) return Number(value);
-            if (value && typeof value === 'object') {
-              const percent = Number(value.percent);
-              if (Number.isFinite(percent)) return percent;
-            }
-            return 0;
-          }
-
-          async function checkEventStatus() {
-            if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
-            const endAt = Number(state.endTime || 0);
-            if (!endAt || Date.now() < endAt) return;
-            await finalizeEventWithRewards();
+            if (leftMs <= 0) finalizeEventWithRewards().catch(() => {});
           }
 
           function updateOverlayUi() {
@@ -5196,19 +5709,6 @@
             canvas.style.height = `${Math.max(420, window.innerHeight - 120)}px`;
             canvas.width = WORLD_WIDTH;
             canvas.height = WORLD_HEIGHT;
-            resetProgressSampling();
-          }
-
-          function resetProgressSampling() {
-            const canvas = getCanvas();
-            if (!canvas) return;
-            const step = 4;
-            const cols = Math.ceil(canvas.width / step);
-            const rows = Math.ceil(canvas.height / step);
-            sampleMeta = { step, cols, rows, total: cols * rows, painted: 0 };
-            sampleMask = new Uint8Array(sampleMeta.total);
-            dirtyRect = { x1: 0, y1: 0, x2: canvas.width, y2: canvas.height };
-            lastFullProgressCheckAt = 0;
           }
 
           function openEventOverlay() {
@@ -5273,24 +5773,6 @@
             await db.ref(`${EVENT_PATH}/canvas_data`).set(data);
           }
 
-          function markDirtySegment(x1, y1, x2, y2) {
-            const canvas = getCanvas();
-            if (!canvas) return;
-            const pad = BRUSH_SIZE;
-            const minX = Math.max(0, Math.floor(Math.min(x1, x2) - pad));
-            const minY = Math.max(0, Math.floor(Math.min(y1, y2) - pad));
-            const maxX = Math.min(canvas.width, Math.ceil(Math.max(x1, x2) + pad));
-            const maxY = Math.min(canvas.height, Math.ceil(Math.max(y1, y2) + pad));
-            if (!dirtyRect) {
-              dirtyRect = { x1: minX, y1: minY, x2: maxX, y2: maxY };
-              return;
-            }
-            dirtyRect.x1 = Math.min(dirtyRect.x1, minX);
-            dirtyRect.y1 = Math.min(dirtyRect.y1, minY);
-            dirtyRect.x2 = Math.max(dirtyRect.x2, maxX);
-            dirtyRect.y2 = Math.max(dirtyRect.y2, maxY);
-          }
-
           function drawLine(x1, y1, x2, y2, color) {
             const ctx = getCtx();
             if (!ctx) return;
@@ -5310,106 +5792,32 @@
             ctx.stroke();
           }
 
-          function computeProgressPercent(forceFull = false) {
+          function computeProgressPercent() {
             const canvas = getCanvas();
             const ctx = getCtx();
             if (!canvas || !ctx) return 0;
-            if (!sampleMask || sampleMeta.total === 0) resetProgressSampling();
-            const now = Date.now();
-            const shouldDoFull = forceFull || !dirtyRect || (now - lastFullProgressCheckAt >= 4000);
-            const step = sampleMeta.step;
-            let x1 = 0;
-            let y1 = 0;
-            let x2 = canvas.width;
-            let y2 = canvas.height;
-
-            if (!shouldDoFull && dirtyRect) {
-              x1 = dirtyRect.x1;
-              y1 = dirtyRect.y1;
-              x2 = dirtyRect.x2;
-              y2 = dirtyRect.y2;
-            }
-
-            const width = Math.max(1, x2 - x1);
-            const height = Math.max(1, y2 - y1);
-            const img = ctx.getImageData(x1, y1, width, height).data;
-            const startCol = Math.floor(x1 / step);
-            const endCol = Math.min(sampleMeta.cols - 1, Math.floor((x2 - 1) / step));
-            const startRow = Math.floor(y1 / step);
-            const endRow = Math.min(sampleMeta.rows - 1, Math.floor((y2 - 1) / step));
-
-            for (let row = startRow; row <= endRow; row += 1) {
-              for (let col = startCol; col <= endCol; col += 1) {
-                const x = col * step;
-                const y = row * step;
-                if (x < x1 || y < y1 || x >= x2 || y >= y2) continue;
-                const localX = x - x1;
-                const localY = y - y1;
-                const i = (localY * width + localX) * 4;
-                const idx = row * sampleMeta.cols + col;
-                const next = img[i + 3] > 0 ? 1 : 0;
-                const prev = sampleMask[idx];
-                if (prev !== next) {
-                  sampleMeta.painted += next ? 1 : -1;
-                  sampleMask[idx] = next;
-                }
+            const step = 4;
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let total = 0;
+            let painted = 0;
+            for (let y = 0; y < canvas.height; y += step) {
+              for (let x = 0; x < canvas.width; x += step) {
+                total += 1;
+                const i = (y * canvas.width + x) * 4;
+                if (img[i + 3] > 0) painted += 1;
               }
             }
-
-            dirtyRect = null;
-            if (shouldDoFull) lastFullProgressCheckAt = now;
-            return sampleMeta.total ? (sampleMeta.painted / sampleMeta.total) * 100 : 0;
+            return total ? (painted / total) * 100 : 0;
           }
 
-          async function flushPendingState({ forceProgress = false } = {}) {
-            if (syncTimer) {
-              clearTimeout(syncTimer);
-              syncTimer = null;
-            }
-            if (!pendingCanvasSync && !pendingProgressSync) return;
+          async function syncProgressAndMaybeFinish() {
             if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
             const db = await getDbReady();
-            if (pendingCanvasSync) {
-              const canvas = getCanvas();
-              if (canvas) {
-                const data = canvas.toDataURL('image/png');
-                await db.ref(`${EVENT_PATH}/canvas_data`).set(data);
-              }
-              pendingCanvasSync = false;
-            }
-            if (pendingProgressSync || forceProgress) {
-              if (isProgressLeader) {
-                const percent = Number(computeProgressPercent(forceProgress).toFixed(2));
-                state.progress = percent;
-                updateOverlayUi();
-                await db.ref(PROGRESS_PATH).set(percent);
-              }
-              pendingProgressSync = false;
-            }
-            const percent = Number(state.progress || 0);
-            if (percent >= TARGET_PERCENT) await finalizeEventWithRewards();
-          }
-
-          function scheduleCanvasAndProgressSync() {
-            pendingCanvasSync = true;
-            pendingProgressSync = Boolean(isProgressLeader);
-            if (!syncTimer) {
-              syncTimer = setTimeout(() => {
-                flushPendingState().catch(() => {});
-              }, 2000);
-            }
-          }
-
-          function checkCanvasProgress({ force = false } = {}) {
-            if (state.status !== ACTIVE_STATUS || state.type !== EVENT_TYPE) return;
-            const now = Date.now();
-            if (!force && now - lastProgressCheckAt < 500) return;
-            lastProgressCheckAt = now;
-            if (!isProgressLeader) return;
-            pendingProgressSync = true;
-            const percent = Number(computeProgressPercent(force).toFixed(2));
+            const percent = Number(computeProgressPercent().toFixed(2));
             state.progress = percent;
             updateOverlayUi();
+            await db.ref(`${EVENT_PATH}/progress`).set(percent);
+            if (percent >= TARGET_PERCENT) await finalizeEventWithRewards();
           }
 
           async function startDrawing(evt) {
@@ -5420,8 +5828,8 @@
             await registerParticipant();
             const color = await ensureMyColor();
             drawLine(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y, color);
-            markDirtySegment(lastPoint.x, lastPoint.y, lastPoint.x, lastPoint.y);
-            scheduleCanvasAndProgressSync();
+            await persistCanvasState();
+            await syncProgressAndMaybeFinish();
           }
 
           async function draw(evt) {
@@ -5432,15 +5840,11 @@
             lastPoint = p;
             const color = await ensureMyColor();
             drawLine(from.x, from.y, p.x, p.y, color);
-            markDirtySegment(from.x, from.y, p.x, p.y);
-            scheduleCanvasAndProgressSync();
+            await persistCanvasState();
+            await syncProgressAndMaybeFinish();
           }
 
-          function stopDrawing() {
-            if (!drawing) return;
-            drawing = false;
-            flushPendingState({ forceProgress: true }).catch(() => {});
-          }
+          function stopDrawing() { drawing = false; }
 
           function bindCanvasEvents() {
             const canvas = getCanvas();
@@ -5506,7 +5910,6 @@
             const ctx = getCtx();
             if (!canvas || !ctx) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            resetProgressSampling();
             if (!dataUrl) return;
             const img = new Image();
             img.onload = () => {
@@ -5523,16 +5926,7 @@
             eventRef = db.ref(EVENT_PATH);
             eventRef.on('value', (snap) => {
               state = normalizeEvent(snap.val());
-              state.progress = normalizeProgressValue(state.progress);
               showNotification();
-              updateOverlayUi();
-              checkEventStatus().catch(() => {});
-            });
-
-            if (remoteProgressRef) remoteProgressRef.off();
-            remoteProgressRef = db.ref(PROGRESS_PATH);
-            remoteProgressRef.on('value', (snap) => {
-              state.progress = normalizeProgressValue(snap.val());
               updateOverlayUi();
             });
 
@@ -5559,25 +5953,44 @@
                 updateTimer();
               }, 1000);
 
-              await resolveProgressLeadership();
-
-              if (progressCheckInterval) clearInterval(progressCheckInterval);
-              progressCheckInterval = setInterval(() => {
-                checkCanvasProgress();
-                checkEventStatus().catch(() => {});
-              }, 5000);
-
               window.addEventListener('resize', resizeCanvasToViewport);
               window.addEventListener('orientationchange', resizeCanvasToViewport);
             } catch (err) {
               console.error('initEventSystem failed:', err);
             }
           }
+
+          async function adminLaunchEpicPaintEvent() {
+            try {
+              const db = await getDbReady();
+              if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+              await db.ref(EVENT_PATH).set({
+                status: ACTIVE_STATUS,
+                type: EVENT_TYPE,
+                endTime: Date.now() + 600000
+              });
+            } catch (err) {
+              console.error('adminLaunchEpicPaintEvent failed:', err);
+            }
+          }
+
+          window.legacyInitEventSystem = initEventSystem;
+          window.legacyInitEvents = initEventSystem;
+          window.legacySetupEpicPaintCanvas = bindCanvasEvents;
+          window.openEventOverlay = openEventOverlay;
+          window.closeEventOverlay = closeEventOverlay;
+          window.legacyStartDrawing = startDrawing;
+          window.legacyDraw = draw;
+          window.legacyStopDrawing = stopDrawing;
+          window.legacyAdminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
         })();
         // END ivents.js
 
+        // BEGIN mushu_event.js
         (function () {
+          const EVENT_PATH = 'mushu_event';
           const GAME_EVENTS_PATH = 'game_events';
+          const MUSHU_EVENT_ID = 'mushu_feast';
           const FEED_WINDOW_MS = 15 * 60 * 1000;
           const GOLDEN_CUPCAKE_GRACE_MS = 5 * 60 * 1000;
           const FRUITS = [
@@ -5587,19 +6000,25 @@
             { id: 'peach', emoji: '🍑', label: 'Персик', satiety: 1 }
           ];
           const GOLDEN_CUPCAKE = { id: 'golden_cupcake', emoji: '🧁', label: 'Золотой кекс', satiety: 6 };
-          const SUCCESS_TITLE = '✨  сыт и доволен!';
+          const SUCCESS_TITLE = '✨ Мушу сыт и доволен!';
           const SUCCESS_TEXT = 'Р-р-рар! Игроки накормили дракончика, магия активирована! 🐲';
           const FAILED_TITLE = '🚫 Время вышло.';
-          const FAILED_TEXT = ' остался голодным и ушел ворчать в свой храм... 🥟';
+          const FAILED_TEXT = 'Мушу остался голодным и ушел ворчать в свой храм... 🥟';
 
+          let mushuRef = null;
+          let mushuState = { status: 'idle', current_satiety: 0, target: 15, participants: {}, fed_users: {}, rewards: {} };
           let localFruit = null;
           let timerId = null;
           let dragState = null;
           let statusToastShown = '';
           let lastFeedResultLogged = '';
+          let mushuServerOffsetMs = 0;
+          let mushuOffsetRef = null;
 
           const $ = (id) => document.getElementById(id);
           const uid = () => String(window.currentUserId || currentUserId || '').trim();
+          const getNow = () => Date.now() + (Number(mushuServerOffsetMs) || 0);
+          const isActive = () => String(mushuState.status || '') === 'active';
           const isAdminUser = () => Number(window.currentUserId || currentUserId || 0) === Number(window.ADMIN_ID || ADMIN_ID);
           const isKnownFruitId = (id) => id === GOLDEN_CUPCAKE.id || FRUITS.some((fruit) => fruit.id === id);
           const resolveFruitIdFromEntry = (entry) => {
@@ -5627,6 +6046,7 @@
           function getMyPersonalFruit() {
             const me = uid();
             if (!me) return null;
+            const personal = mushuState.personal_fruits?.[me] || mushuState.participants?.[me]?.item || null;
             const fruitId = resolveFruitIdFromEntry(personal);
             if (!fruitId) return null;
             if (fruitId === GOLDEN_CUPCAKE.id) {
@@ -5642,15 +6062,498 @@
           function buildFallbackFruitForUser(userId) {
             const normalizedUid = String(userId || '').trim();
             if (!normalizedUid) return null;
+            const luckyUid = String(mushuState.lucky_cupcake_uid || '');
             if (luckyUid && luckyUid === normalizedUid) return { ...GOLDEN_CUPCAKE, graceLeftMs: GOLDEN_CUPCAKE_GRACE_MS };
+            const salt = `${normalizedUid}:${String(mushuState.startedAt || mushuState.endAt || 0)}`;
             const hash = Array.from(salt).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
             return { ...FRUITS[hash % FRUITS.length] };
           }
 
           function getDragonMarkup() {
-            return '<div id="-container" class="-container"><span class="smoke-particle left"></span><span class="smoke-particle right"></span></div>';
+            return '<div id="mushu-container" class="mushu-container"><span class="smoke-particle left"></span><span class="smoke-particle right"></span></div>';
           }
+
+          function ensureMushuUi() {
+            if ($('mushu-overlay')) return;
+            const overlay = document.createElement('div');
+            overlay.id = 'mushu-overlay';
+            overlay.className = 'mushu-overlay';
+            overlay.innerHTML = `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><b>🐉 Покорми Мушу</b><button id="mushu-back-btn" class="event-back-btn">Вернуться на поле</button></div>
+              <div style="margin-top:8px; text-align:left; font-size:13px;">Сытость: <b id="mushu-satiety-text">0 / 0</b></div>
+              <div class="mushu-progress-bar"><div id="mushu-progress-fill" class="mushu-progress-fill"></div></div>
+              <div id="mushu-combo-text" style="margin-top:6px; font-size:12px; color:#ffe082;"></div>
+              <div id="mushu-fuse-timer" class="mushu-fuse-timer"><div style="font-size:12px; margin-bottom:6px;">Магический фитиль: <b id="mushu-time-left">--:--</b></div><div class="mushu-fuse-track"><div id="mushu-fuse-burn" class="mushu-fuse-burn"><span class="mushu-fuse-spark"></span></div></div></div>
+              <div class="mushu-dragon-zone"><div id="mushu-dragon" class="mushu-dragon">${getDragonMarkup()}</div><div id="mushu-mouth-zone" class="mushu-mouth-zone"></div></div>
+              <div id="mushu-fruit-panel" class="mushu-fruit-panel"></div>`;
+            document.body.appendChild(overlay);
+            $('mushu-back-btn')?.addEventListener('click', closeMushuOverlay);
+
+            const invite = $('mushu-inline-invite');
+            if (invite) {
+              invite.addEventListener('click', (ev) => {
+                const btn = ev.target.closest('.mushu-inline-btn');
+                if (!btn) return;
+                openMushuOverlay();
+              });
+            }
+          }
+
+          function updateInlineInvite() {
+            const invite = $('mushu-inline-invite');
+            if (!invite) return;
+            if (!isActive()) {
+              invite.style.display = 'none';
+              const topNotification = $('event-notification');
+              if (topNotification?.dataset?.eventType === MUSHU_EVENT_ID) {
+                topNotification.style.display = 'none';
+                topNotification.classList.remove('event-notification-pink');
+                topNotification.innerHTML = '';
+                delete topNotification.dataset.eventType;
+              }
+              return;
+            }
+            invite.style.display = 'block';
+            const topNotification = $('event-notification');
+            if (topNotification) {
+              topNotification.style.display = 'block';
+              topNotification.classList.add('event-notification-pink');
+              topNotification.dataset.eventType = MUSHU_EVENT_ID;
+              topNotification.innerHTML = '<div class="event-notification-text">🔥 Начался ивент: Покорми Мушу!</div><button id="btn-join-mushu-event" class="event-notification-join">Перейти</button>';
+              const joinBtn = $('btn-join-mushu-event');
+              if (joinBtn) joinBtn.onclick = () => openMushuOverlay();
+            }
+            if (isAdminUser()) {
+              invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Режим наблюдателя: админ видит ход события, но не участвует.</div><button class="mushu-inline-btn">Наблюдать</button>`;
+              return;
+            }
+            invite.innerHTML = `<div style="font-weight:800; font-size:14px;">🔥 Мушу проголодался!</div><div style="font-size:12px; margin-top:4px;">Перетащи свой фрукт в пасть дракона и помоги команде.</div><button class="mushu-inline-btn">Помочь Мушу</button>`;
+          }
+
+          function openMushuOverlay() {
+            const overlay = $('mushu-overlay');
+            if (!overlay) return;
+            overlay.style.display = 'flex';
+            document.body.classList.add('event-mode');
+            renderFruitPanel().catch((e) => console.error('renderFruitPanel failed', e));
+          }
+
+          function closeMushuOverlay() {
+            clearFruitDragState();
+            const overlay = $('mushu-overlay');
+            if (overlay) overlay.style.display = 'none';
+            document.body.classList.remove('event-mode');
+          }
+
+          async function ensureMyFruitAssigned() {
+            const me = uid();
+            if (!me || !isActive()) return getMyPersonalFruit();
+            if (isAdminUser()) return null;
+
+            const personalFruitId = resolveFruitIdFromEntry(mushuState.personal_fruits?.[me]);
+            const participantFruitId = resolveFruitIdFromEntry(mushuState.participants?.[me]?.item);
+            const existing = personalFruitId || participantFruitId;
+            if (existing) {
+              if (!personalFruitId && participantFruitId) {
+                mushuState.personal_fruits = mushuState.personal_fruits || {};
+                mushuState.personal_fruits[me] = { ...mushuState.participants[me].item };
+              }
+              return getMyPersonalFruit();
+            }
+
+            const db = await ensureDb();
+            const luckyUid = String(mushuState.lucky_cupcake_uid || '');
+            const fruitId = luckyUid && luckyUid === me
+              ? GOLDEN_CUPCAKE.id
+              : (FRUITS[Math.floor(Math.random() * FRUITS.length)] || FRUITS[0]).id;
+            const fallbackAssigned = { id: fruitId, pickedAt: Date.now() };
+
+            const tx = await db.ref(`${EVENT_PATH}/participants/${me}/item`).transaction((v) => {
+              if (v?.id && isKnownFruitId(v.id)) return v;
+              return fallbackAssigned;
+            });
+            const txAssigned = tx.snapshot?.val();
+            const assigned = txAssigned?.id && isKnownFruitId(txAssigned.id) ? txAssigned : fallbackAssigned;
+            await db.ref(`${EVENT_PATH}/personal_fruits/${me}`).transaction((v) => {
+              if (v?.id && isKnownFruitId(v.id)) return v;
+              return assigned;
+            });
+
+            mushuState.personal_fruits = mushuState.personal_fruits || {};
+            mushuState.personal_fruits[me] = assigned;
+            mushuState.participants = mushuState.participants || {};
+            mushuState.participants[me] = mushuState.participants[me] || {};
+            mushuState.participants[me].item = assigned;
+            return getMyPersonalFruit();
+          }
+
+          async function renderFruitPanel() {
+            const panel = $('mushu-fruit-panel');
+            if (!panel) return;
+            clearFruitDragState();
+            const me = uid();
+            if (isAdminUser()) {
+              panel.innerHTML = '<div style="font-weight:700; color:#ffe082;">Ты в режиме наблюдателя: администратор не участвует в событии.</div>';
+              return;
+            }
+            const alreadyFed = Boolean(mushuState.fed_users?.[me]);
+            localFruit = getMyPersonalFruit();
+
+            if (alreadyFed) {
+              panel.innerHTML = '<div style="font-weight:700; color:#c8e6c9;">Твой шанс использован! Жди общий итог ивента.</div>';
+              return;
+            }
+
+            if (!localFruit) {
+              try {
+                localFruit = await ensureMyFruitAssigned();
+              } catch (err) {
+                console.error('ensureMyFruitAssigned in renderFruitPanel failed', err);
+              }
+            }
+
+            if (!localFruit) {
+              localFruit = buildFallbackFruitForUser(me);
+            }
+
+            if (!localFruit) {
+              panel.innerHTML = '<div style="font-size:13px; color:#ffe082;">Не удалось назначить фрукт. Попробуй открыть ивент снова.</div>';
+              return;
+            }
+
+            const graceText = localFruit.id === GOLDEN_CUPCAKE.id && Number.isFinite(localFruit.graceLeftMs)
+              ? `<div style="margin-top:6px; font-size:12px; color:#fff176;">Эксклюзив! Кекс действует еще ${Math.ceil(localFruit.graceLeftMs / 1000)} сек., потом станет обычным фруктом.</div>`
+              : '';
+
+            panel.innerHTML = `<div style="font-size:15px;">У тебя один шанс за ивент — перетащи фрукт в зону рта Мушу:</div>
+              <div class="mushu-fruit-list"><div class="mushu-fruit-chip" aria-label="${localFruit.label}" title="${localFruit.label}" data-fruit="${localFruit.id}">${localFruit.emoji}</div></div>${graceText}`;
+            panel.querySelectorAll('.mushu-fruit-chip').forEach((chip) => {
+              if (window.PointerEvent) {
+                chip.addEventListener('pointerdown', onFruitPointerDown);
+                return;
+              }
+              chip.addEventListener('touchstart', onFruitTouchStart, { passive: false });
+            });
+          }
+
+
+          function clearFruitDragState() {
+            window.removeEventListener('pointermove', onFruitPointerMove);
+            window.removeEventListener('touchmove', onFruitTouchMove);
+            if (dragState?.chip) dragState.chip.classList.remove('dragging');
+            if (dragState?.ghost?.isConnected) dragState.ghost.remove();
+            dragState = null;
+          }
+
+          function getClientPoint(ev) {
+            if (!ev) return { x: 0, y: 0 };
+            if (Number.isFinite(ev.clientX) && Number.isFinite(ev.clientY)) return { x: ev.clientX, y: ev.clientY };
+            const touch = ev.touches?.[0] || ev.changedTouches?.[0];
+            return { x: Number(touch?.clientX) || 0, y: Number(touch?.clientY) || 0 };
+          }
+
+          function startFruitDrag(chip, x, y) {
+            if (!localFruit) return;
+            chip.classList.add('dragging');
+            const ghost = document.createElement('div');
+            ghost.className = 'mushu-fruit-ghost';
+            ghost.textContent = localFruit.emoji;
+            document.body.appendChild(ghost);
+            dragState = { chip, ghost, fruit: { ...localFruit } };
+            moveGhost(x, y);
+          }
+
+          function onFruitPointerDown(ev) {
+            const chip = ev.currentTarget;
+            if (!localFruit) return;
+            ev.preventDefault();
+            if (typeof chip.setPointerCapture === 'function' && Number.isFinite(ev.pointerId)) {
+              chip.setPointerCapture(ev.pointerId);
+            }
+            const { x, y } = getClientPoint(ev);
+            startFruitDrag(chip, x, y);
+            window.addEventListener('pointermove', onFruitPointerMove);
+            window.addEventListener('pointerup', onFruitPointerUp, { once: true });
+            window.addEventListener('pointercancel', onFruitPointerCancel, { once: true });
+          }
+
+          function onFruitTouchStart(ev) {
+            const chip = ev.currentTarget;
+            if (!localFruit) return;
+            ev.preventDefault();
+            const { x, y } = getClientPoint(ev);
+            startFruitDrag(chip, x, y);
+            window.addEventListener('touchmove', onFruitTouchMove, { passive: false });
+            window.addEventListener('touchend', onFruitTouchEnd, { once: true });
+            window.addEventListener('touchcancel', onFruitTouchEnd, { once: true });
+          }
+
+          function moveGhost(x, y) {
+            if (!dragState?.ghost) return;
+            dragState.ghost.style.left = `${x}px`;
+            dragState.ghost.style.top = `${y}px`;
+          }
+
+          function onFruitPointerMove(ev) {
+            const { x, y } = getClientPoint(ev);
+            moveGhost(x, y);
+          }
+
+          function onFruitTouchMove(ev) {
+            ev.preventDefault();
+            const { x, y } = getClientPoint(ev);
+            moveGhost(x, y);
+          }
+
+          async function finishFruitDragByPoint(x, y) {
+            const mouth = $('mushu-mouth-zone')?.getBoundingClientRect();
+            const droppedInMouth = mouth && x >= mouth.left && x <= mouth.right && y >= mouth.top && y <= mouth.bottom;
+            clearFruitDragState();
+            if (droppedInMouth) await feedMushu();
+          }
+
+          async function onFruitPointerUp(ev) {
+            window.removeEventListener('pointermove', onFruitPointerMove);
+            window.removeEventListener('pointercancel', onFruitPointerCancel);
+            const { x, y } = getClientPoint(ev);
+            await finishFruitDragByPoint(x, y);
+          }
+
+          async function onFruitPointerCancel() {
+            clearFruitDragState();
+          }
+
+          async function onFruitTouchEnd(ev) {
+            window.removeEventListener('touchmove', onFruitTouchMove);
+            const { x, y } = getClientPoint(ev);
+            await finishFruitDragByPoint(x, y);
+          }
+
+          function startEventTimer() {
+            if (timerId) clearInterval(timerId);
+            timerId = setInterval(() => {
+              const left = Math.max(0, Number(mushuState.endAt || 0) - getNow());
+              const mm = String(Math.floor(left / 60000)).padStart(2, '0');
+              const ss = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
+              const timeText = $('mushu-time-left');
+              const burn = $('mushu-fuse-burn');
+              const timer = $('mushu-fuse-timer');
+              if (timeText) timeText.textContent = `${mm}:${ss}`;
+              const total = Math.max(1, Number(mushuState.durationMs || (20 * 60000)));
+              const pct = Math.max(0, Math.min(100, (left / total) * 100));
+              if (burn) burn.style.width = `${pct}%`;
+              if (timer) timer.classList.toggle('mushu-time-critical', left <= 60000);
+              if (isActive() && localFruit?.id === GOLDEN_CUPCAKE.id) renderFruitPanel().catch((e) => console.error('renderFruitPanel failed', e));
+              if (left === 0) ensureDb().then((db) => finalizeMushuByTimer(db)).catch((e) => console.error('finalizeMushuByTimer failed', e));
+            }, 1000);
+          }
+
+          function updateProgressUi() {
+            const current = Number(mushuState.current_satiety || 0);
+            const target = Math.max(1, Number(mushuState.target || 1));
+            const pct = Math.min(100, (current / target) * 100);
+            if ($('mushu-satiety-text')) $('mushu-satiety-text').textContent = `${current} / ${target}`;
+            if ($('mushu-progress-fill')) $('mushu-progress-fill').style.width = `${pct}%`;
+            if ($('mushu-combo-text')) $('mushu-combo-text').textContent = `Комбо за 15 минут: 5 кормлений = +5, 20 кормлений = +10`;
+          }
+
+          function getMushuEventRuntimeId() {
+            return String(mushuState.instanceId || mushuState.startedAt || mushuState.completedAt || mushuState.failedAt || 'mushu_ID_1');
+          }
+
+          async function pushMushuResultToFeed(db, status) {
+            const eventId = getMushuEventRuntimeId();
+            const logKey = `${status}:${eventId}`;
+            if (lastFeedResultLogged === logKey) return;
+            const logTx = await db.ref(`${EVENT_PATH}/feed_result_posted/${eventId}`).transaction((v) => v || { at: getNow(), eventId, status });
+            if (!logTx.committed) {
+              lastFeedResultLogged = logKey;
+              return;
+            }
+            const payload = status === 'completed'
+              ? { title: SUCCESS_TITLE, text: SUCCESS_TEXT }
+              : { title: FAILED_TITLE, text: FAILED_TEXT };
+            const feedText = `${payload.title} ${payload.text}`;
+            await db.ref('news_feed').push({
+              text: feedText,
+              createdAt: getNow()
+            });
+            await db.ref('events/feed').push({
+              type: MUSHU_EVENT_ID,
+              eventId,
+              status,
+              title: payload.title,
+              text: payload.text,
+              createdAt: getNow()
+            });
+            lastFeedResultLogged = logKey;
+          }
+
+          async function showMushuResultIfNeeded() {
+            const status = String(mushuState.status || '');
+            if (!['completed', 'failed'].includes(status)) return;
+            if (statusToastShown === status) return;
+            const me = uid();
+            if (!me) return;
+            statusToastShown = status;
+            closeMushuOverlay();
+          }
+
+          function spawnEatSpark() {
+            const mouth = $('mushu-mouth-zone');
+            if (!mouth) return;
+            const rect = mouth.getBoundingClientRect();
+            const spark = document.createElement('span');
+            spark.className = 'mushu-spark';
+            spark.style.left = `${rect.left + rect.width * 0.5}px`;
+            spark.style.top = `${rect.top + rect.height * 0.5}px`;
+            document.body.appendChild(spark);
+            setTimeout(() => spark.remove(), 560);
+          }
+
+          async function applyComboBonus(db, now) {
+            const feedSnap = await db.ref(`${EVENT_PATH}/feed_log`).once('value');
+            const feeds = [];
+            feedSnap.forEach((row) => {
+              const v = row.val() || {};
+              const at = Number(v.at || 0);
+              if (at >= now - FEED_WINDOW_MS) feeds.push(v);
+            });
+            const count = feeds.length;
+            const bonusRef = db.ref(`${EVENT_PATH}/combo_bonus`);
+            const bonusTx = await bonusRef.transaction((v) => {
+              const cur = v || {};
+              const next = { ...cur };
+              if (count >= 5 && !cur.bonus5AppliedAt) next.bonus5AppliedAt = now;
+              if (count >= 20 && !cur.bonus20AppliedAt) next.bonus20AppliedAt = now;
+              return next;
+            });
+            const row = bonusTx.snapshot?.val() || {};
+            let add = 0;
+            if (count >= 5 && row.bonus5AppliedAt === now) add += 5;
+            if (count >= 20 && row.bonus20AppliedAt === now) add += 10;
+            if (add > 0) await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + add);
+          }
+
+          async function findActiveMushuGameEventKey(db) {
+            const snap = await db.ref(GAME_EVENTS_PATH).once('value');
+            let key = null;
+            snap.forEach((child) => {
+              const v = child.val() || {};
+              if (!key && v.id === MUSHU_EVENT_ID && v.status === 'active') key = child.key;
+            });
+            return key;
+          }
+
+          async function feedMushu() {
+            if (!isActive()) return;
+            if (isAdminUser()) return;
+            const me = uid();
+            if (!me) return;
+            const db = await ensureDb();
+            const fruit = getMyPersonalFruit() || localFruit || buildFallbackFruitForUser(me);
+            if (!fruit) return;
+            const fedTx = await db.ref(`${EVENT_PATH}/fed_users/${me}`).transaction(v => v ? v : { at: Date.now(), fruit: fruit.id });
+            if (!fedTx.committed) return;
+
+            const dragon = $('mushu-dragon');
+            dragon?.classList.add('mushu-chew');
+            spawnEatSpark();
+            setTimeout(() => dragon?.classList.remove('mushu-chew'), 1000);
+
+            await db.ref(`${EVENT_PATH}/participants/${me}`).update({ joinedAt: Date.now(), fed: true, item: mushuState.participants?.[me]?.item || mushuState.personal_fruits?.[me] || { id: fruit.id } });
+            const baseSatiety = Number(fruit.satiety || 1);
+            const now = getNow();
+            await db.ref(`${EVENT_PATH}/feed_log`).push({ uid: me, fruit: fruit.id, satiety: baseSatiety, at: now });
+            await db.ref(`${EVENT_PATH}/current_satiety`).transaction(v => Number(v || 0) + baseSatiety);
+            await applyComboBonus(db, now);
+            await renderFruitPanel();
+            await finalizeMushuByTimer(db);
+          }
+
+
+          async function finalizeMushuByTimer(db) {
+            const evSnap = await db.ref(EVENT_PATH).once('value');
+            const ev = evSnap.val() || {};
+            if (String(ev.status || '') !== 'active') return;
+            const left = Math.max(0, Number(ev.endAt || 0) - getNow());
+            if (left > 0) return;
+
+            const success = Number(ev.current_satiety || 0) >= Number(ev.target || 1);
+            const nextStatus = success ? 'completed' : 'failed';
+            const tx = await db.ref(`${EVENT_PATH}/status`).transaction((v) => v === 'active' ? nextStatus : v);
+            if (!tx.committed) return;
+
+            const now = getNow();
+            if (success) {
+              const participants = ev.participants || {};
+              const rewards = {};
+              Object.keys(participants).forEach((puid) => { rewards[puid] = randomGift(); });
+              await db.ref(`${EVENT_PATH}/rewards`).set(rewards);
+              await db.ref(`${EVENT_PATH}/completedAt`).set(now);
+              await db.ref(`${EVENT_PATH}/resultText`).set(`${SUCCESS_TITLE} ${SUCCESS_TEXT}`);
+            } else {
+              await db.ref(`${EVENT_PATH}/failedAt`).set(now);
+              await db.ref(`${EVENT_PATH}/resultText`).set(`${FAILED_TITLE} ${FAILED_TEXT}`);
+            }
+            await pushMushuResultToFeed(db, nextStatus);
+
+            const activeKey = await findActiveMushuGameEventKey(db);
+            if (activeKey) {
+              await db.ref(`${GAME_EVENTS_PATH}/${activeKey}`).update({
+                status: nextStatus,
+                [success ? 'completedAt' : 'failedAt']: now,
+                resultText: success ? SUCCESS_TEXT : FAILED_TEXT
+              });
+            }
+          }
+
+          async function applyMyRewardIfNeeded() {
+            const me = uid();
+            if (!me || String(mushuState.status || '') !== 'completed') return;
+            const reward = mushuState.rewards?.[me];
+            if (!reward?.id) return;
+            const db = await ensureDb();
+            const tx = await db.ref(`${EVENT_PATH}/rewarded_users/${me}`).transaction(v => v || { at: Date.now(), rewardId: reward.id });
+            if (!tx.committed) return;
+
+            if (reward.id === 'ticket_1') await window.claimSequentialTickets?.(1);
+            if (reward.id === 'ticket_2') await window.claimSequentialTickets?.(2);
+            if (reward.id === 'magnifier') await window.addInventoryItem?.('magnifier', 1);
+            if (reward.id === 'goldenPollen') await window.addInventoryItem?.('goldenPollen', 1);
+
+            const fx = document.createElement('div');
+            fx.className = 'mushu-breath';
+            document.body.appendChild(fx);
+            setTimeout(() => fx.remove(), 1400);
+            setTimeout(() => alert(`🐉 Магический выдох Мушу! Твой приз: ${reward.label || reward.id}`), 900);
+          }
+
+          async function attachMushuListeners() {
+            ensureMushuUi();
+            const db = await ensureDb();
+            if (mushuOffsetRef) mushuOffsetRef.off();
+            mushuOffsetRef = db.ref('.info/serverTimeOffset');
+            mushuOffsetRef.on('value', (snap) => {
+              mushuServerOffsetMs = Number(snap.val()) || 0;
+            });
+            if (mushuRef) mushuRef.off();
+            mushuRef = db.ref(EVENT_PATH);
+            mushuRef.on('value', async (snap) => {
+              mushuState = snap.val() || { status: 'idle' };
+              if (!['completed', 'failed'].includes(String(mushuState.status || ''))) statusToastShown = '';
+              updateInlineInvite();
+              updateProgressUi();
+              startEventTimer();
+              await ensureMyFruitAssigned().catch((e) => console.error('ensureMyFruitAssigned failed', e));
+              await renderFruitPanel();
+              await showMushuResultIfNeeded().catch((e) => console.error('showMushuResultIfNeeded failed', e));
+              await applyMyRewardIfNeeded().catch((e) => console.error('applyMyRewardIfNeeded failed', e));
+            });
+          }
+
+          window.initMushuEventSystem = () => attachMushuListeners().catch((e) => console.error('initMushuEventSystem failed', e));
         })();
+        // END mushu_event.js
 
         // BEGIN adminpage.js
         (function () {
@@ -5692,9 +6595,6 @@
             const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
             return date.toISOString().slice(0, 16);
           });
-          window.formatMoscowDateTime = formatMoscowDateTime;
-          window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
-          window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
 
           const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
           function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
@@ -6092,18 +6992,15 @@
             if (Number.isFinite(fromArg) && fromArg >= 1) return Math.max(1, Math.round(fromArg));
             const fromInput = Number(document.getElementById('event-duration-mins')?.value || 0);
             if (Number.isFinite(fromInput) && fromInput >= 1) return Math.max(1, Math.round(fromInput));
-            return 20;
+            return 10;
           }
 
           async function adminLaunchEpicPaintEvent() {
             const database = await waitForDbReady();
-            await database.ref('online_trails').remove();
-            await database.ref('game_events/current_progress').set(0);
             await database.ref('current_event').set({
               status: 'active',
               type: 'paint',
-              endTime: Date.now() + (20 * 60 * 1000),
-              progress: 0
+              endTime: Date.now() + 600000
             });
           }
 
@@ -6111,40 +7008,13 @@
             return adminLaunchEpicPaintEvent();
           }
 
-          // Исторически расписание событий хранилось в `event_schedules`.
-          // Возвращаем этот путь, чтобы не терять уже созданные записи
-          // и корректно показывать/запускать запланированные ивенты.
-          const EVENT_SCHEDULES_PATH = 'event_schedules';
-          const LEGACY_EVENT_SCHEDULES_PATH = 'scheduled_events';
+          const EVENT_SCHEDULES_PATH = 'event_schedule';
           let eventSchedules = [];
           let eventSchedulesRef = null;
-          let legacyEventSchedulesRef = null;
           let adminServerOffsetMs = 0;
 
           function getAdminNow() {
             return Date.now() + (Number(adminServerOffsetMs) || 0);
-          }
-
-
-          function normalizeEventScheduleRows(rows = []) {
-            return rows
-              .map(ev => ({
-                ...ev,
-                startAt: Number(ev.startAt) || 0,
-                durationMins: Math.max(1, Number(ev.durationMins) || 10),
-                status: String(ev.status || 'scheduled')
-              }))
-              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
-          }
-
-          async function migrateLegacyEventScheduleIfNeeded(database, key) {
-            if (!database || !key) return;
-            const sourceRef = database.ref(`${LEGACY_EVENT_SCHEDULES_PATH}/${key}`);
-            const targetRef = database.ref(`${EVENT_SCHEDULES_PATH}/${key}`);
-            const [sourceSnap, targetSnap] = await Promise.all([sourceRef.once('value'), targetRef.once('value')]);
-            if (!sourceSnap.exists() || targetSnap.exists()) return;
-            await targetRef.set(sourceSnap.val());
-            await sourceRef.remove();
           }
 
           function renderEventSchedules() {
@@ -6178,7 +7048,7 @@
             if (startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
 
             await database.ref(EVENT_SCHEDULES_PATH).push({
-              type: String(document.getElementById('event-type')?.value || ''),
+              type: String(document.getElementById('event-type')?.value || 'epic_paint'),
               status: 'scheduled',
               startAt,
               durationMins,
@@ -6200,7 +7070,6 @@
           }
 
           async function maybeActivateScheduledEvent() {
-            if (!isAdminUser()) return;
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
 
@@ -6218,57 +7087,39 @@
               return { ...v, status: 'starting', startedAt: Date.now() };
             });
             if (!tx.committed) return;
-            try {
-              await database.ref('current_event').set({
-                type: 'disabled',
-                status: 'inactive',
-                updatedAt: Date.now()
-              });
 
-              await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
-                status: 'completed',
-                completedAt: Date.now()
-              });
-            } catch (error) {
-              console.error('Failed to start scheduled event:', error);
-              await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
-                status: 'scheduled',
-                startError: String(error?.message || error || 'unknown_error'),
-                startErrorAt: Date.now()
+            const mins = Math.max(1, Number(tx.snapshot.val()?.durationMins) || 10);
+            const evType = String(tx.snapshot.val()?.type || 'epic_paint');
+            if (evType === 'mushu_feast') {
+              const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
+              await database.ref('mushu_event').set({ status: 'active', current_satiety: 0, target, participants: {}, fed_users: {}, rewards: {}, rewarded_users: {}, feed_log: {}, combo_bonus: {}, startedAt: Date.now(), endAt: Date.now() + (mins * 60 * 1000), durationMs: mins * 60 * 1000 });
+            } else {
+              await database.ref('current_event').set({
+                type: 'paint',
+                status: 'active',
+                endTime: Date.now() + (mins * 60 * 1000),
+                participants: {},
+                strokes: {},
+                progress: { percent: 0 }
               });
             }
+
+            await database.ref(`${EVENT_SCHEDULES_PATH}/${due.key}`).update({
+              status: 'completed',
+              completedAt: Date.now()
+            });
           }
 
           async function syncEventSchedules() {
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
             if (eventSchedulesRef) eventSchedulesRef.off();
-            if (legacyEventSchedulesRef) legacyEventSchedulesRef.off();
-
-            const mergeCache = new Map();
-            const syncFromPath = async (snap, sourcePath) => {
-              const migrationOps = [];
-              snap.forEach(item => {
-                const key = item.key;
-                const row = { key, ...(item.val() || {}) };
-                mergeCache.set(key, row);
-                if (sourcePath === LEGACY_EVENT_SCHEDULES_PATH) {
-                  migrationOps.push(migrateLegacyEventScheduleIfNeeded(database, key));
-                }
-              });
-              if (migrationOps.length) await Promise.allSettled(migrationOps);
-              eventSchedules = normalizeEventScheduleRows(Array.from(mergeCache.values()));
-              renderEventSchedules();
-            };
-
             eventSchedulesRef = database.ref(EVENT_SCHEDULES_PATH);
             eventSchedulesRef.on('value', snap => {
-              syncFromPath(snap, EVENT_SCHEDULES_PATH).catch(err => console.error('Failed to sync event_schedules', err));
-            });
-
-            legacyEventSchedulesRef = database.ref(LEGACY_EVENT_SCHEDULES_PATH);
-            legacyEventSchedulesRef.on('value', snap => {
-              syncFromPath(snap, LEGACY_EVENT_SCHEDULES_PATH).catch(err => console.error('Failed to sync scheduled_events', err));
+              const list = [];
+              snap.forEach(item => list.push({ key: item.key, ...(item.val() || {}) }));
+              eventSchedules = list.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+              renderEventSchedules();
             });
           }
 
@@ -6331,36 +7182,23 @@
             window.switchAdminInnerTab = switchAdminInnerTab;
             window.adminStartNewRound = adminStartNewRound;
             window.adminScheduleRound = adminScheduleRound;
-            window.adminScheduleEvent = adminScheduleEvent;
-            window.adminCancelScheduledEvent = adminCancelScheduledEvent;
             window.adminCancelScheduledRound = adminCancelScheduledRound;
             window.adminForceRenamePlayer = adminForceRenamePlayer;
             window.executeEmergencyAction = executeEmergencyAction;
             window.adminUndoTicketRevoke = adminUndoTicketRevoke;
             window.adminResetCurrentRound = adminResetCurrentRound;
             window.resetAllInventories = resetAllInventories;
+            window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
+            window.startEpicEvent = startEpicEvent;
+            window.adminScheduleEpicPaintEvent = adminScheduleEpicPaintEvent;
             window.adminDeleteScheduledEvent = adminDeleteScheduledEvent;
             window.renderPlayerTicketsList = renderPlayerTicketsList;
-            window.adminCancelScheduledDraw = adminCancelScheduledDraw;
           }
 
           async function initAdminPage() {
-            console.log('DEBUG: initAdminPage() start');
             window.waitForDbReady = window.waitForDbReady || waitForDbReady;
             exposeAdminActions();
             ensureAdminTabVisibility();
-            ensureDateTimeInputDefault('round-start-at');
-            ensureDateTimeInputDefault('event-start-at');
-
-            const scheduleEventBtn = document.getElementById('admin-schedule-event-btn');
-            if (scheduleEventBtn) {
-              scheduleEventBtn.disabled = false;
-              scheduleEventBtn.removeAttribute('disabled');
-              scheduleEventBtn.onclick = (ev) => {
-                ev?.preventDefault?.();
-                window.adminScheduleEvent?.().catch?.((err) => console.error('adminScheduleEvent failed:', err));
-              };
-            }
 
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
@@ -6375,6 +7213,17 @@
 
             const executeBtn = document.getElementById('btn-execute-emergency');
             if (executeBtn) executeBtn.onclick = executeEmergencyAction;
+
+            const launchEventBtn = document.getElementById('btn-launch-epic-paint');
+            if (launchEventBtn) {
+              launchEventBtn.disabled = false;
+              launchEventBtn.removeAttribute('disabled');
+              launchEventBtn.onclick = null;
+              launchEventBtn.addEventListener('click', () => {
+                if (!isAdminUser()) return;
+                window.startEpicEvent?.().catch((err) => console.error('startEpicEvent failed:', err));
+              });
+            }
 
             ensureDateTimeInputDefault('round-start-at');
             ensureDateTimeInputDefault('event-start-at');
@@ -6421,19 +7270,9 @@
         // BEGIN works.js
         // Логика вкладки «Работы», вынесенная из index.html
         function updateWorksTabForRole(isAdmin) {
-            console.log('DEBUG: updateWorksTabForRole admin=', !!isAdmin);
-
             const uploadCard = document.getElementById('works-upload-card');
             const title = document.getElementById('works-tab-title');
-            const beforeLabel = document.getElementById('work-before-label');
-            const beforeInput = document.getElementById('work-image-before-input');
-            const afterLabel = document.getElementById('work-after-label');
-            const afterInput = document.getElementById('work-image-after-input');
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
-            if (beforeLabel) beforeLabel.style.display = isAdmin ? 'none' : '';
-            if (beforeInput) beforeInput.style.display = isAdmin ? 'none' : '';
-            if (afterLabel) afterLabel.style.display = isAdmin ? 'none' : '';
-            if (afterInput) afterInput.style.display = isAdmin ? 'none' : '';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
         }
 
@@ -6526,12 +7365,9 @@
             seasonProfilesRef = db.ref('player_season_status');
             seasonProfilesRef.on('value', snap => {
                 seasonProfilesByUserId = snap.val() || {};
-                repaintOnlineTrails();
             });
 
-            if (systemNotificationsRef) systemNotificationsRef.off();
-            systemNotificationsRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(20);
-            systemNotificationsRef.on('child_added', snap => {
+            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
                 const v = snap.val() || {};
                 if (!v.text) return;
                 if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
@@ -6566,16 +7402,9 @@
             newsFeedRef = db.ref('news_feed').limitToLast(30);
             newsFeedRef.on('value', snap => {
                 const items = [];
-                const seenText = new Set();
-                newsFeedSeenKeys = new Set();
                 snap.forEach(item => {
                     const v = item.val();
-                    const key = String(item.key || '');
-                    const text = String(v?.text || '').trim();
-                    if (!text || newsFeedSeenKeys.has(key) || seenText.has(text)) return;
-                    newsFeedSeenKeys.add(key);
-                    seenText.add(text);
-                    items.push(text);
+                    if (v?.text) items.push(v.text);
                 });
                 const ordered = items.length ? items.reverse() : ['Пока новостей нет — откройте первую клетку! ✨'];
 
@@ -6641,6 +7470,7 @@
 
         function getTaskLabelByCell(cell) {
             if (!cell) return 'Неизвестное задание';
+            if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic && cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) return `🔮 Магическая связь: одиночное задание — ${tasks[cell.taskIdx]?.text || 'Обычное задание'}`;
             if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
@@ -6775,34 +7605,6 @@
             body.classList.toggle('expanded', willExpand);
             const btn = headerEl?.querySelector('.collapse-toggle');
             if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
-        }
-
-
-        function getDismissedDuelResultIds() {
-            try {
-                const raw = localStorage.getItem(DUEL_RESULT_DISMISSED_STORAGE_KEY);
-                const parsed = raw ? JSON.parse(raw) : [];
-                return Array.isArray(parsed) ? parsed : [];
-            } catch (e) {
-                return [];
-            }
-        }
-
-        function rememberDismissedDuelResult(duelKey) {
-            if (!duelKey) return;
-            const current = getDismissedDuelResultIds();
-            const id = String(duelKey);
-            if (current.includes(id)) return;
-            try {
-                localStorage.setItem(DUEL_RESULT_DISMISSED_STORAGE_KEY, JSON.stringify([...current, id].slice(-300)));
-            } catch (e) {
-                // ignore storage errors
-            }
-        }
-
-        function isDuelResultDismissed(duelKey) {
-            if (!duelKey) return false;
-            return getDismissedDuelResultIds().includes(String(duelKey));
         }
 
         const PLAYER_NOTIFICATION_DISMISSED_STORAGE_KEY = 'player_notification_dismissed_ids';
@@ -6974,7 +7776,7 @@
                     const canvas = document.createElement('canvas');
                     canvas.width = Math.round(img.width * ratio);
                     canvas.height = Math.round(img.height * ratio);
-                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     resolve(canvas.toDataURL('image/jpeg', quality));
                 };
@@ -7200,11 +8002,6 @@
         }
 
         async function syncSeasonProfile() {
-            if (!db || typeof db.ref !== 'function') {
-                console.warn('DEBUG: updateUserStats/syncSeasonProfile called before DB ready, retry in 500ms');
-                setTimeout(() => syncSeasonProfile().catch(() => {}), 500);
-                return;
-            }
             const userId = String(currentUserPathId || currentUserId || '').trim();
             if (!userId) return;
             if (String(userId) === String(ADMIN_ID)) {
@@ -7493,12 +8290,5 @@
         if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
         init();
     </script>
-
-    <script type="module" src="js/modules/rules_tab.js"></script>
-    <script type="module" src="js/modules/items_system.js"></script>
-    <script type="module" src="js/modules/events_engine.js"></script>
-    <script type="module" src="js/modules/admin_panel.js"></script>
-    <script type="module" src="js/modules/works_gallery.js"></script>
-    <script type="module" src="js/main.js"></script>
 </body>
 </html>
