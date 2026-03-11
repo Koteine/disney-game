@@ -15,7 +15,8 @@ export function openRulesScroll() {
   if (typeof window.switchTab === 'function') window.switchTab('tab-rules', btn);
 }
 
-export function initRulesTab() {
+export function initRulesTab(db) {
+  console.log('DEBUG: Module RulesTab received DB object:', !!db);
   window.switchRulesSubtab = switchRulesSubtab;
   window.openRulesScroll = openRulesScroll;
 }
