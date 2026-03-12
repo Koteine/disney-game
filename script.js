@@ -6116,8 +6116,10 @@ const JSON_URL = 'tasks.json';
 
           async function maybeActivateScheduledRound() {
             if (!hasRoundSchedulesSynced) return;
+
             const database = await waitForDbReady().catch(() => null);
             if (!database) return;
+
 
             const now = getAdminNow();
             const due = roundSchedules
