@@ -4440,6 +4440,73 @@ const JSON_URL = 'tasks.json';
                 if (playerPanel) playerPanel.style.display = isAll ? 'none' : 'block';
             }
 
+            function pickFirstNonEmptyString(...values) {
+                for (const value of values) {
+                    const normalized = String(value || '').trim();
+                    if (normalized) return normalized;
+                }
+                return '';
+            }
+
+            function escapeHtml(value) {
+                return String(value || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            function resolveAdminPlayerIdentity(uid, whitelistRow, seasonProfile) {
+                const charIndex = Number(whitelistRow?.charIndex);
+                const rosterName = Number.isInteger(charIndex) && players[charIndex] ? String(players[charIndex].n || '').trim() : '';
+                const gameNickname = pickFirstNonEmptyString(
+                    seasonProfile?.nickname,
+                    seasonProfile?.gameName,
+                    seasonProfile?.profile?.nickname,
+                    seasonProfile?.profile?.name
+                );
+                const reserveName = pickFirstNonEmptyString(
+                    whitelistRow?.nickname,
+                    whitelistRow?.name,
+                    whitelistRow?.displayName,
+                    whitelistRow?.playerName,
+                    rosterName
+                );
+                const telegramDisplayName = pickFirstNonEmptyString(
+                    seasonProfile?.telegramName,
+                    seasonProfile?.telegram_name,
+                    seasonProfile?.first_name,
+                    seasonProfile?.username ? `@${String(seasonProfile.username).replace(/^@/, '')}` : '',
+                    whitelistRow?.telegramName,
+                    whitelistRow?.telegram_name,
+                    whitelistRow?.first_name,
+                    whitelistRow?.username ? `@${String(whitelistRow.username).replace(/^@/, '')}` : ''
+                );
+                const displayName = gameNickname || reserveName || telegramDisplayName || `Игрок ${uid}`;
+                const avatarUrl = pickFirstNonEmptyString(
+                    seasonProfile?.avatar_url,
+                    seasonProfile?.photo_url,
+                    seasonProfile?.avatarUrl,
+                    seasonProfile?.telegram_photo_url,
+                    whitelistRow?.avatar_url,
+                    whitelistRow?.photo_url,
+                    whitelistRow?.avatarUrl,
+                    whitelistRow?.telegram_photo_url
+                );
+
+                return {
+                    userId: uid,
+                    charIndex: Number.isInteger(charIndex) ? charIndex : null,
+                    gameNickname,
+                    reserveName,
+                    telegramDisplayName,
+                    displayName,
+                    avatarUrl,
+                    isFallbackName: !gameNickname && !reserveName && !telegramDisplayName
+                };
+            }
+
             function getAdminPlayersAlphabetically() {
                 const whitelist = window.cachedWhitelistData || {};
                 const usersById = new Map();
@@ -4447,36 +4514,36 @@ const JSON_URL = 'tasks.json';
                 Object.entries(whitelist).forEach(([userId, data]) => {
                     const uid = String(userId || '').trim();
                     if (!uid) return;
-                    const charIndex = Number(data?.charIndex);
-                    const rosterName = Number.isInteger(charIndex) && players[charIndex] ? String(players[charIndex].n || '').trim() : '';
                     const seasonProfile = seasonProfilesByUserId?.[uid] || {};
-                    const seasonName = String(seasonProfile.nickname || '').trim();
+                    const identity = resolveAdminPlayerIdentity(uid, data, seasonProfile);
                     const deleted = Boolean(data?.deletedAt || seasonProfile?.deletedAt);
                     usersById.set(uid, {
-                        userId: uid,
-                        charIndex: Number.isInteger(charIndex) ? charIndex : null,
-                        name: seasonName || rosterName || `Игрок ${uid}`,
+                        ...identity,
+                        name: identity.displayName,
                         deleted,
-                        isFallbackName: !seasonName && !rosterName
+                        isFallbackName: identity.isFallbackName
                     });
                 });
 
                 Object.entries(seasonProfilesByUserId || {}).forEach(([userId, profile]) => {
                     const uid = String(userId || '').trim();
                     if (!uid || usersById.has(uid)) return;
-                    const seasonName = String(profile?.nickname || '').trim();
+                    const identity = resolveAdminPlayerIdentity(uid, null, profile || {});
                     usersById.set(uid, {
-                        userId: uid,
-                        charIndex: null,
-                        name: seasonName || `Игрок ${uid}`,
+                        ...identity,
+                        name: identity.displayName,
                         deleted: Boolean(profile?.deletedAt),
-                        isFallbackName: !seasonName
+                        isFallbackName: identity.isFallbackName
                     });
                 });
 
                 const users = Array.from(usersById.values()).filter(u => !u.deleted);
 
-                users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+                users.sort((a, b) => {
+                    const nameCompare = a.displayName.localeCompare(b.displayName, 'ru');
+                    if (nameCompare !== 0) return nameCompare;
+                    return String(a.userId).localeCompare(String(b.userId), 'ru');
+                });
                 return users;
             }
 
@@ -4617,8 +4684,21 @@ const JSON_URL = 'tasks.json';
                     : '<div style="color:#888;">У игрока нет билетов.</div>';
 
                 const requestId = ++adminProfileLogRequestId;
+                const cardName = selectedUser.displayName || selectedUser.name || `Игрок ${selectedUser.userId}`;
+                const safeCardName = escapeHtml(cardName);
+                const safeUserId = escapeHtml(selectedUser.userId);
+                const safeAvatarUrl = String(selectedUser.avatarUrl || '').trim();
+                const avatarHtml = safeAvatarUrl
+                    ? `<img src="${escapeHtml(safeAvatarUrl)}" alt="Аватар ${safeCardName}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid #ddd;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">\n                       <div style="display:none; width:44px; height:44px; border-radius:50%; background:#f0f0f0; color:#777; align-items:center; justify-content:center; font-weight:700;">👤</div>`
+                    : '<div style="width:44px; height:44px; border-radius:50%; background:#f0f0f0; color:#777; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">👤</div>';
                 summaryEl.innerHTML = `
-                    <div style="font-size:14px; font-weight:700; margin-bottom:8px;">${selectedUser.name}</div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; padding:8px; border:1px solid #eee; border-radius:10px; background:#fafafa;">
+                        <div style="flex:0 0 auto;">${avatarHtml}</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:14px; font-weight:700;">${safeCardName}</div>
+                            <div style="font-size:12px; color:#666;">ID: <b>${safeUserId}</b></div>
+                        </div>
+                    </div>
                     <div style="font-size:12px; margin-bottom:10px;"><b>Билеты (${filtered.length})</b><div style="margin-top:4px;">${ticketsHtml}</div></div>
                     <div style="font-size:12px; margin-bottom:10px;"><b>Предметы в рюкзаке</b><div style="margin-top:4px;">${inventoryHtml}</div></div>
                     <div style="font-size:12px; margin-bottom:10px;"><b>Карма</b><div style="margin-top:4px;">${karmaHtml}</div></div>
