@@ -174,6 +174,8 @@ const JSON_URL = 'tasks.json';
         let myInkChallenge = null;
         let myWandBlessing = null;
         let allSubmissions = [];
+        let worksAdminSearchQuery = '';
+        let worksAdminSubtab = 'all';
         let currentGameEvent = null;
         let currentGameEventKey = null;
         let queuedGameEvents = [];
@@ -733,8 +735,31 @@ const JSON_URL = 'tasks.json';
         function updateWorksTabForRole(isAdmin) {
             const uploadCard = document.getElementById('works-upload-card');
             const title = document.getElementById('works-tab-title');
+            const adminFilters = document.getElementById('works-admin-filters');
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+        }
+
+        function normalizeNicknameForFilter(name) {
+            return String(name || '').trim().toLowerCase();
+        }
+
+        function getSubmissionPlayerNickname(item) {
+            if (Number.isInteger(item?.owner) && players[item.owner]?.n) return String(players[item.owner].n);
+            return '';
+        }
+
+        function setWorksAdminSubtab(tabName) {
+            worksAdminSubtab = tabName === 'needs_approval' ? 'needs_approval' : 'all';
+            document.getElementById('works-subtab-all-btn')?.classList.toggle('active', worksAdminSubtab === 'all');
+            document.getElementById('works-subtab-needs-approval-btn')?.classList.toggle('active', worksAdminSubtab === 'needs_approval');
+            renderSubmissions();
+        }
+
+        function onWorksAdminSearchInput(rawValue) {
+            worksAdminSearchQuery = normalizeNicknameForFilter(rawValue);
+            renderSubmissions();
         }
 
         function checkAccess() {
@@ -1066,9 +1091,12 @@ const JSON_URL = 'tasks.json';
                 return;
             }
 
-            list.innerHTML = visible.map(item => {
+            list.innerHTML = filtered.map(item => {
                 const status = getSubmissionStatusInfo(item.status);
-                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${players[item.owner]?.n || 'Неизвестный'}</b> · TG ID: ${item.userId || '—'}</div>` : '';
+                const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
+                const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
+                const uploadedAtText = uploadedAt ? new Date(uploadedAt).toLocaleString('ru-RU') : '—';
+                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${playerName}</b> · TG ID: ${item.userId || '—'}</div>` : '';
                 const reviewControls = isAdmin ? `
                     <div style="display:flex; gap:6px; margin-top:8px;">
                         <button onclick="setSubmissionStatus('${item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
@@ -1085,6 +1113,7 @@ const JSON_URL = 'tasks.json';
                             <span class="status-chip ${status.className}">${status.text}</span>
                         </div>
                         <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#555;">🕒 Загружено: ${uploadedAtText}</div>
                         <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
                         ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
 
@@ -6050,23 +6079,29 @@ const JSON_URL = 'tasks.json';
             return Number.isFinite(parsed) ? parsed : NaN;
           });
           const toMoscowDateTimeLocalInput = window.toMoscowDateTimeLocalInput || ((ts) => {
-            const moscowDate = new Date((Number(ts) || Date.now()) + 3 * 3600000);
-            const yyyy = moscowDate.getUTCFullYear();
-            const mm = String(moscowDate.getUTCMonth() + 1).padStart(2, '0');
-            const dd = String(moscowDate.getUTCDate()).padStart(2, '0');
-            const hh = String(moscowDate.getUTCHours()).padStart(2, '0');
-            const min = String(moscowDate.getUTCMinutes()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+            const dt = new Date(Number(ts) || Date.now());
+            return new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
           });
 
           const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+          let isAdminScheduleCollapsed = false;
           function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
             const input = document.getElementById(inputId);
             if (!input || input.value) return;
             input.value = toMoscowDateTimeLocalInput(Date.now() + plusMs);
           }
 
+          function toggleAdminSchedulePanel(forceExpand) {
+            const body = document.getElementById('admin-schedule-body');
+            const btn = document.getElementById('admin-schedule-toggle-btn');
+            if (!body || !btn) return;
+            isAdminScheduleCollapsed = typeof forceExpand === 'boolean' ? !forceExpand : !isAdminScheduleCollapsed;
+            body.style.display = isAdminScheduleCollapsed ? 'none' : 'block';
+            btn.innerText = isAdminScheduleCollapsed ? '🗓️ Расписание: Развернуть' : '🗓️ Расписание: Свернуть';
+          }
+
           function switchAdminInnerTab(tabName) {
+            toggleAdminSchedulePanel(true);
             const roundsBtn = document.getElementById('admin-inner-rounds-btn');
             const eventsBtn = document.getElementById('admin-inner-events-btn');
             const drawBtn = document.getElementById('admin-inner-draw-btn');
@@ -6133,6 +6168,11 @@ const JSON_URL = 'tasks.json';
           window.switchAdminInnerTab = switchAdminInnerTab;
           window.runRoundStart = runRoundStart;
           window.getAdminNow = () => Date.now();
+          window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
+          window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
+          window.toggleAdminSchedulePanel = toggleAdminSchedulePanel;
+          window.setWorksAdminSubtab = setWorksAdminSubtab;
+          window.onWorksAdminSearchInput = onWorksAdminSearchInput;
 
         })();
         // END adminpage.js
@@ -6142,8 +6182,31 @@ const JSON_URL = 'tasks.json';
         function updateWorksTabForRole(isAdmin) {
             const uploadCard = document.getElementById('works-upload-card');
             const title = document.getElementById('works-tab-title');
+            const adminFilters = document.getElementById('works-admin-filters');
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+        }
+
+        function normalizeNicknameForFilter(name) {
+            return String(name || '').trim().toLowerCase();
+        }
+
+        function getSubmissionPlayerNickname(item) {
+            if (Number.isInteger(item?.owner) && players[item.owner]?.n) return String(players[item.owner].n);
+            return '';
+        }
+
+        function setWorksAdminSubtab(tabName) {
+            worksAdminSubtab = tabName === 'needs_approval' ? 'needs_approval' : 'all';
+            document.getElementById('works-subtab-all-btn')?.classList.toggle('active', worksAdminSubtab === 'all');
+            document.getElementById('works-subtab-needs-approval-btn')?.classList.toggle('active', worksAdminSubtab === 'needs_approval');
+            renderSubmissions();
+        }
+
+        function onWorksAdminSearchInput(rawValue) {
+            worksAdminSearchQuery = normalizeNicknameForFilter(rawValue);
+            renderSubmissions();
         }
 
         function checkAccess() {
@@ -6439,15 +6502,26 @@ const JSON_URL = 'tasks.json';
                 const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(item.owner) === Number(myIndex);
                 return sameUserId || sameOwner;
             });
+            const searchQuery = isAdmin ? normalizeNicknameForFilter(worksAdminSearchQuery) : '';
+            const filteredBySearch = visible.filter(item => {
+                if (!searchQuery) return true;
+                return normalizeNicknameForFilter(getSubmissionPlayerNickname(item)).includes(searchQuery);
+            });
+            const filtered = isAdmin && worksAdminSubtab === 'needs_approval'
+                ? filteredBySearch.filter(item => String(item.status || '') !== 'accepted')
+                : filteredBySearch;
 
-            if (!visible.length) {
+            if (!filtered.length) {
                 list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
                 return;
             }
 
-            list.innerHTML = visible.map(item => {
+            list.innerHTML = filtered.map(item => {
                 const status = getSubmissionStatusInfo(item.status);
-                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${players[item.owner]?.n || 'Неизвестный'}</b> · TG ID: ${item.userId || '—'}</div>` : '';
+                const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
+                const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
+                const uploadedAtText = uploadedAt ? new Date(uploadedAt).toLocaleString('ru-RU') : '—';
+                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${playerName}</b> · TG ID: ${item.userId || '—'}</div>` : '';
                 const reviewControls = isAdmin ? `
                     <div style="display:flex; gap:6px; margin-top:8px;">
                         <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
@@ -6464,6 +6538,7 @@ const JSON_URL = 'tasks.json';
                             <span class="status-chip ${status.className}">${status.text}</span>
                         </div>
                         <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#555;">🕒 Загружено: ${uploadedAtText}</div>
                         <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
                         ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
 
