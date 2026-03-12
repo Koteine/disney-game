@@ -5818,7 +5818,7 @@ const JSON_URL = 'tasks.json';
             if (roundNum) alert(`Раунд №${roundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
           }
 
-          async function adminScheduleRound() {
+  async function adminScheduleRound() {
   if (!isAdminUser()) return;
 
   const startRaw = document.getElementById('round-start-at')?.value;
@@ -5847,14 +5847,14 @@ const JSON_URL = 'tasks.json';
   const ref = db.ref('round_schedules').push();
   await ref.set(payload);
 
-  // локально показываем сразу, не дожидаясь listener
   roundSchedules = [...(Array.isArray(roundSchedules) ? roundSchedules : []), {
     key: ref.key,
     ...payload
   }].sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
 
-  renderRoundSchedules();
+  hasRoundSchedulesSynced = true;
   persistRoundSchedulesBackup(roundSchedules);
+  renderRoundSchedules();
 
   alert('Раунд запланирован.');
 }
@@ -6227,47 +6227,55 @@ const JSON_URL = 'tasks.json';
             return roundNum;
           }
 
-          async function checkScheduledRounds() {
-            if (!Array.isArray(roundSchedules) || !roundSchedules.length) {
-              const schedulesSnap = await db.ref('round_schedules').once('value');
-              const items = [];
-              schedulesSnap.forEach(s => items.push({ key: s.key, status: 'scheduled', ...(s.val() || {}) }));
-              roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
-            }
+         async function checkScheduledRounds() {
+  try {
+    if (!db) return;
 
-            const now = getAdminNow();
-            const due = (Array.isArray(roundSchedules) ? roundSchedules : [])
-              .filter(r => String(r.status || 'scheduled') === 'scheduled'
-                && now >= Number(r.startAt || 0)
-                && getRoundActivationNotBefore(r) <= now)
-              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+    if (!Array.isArray(roundSchedules) || !roundSchedules.length) {
+      const schedulesSnap = await db.ref('round_schedules').once('value');
+      const items = [];
+      schedulesSnap.forEach(s => items.push({ key: s.key, status: 'scheduled', ...(s.val() || {}) }));
+      roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+      hasRoundSchedulesSynced = true;
+      persistRoundSchedulesBackup(roundSchedules);
+      renderRoundSchedules();
+    }
 
-            if (!due?.key) return;
+    const now = getAdminNow();
+    const due = (Array.isArray(roundSchedules) ? roundSchedules : [])
+      .filter(r =>
+        String(r.status || 'scheduled') === 'scheduled' &&
+        now >= Number(r.startAt || 0) &&
+        getRoundActivationNotBefore(r) <= now
+      )
+      .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
 
-            const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
-              const txNow = getAdminNow();
-              if (!v || v.status !== 'scheduled') return v;
-              if (txNow < (v.startAt || 0)) return v;
-              if (txNow < getRoundActivationNotBefore(v)) return v;
-              return { ...v, status: 'starting', startedAt: Date.now() };
-            });
-            if (!tx.committed) return;
+    if (!due?.key) return;
 
-            await adminStartRound(due.key, due.durationMs || 0);
-          }
+    const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
+      const txNow = getAdminNow();
+      if (!v || v.status !== 'scheduled') return v;
+      if (txNow < (v.startAt || 0)) return v;
+      if (txNow < getRoundActivationNotBefore(v)) return v;
+      return { ...v, status: 'starting', startedAt: Date.now() };
+    });
 
-          function syncRoundSchedules() {
-            if (roundSchedulesRef) roundSchedulesRef.off();
-            roundSchedulesRef = db.ref('round_schedules');
-            roundSchedulesRef.on('value', snap => {
-              const items = [];
-              snap.forEach(s => items.push({ key: s.key, status: 'scheduled', ...(s.val() || {}) }));
-              roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
-              hasRoundSchedulesSynced = true;
-              persistRoundSchedulesBackup(roundSchedules);
-              renderRoundSchedules();
-            });
-          }
+    if (!tx.committed) return;
+
+    await adminStartRound(due.key, due.durationMs || 0);
+
+    roundSchedules = (Array.isArray(roundSchedules) ? roundSchedules : []).map(item =>
+      item.key === due.key
+        ? { ...item, status: 'completed', completedAt: Date.now() }
+        : item
+    );
+
+    persistRoundSchedulesBackup(roundSchedules);
+    renderRoundSchedules();
+  } catch (e) {
+    console.error('checkScheduledRounds failed:', e);
+  }
+}
 
 
           function resolveEpicPaintDurationMins(durationMins) {
