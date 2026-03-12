@@ -5696,16 +5696,22 @@ const JSON_URL = 'tasks.json';
 
           const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
           const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
-            const parsed = new Date(String(value || '')).getTime();
+            const raw = String(value || '').trim();
+            const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+            if (!match) return NaN;
+            const [, y, mo, d, h, mi] = match;
+            // input type=datetime-local для расписания интерпретируется как время Москвы (UTC+3),
+            // чтобы не зависеть от часового пояса устройства администратора.
+            const parsed = Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h) - 3, Number(mi));
             return Number.isFinite(parsed) ? parsed : NaN;
           });
           const toMoscowDateTimeLocalInput = window.toMoscowDateTimeLocalInput || ((ts) => {
-            const date = new Date(Number(ts) || Date.now());
-            const yyyy = date.getFullYear();
-            const mm = String(date.getMonth() + 1).padStart(2, '0');
-            const dd = String(date.getDate()).padStart(2, '0');
-            const hh = String(date.getHours()).padStart(2, '0');
-            const min = String(date.getMinutes()).padStart(2, '0');
+            const moscowDate = new Date((Number(ts) || Date.now()) + 3 * 3600000);
+            const yyyy = moscowDate.getUTCFullYear();
+            const mm = String(moscowDate.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(moscowDate.getUTCDate()).padStart(2, '0');
+            const hh = String(moscowDate.getUTCHours()).padStart(2, '0');
+            const min = String(moscowDate.getUTCMinutes()).padStart(2, '0');
             return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
           });
 
