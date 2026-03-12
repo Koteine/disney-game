@@ -1561,6 +1561,7 @@ const JSON_URL = 'tasks.json';
             if (!msg) return;
             await db.ref('news_feed').push({ text: msg, createdAt: Date.now() });
         }
+        window.postNews = postNews;
 
         function getKarmaVisualByPoints(points) {
             const p = Number(points) || 0;
@@ -2592,6 +2593,9 @@ const JSON_URL = 'tasks.json';
             if (!active?.key) return;
             if (nowMs < (active.endAt || 0)) return;
 
+            const eventRuntimeId = String(active.activatedAt || active.startAt || active.key);
+            const feedOncePath = `game_events/${active.key}/feed_result_posted/${eventRuntimeId}`;
+
             if ([EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(active.id)) {
                 const canvas = document.getElementById('epic-paint-canvas');
                 if (canvas) {
@@ -2617,11 +2621,14 @@ const JSON_URL = 'tasks.json';
                 if (active.id === MUSHU_EVENT_ID) {
                     const failedAt = nowMs;
                     await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' });
-                    const failedEventId = String(active.activatedAt || active.startAt || failedAt);
+                    const failedEventId = eventRuntimeId;
                     const failedLogTx = await db.ref(`mushu_event/feed_result_posted/${failedEventId}`).transaction((v) => v || { at: failedAt, eventId: failedEventId, status: 'failed' });
                     if (failedLogTx.committed) await postNews('🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟');
                 } else {
-                    await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
+                    const summaryLogTx = await db.ref(feedOncePath).transaction((v) => v || { at: nowMs, eventId: eventRuntimeId, status: 'failed' });
+                    if (summaryLogTx.committed) {
+                        await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
+                    }
                 }
             }
         }
