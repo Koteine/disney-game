@@ -1448,18 +1448,18 @@ const JSON_URL = 'tasks.json';
         async function activateCloak(cellIdx) {
             try {
                 await waitForDbReady();
-                const userPathId = String(currentUserPathId || currentUserId || '').trim();
-                if (!userPathId) return alert('Сначала войдите в игру, затем попробуйте снова.');
+                const userDbKey = String(currentUserPathId || currentUserId || '').trim();
+                if (!userDbKey) return alert('Сначала войдите в игру, затем попробуйте снова.');
 
                 const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
                 const cell = cellSnap.val();
-                if (!cell || String(cell.userId || '') !== userPathId) return alert('Плащ можно надеть только в своей карточке задания.');
+                if (!cell || Number(cell.userId) !== Number(userDbKey)) return alert('Плащ можно надеть только в своей карточке задания.');
                 if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
                 if (inventoryCount('cloak') <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
                 if (cell.isMagic || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
                     return alert('Плащ нельзя надеть на эту механику. Выберите другое задание.');
                 }
-                const debtSnap = await db.ref(`whitelist/${userPathId}/debt`).once('value');
+                const debtSnap = await db.ref(`whitelist/${userDbKey}/debt`).once('value');
                 if (debtSnap.val()?.active) {
                     return alert('Плащ уже активирован: сначала закройте текущий долг по заданиям.');
                 }
@@ -1475,7 +1475,7 @@ const JSON_URL = 'tasks.json';
                     [`board/${cellIdx}/deferredAt`]: now,
                     [`board/${cellIdx}/deferredRound`]: roundNum,
                     [`board/${cellIdx}/invisibleMode`]: true,
-                    [`whitelist/${userPathId}/debt`]: debt
+                    [`whitelist/${userDbKey}/debt`]: debt
                 });
 
                 alert('🎭 Вы скрылись под плащом. Теперь вы обязаны сдать ЭТО задание и СЛЕДУЮЩЕЕ до конца следующего раунда, иначе сгорят оба билета');
@@ -4270,12 +4270,12 @@ const JSON_URL = 'tasks.json';
             }
 
             async function consumeInventoryItem(itemKey, amount = 1) {
-                const userPathId = String(currentUserPathId || currentUserId || '').trim();
-                if (!userPathId || !itemTypes[itemKey]) return false;
+                const userDbKey = String(currentUserPathId || currentUserId || '').trim();
+                if (!userDbKey || !itemTypes[itemKey]) return false;
                 const minusAmount = Math.max(1, Number(amount) || 1);
 
                 await waitForDbReady();
-                const ref = db.ref(`whitelist/${userPathId}/inventory`);
+                const ref = db.ref(`whitelist/${userDbKey}/inventory`);
                 const result = await ref.transaction((current) => {
                     const next = {
                         goldenPollen: Number(current?.goldenPollen || 0),
