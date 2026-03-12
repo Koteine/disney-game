@@ -1455,7 +1455,7 @@ const JSON_URL = 'tasks.json';
                 const cell = cellSnap.val();
                 if (!cell || String(cell.userId || '') !== userPathId) return alert('Плащ можно надеть только в своей карточке задания.');
                 if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
-                if (inventoryCount('cloak') <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
+                if (window.inventoryCount?.('cloak') <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
                 if (cell.isMagic || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
                     return alert('Плащ нельзя надеть на эту механику. Выберите другое задание.');
                 }
@@ -1464,7 +1464,7 @@ const JSON_URL = 'tasks.json';
                     return alert('Плащ уже активирован: сначала закройте текущий долг по заданиям.');
                 }
 
-                const consumed = await consumeInventoryItem('cloak', 1);
+                const consumed = await window.consumeInventoryItem?.('cloak', 1);
                 if (!consumed) return alert('Плащ уже израсходован.');
 
                 const roundNum = Number(currentRoundNum) || 0;
