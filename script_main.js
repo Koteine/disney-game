@@ -1456,8 +1456,8 @@ const JSON_URL = 'tasks.json';
                 if (!cell || String(cell.userId || '') !== userPathId) return alert('Плащ можно надеть только в своей карточке задания.');
                 if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
                 if (inventoryCount('cloak') <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
-                if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
-                    return alert('Плащ можно надеть только на обычное задание.');
+                if (cell.isMagic || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
+                    return alert('Плащ нельзя надеть на эту механику. Выберите другое задание.');
                 }
                 const debtSnap = await db.ref(`whitelist/${userPathId}/debt`).once('value');
                 if (debtSnap.val()?.active) {
@@ -3157,7 +3157,7 @@ const JSON_URL = 'tasks.json';
 
                 if (isOwner && !cell.excluded) {
                     h += `<button onclick="surrenderCell(${i})" class="admin-btn" style="margin-top:10px; width:100%; background:#9e9e9e;">🏳️ Сдаться</button>`;
-                    if ((myInventory.cloak || 0) > 0 && !cell.itemType) {
+                    if ((myInventory.cloak || 0) > 0) {
                         h += `<button onclick="activateCloak(${i})" class="admin-btn" style="margin-top:8px; width:100%; background:#8e24aa;">🎭 Надеть плащ</button>`;
                     }
                 }
