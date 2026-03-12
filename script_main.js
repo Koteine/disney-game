@@ -2079,6 +2079,15 @@ const JSON_URL = 'tasks.json';
             await closePlayerNotification(`sys-${notificationKey}`, true);
         }
 
+        async function acknowledgeCalligraphyDuelResult(duelKey) {
+            if (!duelKey || !currentUserId || !db) return;
+            const ackRef = db.ref(`${DUEL_PATH}/${duelKey}/resultAcknowledged/${currentUserId}`);
+            await ackRef.transaction((current) => {
+                if (current) return current;
+                return { at: Date.now() };
+            });
+        }
+
         function showOutgoingDuelStatusNotification(notificationKey, payload = {}) {
             const label = document.getElementById('duel-status-label');
             const textNode = document.getElementById('duel-status-text');
@@ -2218,6 +2227,10 @@ const JSON_URL = 'tasks.json';
                 }
                 if (row.status === 'done') {
                     if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
+                    if (row.resultAcknowledged?.[me]) {
+                        duelResultShownByKey[duelSnap.key] = true;
+                        return;
+                    }
                     if (duelResultShownByKey[duelSnap.key]) return;
                     duelResultShownByKey[duelSnap.key] = true;
                     const myScore = Number(row.scores?.[me] || 0);
@@ -2228,6 +2241,7 @@ const JSON_URL = 'tasks.json';
                     } else if (!row.expiredByTimeout) {
                         alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
                     }
+                    acknowledgeCalligraphyDuelResult(duelSnap.key).catch((err) => console.error('duel result acknowledge failed', err));
                 }
             };
             duelRef.on('value', handler);
