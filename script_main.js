@@ -207,6 +207,7 @@ const JSON_URL = 'tasks.json';
         let duelDrawingState = { drawing: false, enabled: false, ended: false };
         let duelTimerInterval = null;
         let duelCountdownInterval = null;
+        let duelResultShownByKey = {};
 
 
         /************************************************************************************************************
@@ -1810,6 +1811,7 @@ const JSON_URL = 'tasks.json';
             clearInterval(duelCountdownInterval);
             clearInterval(duelTimerInterval);
             duelDrawingState.enabled = false;
+            activeDuelKey = null;
         }
 
         function subscribeToCalligraphyDuelInvites() {
@@ -1826,13 +1828,26 @@ const JSON_URL = 'tasks.json';
             });
 
             if (activeDuelRef) activeDuelRef.off();
-            activeDuelRef = db.ref(DUEL_PATH).limitToLast(20);
+            activeDuelRef = db.ref(DUEL_PATH).limitToLast(40);
             activeDuelRef.on('child_added', snap => {
                 const duel = snap.val() || {};
                 const me = String(currentUserId);
                 if (![String(duel.challengerId), String(duel.opponentId)].includes(me)) return;
                 db.ref(`${DUEL_PATH}/${snap.key}`).on('value', duelSnap => {
                     const row = duelSnap.val() || {};
+                    const startedAt = Number(row.startedAt || row.createdAt || 0);
+                    const isStaleActive = row.status === 'active' && startedAt > 0 && (Date.now() - startedAt) > (20 * 60 * 1000);
+
+                    if (isStaleActive) {
+                        db.ref(`${DUEL_PATH}/${duelSnap.key}`).transaction((current) => {
+                            if (!current || current.status !== 'active') return current;
+                            const currentStartedAt = Number(current.startedAt || current.createdAt || 0);
+                            if (!currentStartedAt || (Date.now() - currentStartedAt) <= (20 * 60 * 1000)) return current;
+                            return { ...current, status: 'done', finishedAt: Date.now(), expiredByTimeout: true, winnerId: '', loserId: '' };
+                        }).catch((err) => console.error('stale duel cleanup failed', err));
+                        return;
+                    }
+
                     if (row.status === 'active' && activeDuelKey !== duelSnap.key) {
                         openCalligraphyDuelUI(duelSnap.key, row);
                     }
@@ -1841,13 +1856,15 @@ const JSON_URL = 'tasks.json';
                         finishCalligraphyDuel(duelSnap.key).catch(err => console.error('finish duel failed', err));
                     }
                     if (row.status === 'done') {
+                        if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
+                        if (duelResultShownByKey[duelSnap.key]) return;
+                        duelResultShownByKey[duelSnap.key] = true;
                         const myScore = Number(row.scores?.[me] || 0);
                         const winner = String(row.winnerId || '') === me;
-                        closeCalligraphyDuelUI();
                         if (winner) {
                             launchCelebrationFireworks();
                             alert(`Победа в дуэли! Точность: ${myScore}%`);
-                        } else {
+                        } else if (!row.expiredByTimeout) {
                             alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
                         }
                     }
@@ -2663,7 +2680,7 @@ const JSON_URL = 'tasks.json';
                 const rollBtn = document.getElementById('roll-button') || btn;
                 const hasPendingOutgoingDuel = activeDuels.some((duel) => {
                     if (!duel || typeof duel !== 'object') return false;
-                    return String(duel.fromId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
+                    return String(duel.challengerId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
                 });
                 if (hasPendingOutgoingDuel) {
                     if (statusLabel) statusLabel.textContent = 'Вы бросили вызов! Ждем ответа соперника...';
@@ -5949,10 +5966,11 @@ const JSON_URL = 'tasks.json';
             });
 
             if (duelNotificationsRef) duelNotificationsRef.off();
-            duelNotificationsRef = db.ref('duels');
+            duelNotificationsRef = db.ref(DUEL_PATH).limitToLast(40);
             duelNotificationsRef.on('child_added', snap => {
                 const duel = snap.val() || {};
-                if (String(duel.targetId || '') !== String(currentUserId)) return;
+                const me = String(currentUserId);
+                if (String(duel.opponentId || '') !== me) return;
                 if (String(duel.status || '') !== 'pending') return;
                 showPlayerNotification({
                     id: `duel-pending-${snap.key}`,
@@ -5962,7 +5980,7 @@ const JSON_URL = 'tasks.json';
             });
 
             if (duelsRef) duelsRef.off();
-            duelsRef = db.ref('duels');
+            duelsRef = db.ref(DUEL_PATH).limitToLast(40);
             duelsRef.on('value', snap => {
                 const items = [];
                 snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
