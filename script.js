@@ -562,6 +562,7 @@ const JSON_URL = 'tasks.json';
 
         async function init() {
             try {
+                refreshTelegramContext();
                 const res = await fetch(JSON_URL);
                 tasks = await res.json();
                 await initializeTelegramSeasonUser();
@@ -578,7 +579,7 @@ const JSON_URL = 'tasks.json';
                 window.initMushuEventSystem?.();
                 subscribeToCalligraphyDuelInvites();
                 document.getElementById('duel-close-btn')?.addEventListener('click', closeCalligraphyDuelUI);
-                setInterval(checkScheduledRounds, 30000);
+                setInterval(() => { checkScheduledRounds(); }, 20000);
             } catch(e) { console.error(e); }
         }
 
@@ -2647,6 +2648,7 @@ const JSON_URL = 'tasks.json';
                 });
                 if (hasPendingOutgoingDuel) {
                     if (statusLabel) statusLabel.textContent = 'Вы бросили вызов! Ждем ответа соперника...';
+                    if (statusLabel) statusLabel.style.display = 'block';
                     if (rollBtn) rollBtn.disabled = true;
                     return true;
                 }
@@ -7583,6 +7585,4 @@ const JSON_URL = 'tasks.json';
 
         window.Telegram.WebApp.ready();
         tg.expand();
-        refreshTelegramContext();
-        if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
         init();
