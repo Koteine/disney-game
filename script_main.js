@@ -2025,9 +2025,9 @@ const JSON_URL = 'tasks.json';
             canvas.dataset.ready = '1';
             const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
           window.isAdminUser = isAdminUser;
-          window.formatMoscowDateTime = formatMoscowDateTime;
-          window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
-          window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
+          if (typeof formatMoscowDateTime === 'function') window.formatMoscowDateTime = formatMoscowDateTime;
+          if (typeof parseMoscowDateTimeLocalInput === 'function') window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
+          if (typeof toMoscowDateTimeLocalInput === 'function') window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
 
             const getPos = evt => {
                 const rect = canvas.getBoundingClientRect();
