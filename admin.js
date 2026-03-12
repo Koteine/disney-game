@@ -5,13 +5,27 @@ const isAdminUser = (...args) => (
     ? window.isAdminUser(...args)
     : false
 );
-const waitForDbReady = (...args) => {
-  if (typeof window.waitForDbReady === 'function' && window.waitForDbReady !== waitForDbReady) {
-    return window.waitForDbReady(...args);
+async function waitForDbReadySafe() {
+  if (typeof window.waitForDbReady === 'function') {
+    return window.waitForDbReady();
   }
-  if (window.db) return Promise.resolve(window.db);
-  return Promise.reject(new Error('waitForDbReady is not defined'));
-};
+  if (window.db) return window.db;
+
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (window.db) {
+        clearInterval(timer);
+        resolve(window.db);
+        return;
+      }
+      if (Date.now() - started > 10000) {
+        clearInterval(timer);
+        reject(new Error('db not ready'));
+      }
+    }, 100);
+  });
+}
 const parseMoscowDateTimeLocalInput = (...args) => (
   typeof window.parseMoscowDateTimeLocalInput === 'function' && window.parseMoscowDateTimeLocalInput !== parseMoscowDateTimeLocalInput
     ? window.parseMoscowDateTimeLocalInput(...args)
@@ -97,7 +111,7 @@ const formatMoscowDateTime = (...args) => (
 
           async function executeEmergencyAction() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return alert('База данных недоступна.');
 
             const action = String(document.getElementById('emergency-action-type')?.value || '').trim();
@@ -315,7 +329,7 @@ const formatMoscowDateTime = (...args) => (
           }
 
           async function adminLaunchEpicPaintEvent() {
-            const database = await waitForDbReady();
+            const database = await waitForDbReadySafe();
             await database.ref('current_event').set({
               status: 'active',
               type: 'paint',
@@ -355,7 +369,7 @@ const formatMoscowDateTime = (...args) => (
 
           async function adminScheduleEpicPaintEvent() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;
 
             const startRaw = String(document.getElementById('event-start-at')?.value || '').trim();
@@ -381,7 +395,7 @@ const formatMoscowDateTime = (...args) => (
 
           async function adminDeleteScheduledEvent(key) {
             if (!isAdminUser() || !key) return;
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;
             await database.ref(`${EVENT_SCHEDULES_PATH}/${key}`).transaction(v => {
               if (!v || v.status !== 'scheduled') return v;
@@ -390,7 +404,7 @@ const formatMoscowDateTime = (...args) => (
           }
 
           async function maybeActivateScheduledEvent() {
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;
 
             const due = eventSchedules
@@ -431,7 +445,7 @@ const formatMoscowDateTime = (...args) => (
           }
 
           async function syncEventSchedules() {
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;
             if (eventSchedulesRef) eventSchedulesRef.off();
             eventSchedulesRef = database.ref(EVENT_SCHEDULES_PATH);
@@ -455,7 +469,7 @@ const formatMoscowDateTime = (...args) => (
 
           async function renderPlayerTicketsList() {
             const listEl = document.getElementById('admin-ticket-players-list');
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) {
               if (listEl) listEl.innerHTML = '<div style="color:#888; font-size:12px;">База данных недоступна.</div>';
               return [];
@@ -521,7 +535,7 @@ const formatMoscowDateTime = (...args) => (
             exposeAdminActions();
             ensureAdminTabVisibility();
 
-            const database = await waitForDbReady().catch(() => null);
+            const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;
 
             const emergencyBody = document.getElementById('admin-emergency-body');
