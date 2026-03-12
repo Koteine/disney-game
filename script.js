@@ -6109,6 +6109,7 @@ const JSON_URL = 'tasks.json';
 
           async function maybeActivateScheduledRound() {
             if (!hasRoundSchedulesSynced) return;
+            const now = getAdminNow();
             const due = roundSchedules
 
               .filter(r => r.status === 'scheduled'
