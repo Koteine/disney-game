@@ -516,10 +516,15 @@ const formatMoscowDateTime = (...args) => (
             const navAdminBtn = document.getElementById('nav-admin-btn');
             const tabAdmin = document.getElementById('tab-admin');
             const wheelAdminBtn = document.getElementById('wheel-admin-btn');
+            const playersSection = document.getElementById('admin-players-section');
+            const emergencySection = document.getElementById('admin-emergency-section');
             const adminVisible = isAdminSessionVisible();
+            const showAdminWindows = adminVisible && !!tabAdmin?.classList.contains('tab-active');
 
             if (navAdminBtn) navAdminBtn.style.display = adminVisible ? 'flex' : 'none';
             if (wheelAdminBtn && !adminVisible) wheelAdminBtn.innerHTML = '';
+            if (playersSection) playersSection.style.display = showAdminWindows ? '' : 'none';
+            if (emergencySection) emergencySection.style.display = showAdminWindows ? '' : 'none';
 
             if (tabAdmin) {
               tabAdmin.style.display = adminVisible ? '' : 'none';
