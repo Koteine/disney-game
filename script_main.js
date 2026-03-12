@@ -186,6 +186,11 @@ const JSON_URL = 'tasks.json';
         let epicPaintViewMode = 'event';
         let myRoundHasMove = false;
         let epicPaintDrawState = { drawing: false, lastX: 0, lastY: 0 };
+        let epicPaintFlushTimer = null;
+        let epicPaintPendingStrokes = [];
+        let epicPaintRealtimeContext = { team: 'red', color: '#ff007f', preparedForEventKey: null, touched: false };
+        let epicPaintCoverageCache = { value: 0, computedAt: 0, strokesCount: -1 };
+        let epicPaintRenderQueued = false;
         let currentWheelRotation = 0;
         let wheelSpinInterval = null;
         let wheelSystemInterval = null;
@@ -2368,6 +2373,7 @@ const JSON_URL = 'tasks.json';
                 evt.preventDefault();
                 const team = await joinCurrentEventTeam();
                 if (!team) return;
+                await prepareEpicPaintRealtimeContext();
                 const { x, y } = getPos(evt);
                 epicPaintDrawState.drawing = true;
                 epicPaintDrawState.lastX = x;
@@ -2384,7 +2390,10 @@ const JSON_URL = 'tasks.json';
                 epicPaintDrawState.lastY = y;
             };
 
-            const end = () => { epicPaintDrawState.drawing = false; };
+            const end = () => {
+                epicPaintDrawState.drawing = false;
+                flushEpicPaintStrokes(true).catch(err => console.warn('Failed to flush epic paint strokes on end', err));
+            };
 
             canvas.addEventListener('mousedown', begin);
             canvas.addEventListener('mousemove', move);
@@ -2396,15 +2405,93 @@ const JSON_URL = 'tasks.json';
             canvas.addEventListener('touchcancel', end);
         }
 
+        async function prepareEpicPaintRealtimeContext() {
+            if (!currentGameEventKey || !currentGameEvent || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id)) return null;
+            const uid = currentUserId;
+            if (!uid || Number(uid) === Number(ADMIN_ID)) return null;
+            if (epicPaintRealtimeContext.preparedForEventKey === currentGameEventKey) return epicPaintRealtimeContext;
+            const teamInfo = ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {});
+            const team = teamInfo.team || 'red';
+            const color = currentGameEvent.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
+            epicPaintRealtimeContext = { team, color, preparedForEventKey: currentGameEventKey, touched: false };
+            return epicPaintRealtimeContext;
+        }
+
+        async function flushEpicPaintStrokes(force = false) {
+            if (!epicPaintPendingStrokes.length || !currentGameEventKey) return;
+            if (!force && Number(currentUserId) === Number(ADMIN_ID)) return;
+            const pending = epicPaintPendingStrokes;
+            epicPaintPendingStrokes = [];
+            if (epicPaintFlushTimer) {
+                clearTimeout(epicPaintFlushTimer);
+                epicPaintFlushTimer = null;
+            }
+
+            const context = await prepareEpicPaintRealtimeContext();
+            if (!context) return;
+            const uid = currentUserId;
+            const now = Date.now();
+            const updates = {};
+            pending.forEach(stroke => {
+                const strokeKey = db.ref('epic_paint/strokes').push().key;
+                updates[`epic_paint/strokes/${strokeKey}`] = {
+                    ...stroke,
+                    color: context.color,
+                    uid,
+                    team: context.team,
+                    at: now
+                };
+            });
+            if (!context.touched) {
+                updates[`epic_paint/participants/${uid}`] = { uid, color: context.color, team: context.team, updatedAt: now };
+                context.touched = true;
+            } else {
+                updates[`epic_paint/participants/${uid}/updatedAt`] = now;
+            }
+            await db.ref().update(updates);
+        }
+
+        function queueEpicPaintFlush() {
+            if (epicPaintFlushTimer) return;
+            epicPaintFlushTimer = setTimeout(() => {
+                flushEpicPaintStrokes(false).catch(err => console.warn('Failed to flush epic paint strokes', err));
+            }, 120);
+        }
+
+        function drawEpicPaintStroke(ctx, stroke) {
+            if (!ctx || !stroke) return;
+            ctx.beginPath();
+            ctx.lineWidth = 16;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = stroke.color || '#ff007f';
+            ctx.moveTo(stroke.x1 || 0, stroke.y1 || 0);
+            ctx.lineTo(stroke.x2 || 0, stroke.y2 || 0);
+            ctx.stroke();
+        }
+
         async function pushEpicPaintStroke(x1, y1, x2, y2) {
             if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) return;
             if (Number(currentUserId) === Number(ADMIN_ID)) return;
-            const uid = currentUserId;
-            const teamInfo = currentGameEventKey ? ((await db.ref(`game_events/${currentGameEventKey}/teams/${uid}`).once('value')).val() || {}) : {};
-            const team = teamInfo.team || 'red';
-            const color = currentGameEvent?.id === WALL_BATTLE_EVENT_ID ? getWallBattleTeamColor(team) : getPlayerColorByUid(uid);
-            await db.ref(`epic_paint/participants/${uid}`).update({ uid, color, team, updatedAt: Date.now() });
-            await db.ref('epic_paint/strokes').push({ x1, y1, x2, y2, color, uid, team, at: Date.now() });
+            const context = await prepareEpicPaintRealtimeContext();
+            if (!context) return;
+
+            const stroke = { x1, y1, x2, y2, color: context.color, uid: currentUserId, team: context.team, at: Date.now() };
+            const canvas = document.getElementById('epic-paint-canvas');
+            const ctx = canvas?.getContext('2d');
+            drawEpicPaintStroke(ctx, stroke);
+
+            epicPaintStrokes.push(stroke);
+            epicPaintCoverageCache.strokesCount = -1;
+            if (!epicPaintRenderQueued) {
+                epicPaintRenderQueued = true;
+                requestAnimationFrame(() => {
+                    epicPaintRenderQueued = false;
+                    drawEpicPaint();
+                });
+            }
+
+            epicPaintPendingStrokes.push({ x1, y1, x2, y2 });
+            queueEpicPaintFlush();
         }
 
         function drawEpicPaint() {
@@ -2416,15 +2503,7 @@ const JSON_URL = 'tasks.json';
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            (epicPaintStrokes || []).forEach(stroke => {
-                ctx.beginPath();
-                ctx.lineWidth = 16;
-                ctx.lineCap = 'round';
-                ctx.strokeStyle = stroke.color || '#ff007f';
-                ctx.moveTo(stroke.x1 || 0, stroke.y1 || 0);
-                ctx.lineTo(stroke.x2 || 0, stroke.y2 || 0);
-                ctx.stroke();
-            });
+            (epicPaintStrokes || []).forEach(stroke => drawEpicPaintStroke(ctx, stroke));
 
             const coverage = calculateEpicPaintCoverage(canvas);
             const redCoverage = calculateTeamCoverage(epicPaintStrokes, 'red');
@@ -2438,9 +2517,13 @@ const JSON_URL = 'tasks.json';
             }
         }
 
-        function calculateEpicPaintCoverage(canvas) {
+        function calculateEpicPaintCoverage(canvas, { force = false } = {}) {
+            const strokesCount = Array.isArray(epicPaintStrokes) ? epicPaintStrokes.length : 0;
+            if (!force && epicPaintCoverageCache.strokesCount === strokesCount && (Date.now() - epicPaintCoverageCache.computedAt) < 250) {
+                return Number(epicPaintCoverageCache.value) || 0;
+            }
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            const sample = 6;
+            const sample = 8;
             const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
             let painted = 0;
             let total = 0;
@@ -2452,7 +2535,9 @@ const JSON_URL = 'tasks.json';
                     if (!(r > 246 && g > 246 && b > 246)) painted += 1;
                 }
             }
-            return total ? (painted / total) * 100 : 0;
+            const value = total ? (painted / total) * 100 : 0;
+            epicPaintCoverageCache = { value, computedAt: Date.now(), strokesCount };
+            return value;
         }
 
 
@@ -2501,7 +2586,10 @@ const JSON_URL = 'tasks.json';
         }
 
         async function postEpicEventSummary(eventData, isSuccess, rewardedPlayersCount) {
-            if (!eventData) return;
+            if (!eventData?.key) return;
+            const flagPath = `game_events/${eventData.key}/summaryPosted`;
+            const summaryTx = await db.ref(flagPath).transaction(v => v || { at: Date.now(), status: isSuccess ? 'completed' : 'failed' });
+            if (!summaryTx.committed) return;
             const startAt = eventData.activatedAt || eventData.startAt || Date.now();
             const endAt = eventData.completedAt || eventData.failedAt || Date.now();
             const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
@@ -2517,31 +2605,37 @@ const JSON_URL = 'tasks.json';
 
             const eventRef = db.ref(`game_events/${currentGameEventKey}`);
             const tx = await eventRef.transaction(ev => {
-                if (!ev || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID, MUSHU_EVENT_ID].includes(ev.id) || ev.status !== 'active') return ev;
+                if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
                 return {
                     ...ev,
                     status: 'completed',
                     completedAt: Date.now(),
-                    resultText: 'Игроки успели закрасить поле на 95%+' 
+                    resultText: 'Игроки успели закрасить поле на 95%+',
+                    completionPosted: ev.completionPosted || null,
+                    rewardsPosted: ev.rewardsPosted || null,
+                    notifyPosted: ev.notifyPosted || null
                 };
             });
             if (!tx.committed) return;
 
-            const rewardedPlayersCount = await grantEpicPaintRewards();
-            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
+            const finalizedEvent = { ...(tx.snapshot.val() || {}), key: currentGameEventKey, completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt };
+            const rewardedPlayersCount = await grantEpicPaintRewards(finalizedEvent);
+            await postEpicEventSummary(finalizedEvent, true, rewardedPlayersCount);
         }
 
-        async function grantEpicPaintRewards() {
-            if (!currentGameEventKey) return 0;
-            const [participantsSnap, strokesSnap, whitelistSnap, rewardedSnap] = await Promise.all([
+        async function grantEpicPaintRewards(eventData = null) {
+            const eventKey = String(eventData?.key || currentGameEventKey || '').trim();
+            if (!eventKey) return 0;
+            const rewardsTx = await db.ref(`game_events/${eventKey}/rewardsPosted`).transaction(v => v || { at: Date.now() });
+            if (!rewardsTx.committed) return 0;
+
+            const [participantsSnap, strokesSnap, whitelistSnap] = await Promise.all([
                 db.ref('epic_paint/participants').once('value'),
                 db.ref('epic_paint/strokes').once('value'),
-                db.ref('whitelist').once('value'),
-                db.ref(`epic_paint/rewarded/${currentGameEventKey}`).once('value')
+                db.ref('whitelist').once('value')
             ]);
 
             const whitelist = whitelistSnap.val() || {};
-            const alreadyRewarded = rewardedSnap.val() || {};
             const participantUidSet = new Set();
 
             participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
@@ -2555,20 +2649,21 @@ const JSON_URL = 'tasks.json';
 
             let rewardedCount = 0;
             for (const uidKey of participantUids) {
-                if (alreadyRewarded[uidKey]) continue;
+                const lockTx = await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).transaction(v => v || { at: Date.now() });
+                if (!lockTx.committed) continue;
+
                 const uid = Number(uidKey);
                 const user = whitelist[uidKey] || whitelist[uid] || {};
                 const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
                 if (!Number.isInteger(owner) || !players[owner]) continue;
 
-                const awarded = await claimSequentialTickets(2);
-                if (!Array.isArray(awarded) || awarded.length < 2) continue;
+                const awarded = await claimSequentialTickets(1);
+                if (!Array.isArray(awarded) || !awarded[0]) continue;
                 rewardedCount += 1;
-                const ticketValue = `${awarded[0]} и ${awarded[1]}`;
                 await db.ref('tickets_archive').push({
                     owner,
                     userId: uid,
-                    ticket: ticketValue,
+                    ticket: awarded[0],
                     taskIdx: -1,
                     round: currentRoundNum,
                     cell: 0,
@@ -2579,7 +2674,21 @@ const JSON_URL = 'tasks.json';
                     archivedAt: Date.now(),
                     excluded: false
                 });
-                await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
+            }
+
+            const notifyText = '🎨 «Эпичный закрас» завершён! Полотно закрашено на 95%+. Награда: 1 билет каждому участнику, кто оставил хотя бы один штрих.';
+            const notifyMap = {};
+            participantUids.forEach(uid => {
+                notifyMap[uid] = { text: notifyText, type: 'event_epic_paint_completed', eventKey, createdAt: Date.now() };
+            });
+            const notifyTx = await db.ref(`game_events/${eventKey}/notifyPosted`).transaction(v => v || { at: Date.now(), type: 'event_epic_paint_completed' });
+            if (notifyTx.committed && Object.keys(notifyMap).length) {
+                const updates = {};
+                Object.entries(notifyMap).forEach(([uid, payload]) => {
+                    const key = db.ref(`system_notifications/${uid}`).push().key;
+                    updates[`system_notifications/${uid}/${key}`] = payload;
+                });
+                await db.ref().update(updates);
             }
 
             return rewardedCount;
@@ -2600,7 +2709,7 @@ const JSON_URL = 'tasks.json';
 
             const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
             await postNews(`🏁 «Стенка на стенку» завершена: победила ${winnerTeam === 'red' ? 'красная' : 'синяя'} команда. Победители получили награды.`);
-            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
+            await postEpicEventSummary({ ...(tx.snapshot.val() || {}), key: currentGameEventKey, completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
         }
 
         async function grantWallBattleRewards(winnerTeam) {
@@ -2682,7 +2791,7 @@ const JSON_URL = 'tasks.json';
             if (showSuccess) {
                 successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
                     ? '🏁 Командная битва завершена! Победители получили по 1 билету и Лупе.'
-                    : '🎆 Событие прошло круто! Все участники получили по 2 билетика.';
+                    : '🎆 Событие прошло круто! Все участники получили по 1 билетику.';
                 launchCelebrationFireworks();
                 playFireworksSound();
                 lastCompletedEpicEventKeyShown = latestCompleted.key;
@@ -2811,6 +2920,13 @@ const JSON_URL = 'tasks.json';
                     });
                 } else {
                     epicPaintHasDismissedStart = false;
+                    epicPaintCoverageCache = { value: 0, computedAt: 0, strokesCount: -1 };
+                    epicPaintPendingStrokes = [];
+                    if (epicPaintFlushTimer) {
+                        clearTimeout(epicPaintFlushTimer);
+                        epicPaintFlushTimer = null;
+                    }
+                    epicPaintRealtimeContext = { team: 'red', color: '#ff007f', preparedForEventKey: null, touched: false };
                     await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
                 }
             }
@@ -2856,7 +2972,7 @@ const JSON_URL = 'tasks.json';
                 } else {
                     const summaryLogTx = await db.ref(feedOncePath).transaction((v) => v || { at: nowMs, eventId: eventRuntimeId, status: 'failed' });
                     if (summaryLogTx.committed) {
-                        await postEpicEventSummary({ ...(tx.snapshot.val() || {}), failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
+                        await postEpicEventSummary({ ...(tx.snapshot.val() || {}), key: active.key, failedAt: nowMs, activatedAt: active.activatedAt || active.startAt }, false, 0);
                     }
                 }
             }
