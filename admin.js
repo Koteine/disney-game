@@ -510,7 +510,13 @@ const formatMoscowDateTime = (...args) => (
             const tabAdmin = document.getElementById('tab-admin');
             const adminVisible = Number(currentUserId) === Number(ADMIN_ID);
             if (navAdminBtn) navAdminBtn.style.display = adminVisible ? 'flex' : 'none';
-            if (tabAdmin) tabAdmin.style.display = adminVisible ? '' : tabAdmin.style.display;
+            if (tabAdmin) {
+              tabAdmin.style.display = adminVisible ? '' : 'none';
+              if (!adminVisible && tabAdmin.classList.contains('tab-active') && typeof switchTab === 'function') {
+                const gameNavBtn = document.querySelector('.nav-item[onclick*="tab-game"]');
+                switchTab('tab-game', gameNavBtn);
+              }
+            }
           }
 
 
