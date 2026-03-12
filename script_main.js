@@ -174,8 +174,8 @@ const JSON_URL = 'tasks.json';
         let myInkChallenge = null;
         let myWandBlessing = null;
         let allSubmissions = [];
-        let worksAdminSearchQuery = '';
-        let worksAdminSubtab = 'all';
+        let worksAdminSelectedUserId = '';
+        let worksAdminPlayersRef = null;
         let currentGameEvent = null;
         let currentGameEventKey = null;
         let queuedGameEvents = [];
@@ -739,6 +739,8 @@ const JSON_URL = 'tasks.json';
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
             if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+            if (!isAdmin) worksAdminSelectedUserId = '';
+            if (isAdmin) syncWorksAdminPlayers();
         }
 
         function normalizeNicknameForFilter(name) {
@@ -750,15 +752,51 @@ const JSON_URL = 'tasks.json';
             return '';
         }
 
-        function setWorksAdminSubtab(tabName) {
-            worksAdminSubtab = tabName === 'needs_approval' ? 'needs_approval' : 'all';
-            document.getElementById('works-subtab-all-btn')?.classList.toggle('active', worksAdminSubtab === 'all');
-            document.getElementById('works-subtab-needs-approval-btn')?.classList.toggle('active', worksAdminSubtab === 'needs_approval');
-            renderSubmissions();
+        function syncWorksAdminPlayers() {
+            const select = document.getElementById('works-admin-player-select');
+            if (!select || !db) return;
+
+            if (worksAdminPlayersRef) worksAdminPlayersRef.off();
+            worksAdminPlayersRef = db.ref('whitelist');
+            worksAdminPlayersRef.on('value', snap => {
+                const playersForSelect = [];
+                snap.forEach(userSnap => {
+                    const userData = userSnap.val() || {};
+                    const charIndex = Number(userData.charIndex);
+                    const nickname = String(players[charIndex]?.n || '').trim();
+                    playersForSelect.push({
+                        userId: String(userSnap.key || '').trim(),
+                        nickname,
+                        charIndex
+                    });
+                });
+
+                playersForSelect.sort((a, b) => {
+                    const aName = a.nickname || `Игрок ${a.userId}`;
+                    const bName = b.nickname || `Игрок ${b.userId}`;
+                    const byName = aName.localeCompare(bName, 'ru', { sensitivity: 'base' });
+                    if (byName !== 0) return byName;
+                    return a.userId.localeCompare(b.userId, 'ru', { sensitivity: 'base' });
+                });
+
+                const hasSelected = worksAdminSelectedUserId
+                    && playersForSelect.some(p => p.userId === worksAdminSelectedUserId);
+                if (!hasSelected) worksAdminSelectedUserId = '';
+
+                select.innerHTML = [
+                    '<option value="">Выберите игрока</option>',
+                    ...playersForSelect.map(item => {
+                        const label = item.nickname || `Игрок ${item.userId}`;
+                        return `<option value="${item.userId}">${label} · ID ${item.userId}</option>`;
+                    })
+                ].join('');
+                select.value = worksAdminSelectedUserId;
+                renderSubmissions();
+            });
         }
 
-        function onWorksAdminSearchInput(rawValue) {
-            worksAdminSearchQuery = normalizeNicknameForFilter(rawValue);
+        function setWorksAdminPlayer(rawUserId) {
+            worksAdminSelectedUserId = String(rawUserId || '').trim();
             renderSubmissions();
         }
 
@@ -6171,8 +6209,7 @@ const JSON_URL = 'tasks.json';
           window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
           window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
           window.toggleAdminSchedulePanel = toggleAdminSchedulePanel;
-          window.setWorksAdminSubtab = setWorksAdminSubtab;
-          window.onWorksAdminSearchInput = onWorksAdminSearchInput;
+          window.setWorksAdminPlayer = setWorksAdminPlayer;
 
         })();
         // END adminpage.js
@@ -6186,6 +6223,8 @@ const JSON_URL = 'tasks.json';
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
             if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+            if (!isAdmin) worksAdminSelectedUserId = '';
+            if (isAdmin) syncWorksAdminPlayers();
         }
 
         function normalizeNicknameForFilter(name) {
@@ -6197,21 +6236,60 @@ const JSON_URL = 'tasks.json';
             return '';
         }
 
-        function setWorksAdminSubtab(tabName) {
-            worksAdminSubtab = tabName === 'needs_approval' ? 'needs_approval' : 'all';
-            document.getElementById('works-subtab-all-btn')?.classList.toggle('active', worksAdminSubtab === 'all');
-            document.getElementById('works-subtab-needs-approval-btn')?.classList.toggle('active', worksAdminSubtab === 'needs_approval');
-            renderSubmissions();
+        function syncWorksAdminPlayers() {
+            const select = document.getElementById('works-admin-player-select');
+            if (!select || !db) return;
+
+            if (worksAdminPlayersRef) worksAdminPlayersRef.off();
+            worksAdminPlayersRef = db.ref('whitelist');
+            worksAdminPlayersRef.on('value', snap => {
+                const playersForSelect = [];
+                snap.forEach(userSnap => {
+                    const userData = userSnap.val() || {};
+                    const charIndex = Number(userData.charIndex);
+                    const nickname = String(players[charIndex]?.n || '').trim();
+                    playersForSelect.push({
+                        userId: String(userSnap.key || '').trim(),
+                        nickname
+                    });
+                });
+
+                playersForSelect.sort((a, b) => {
+                    const aName = a.nickname || `Игрок ${a.userId}`;
+                    const bName = b.nickname || `Игрок ${b.userId}`;
+                    const byName = aName.localeCompare(bName, 'ru', { sensitivity: 'base' });
+                    if (byName !== 0) return byName;
+                    return a.userId.localeCompare(b.userId, 'ru', { sensitivity: 'base' });
+                });
+
+                const hasSelected = worksAdminSelectedUserId
+                    && playersForSelect.some(p => p.userId === worksAdminSelectedUserId);
+                if (!hasSelected) worksAdminSelectedUserId = '';
+
+                select.innerHTML = [
+                    '<option value="">Выберите игрока</option>',
+                    ...playersForSelect.map(item => {
+                        const label = item.nickname || `Игрок ${item.userId}`;
+                        return `<option value="${item.userId}">${label} · ID ${item.userId}</option>`;
+                    })
+                ].join('');
+                select.value = worksAdminSelectedUserId;
+                renderSubmissions();
+            });
         }
 
-        function onWorksAdminSearchInput(rawValue) {
-            worksAdminSearchQuery = normalizeNicknameForFilter(rawValue);
+        function setWorksAdminPlayer(rawUserId) {
+            worksAdminSelectedUserId = String(rawUserId || '').trim();
             renderSubmissions();
         }
 
         function checkAccess() {
-            if (Number(currentUserId) === Number(ADMIN_ID)) {
-                document.getElementById('nav-admin-btn').style.display='flex';
+            const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+            const navAdminBtn = document.getElementById('nav-admin-btn');
+            const wheelAdminWrap = document.getElementById('wheel-admin-btn');
+
+            if (isAdmin) {
+                if (navAdminBtn) navAdminBtn.style.display = 'flex';
                 document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="adminResetRaffleState()" class="admin-btn" style="background:#546e7a;">♻️ Сброс</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
                 syncAdminList();
                 fillAdminNickOptions();
@@ -6221,18 +6299,22 @@ const JSON_URL = 'tasks.json';
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 updateWorksTabForRole(true);
                 setAuthorizedView(true);
+            } else {
+                if (navAdminBtn) navAdminBtn.style.display = 'none';
+                if (wheelAdminWrap) wheelAdminWrap.innerHTML = '';
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
+                const currentIsAdmin = Number(currentUserId) === Number(ADMIN_ID);
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
                     document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
-                    updateWorksTabForRole(false);
+                    updateWorksTabForRole(currentIsAdmin);
                     setAuthorizedView(true);
                     return;
                 }
 
                 myIndex = -1;
-                if (currentUserId !== ADMIN_ID) {
+                if (!currentIsAdmin) {
                     updateWorksTabForRole(false);
                     document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
                     setAuthorizedView(false);
@@ -6496,20 +6578,19 @@ const JSON_URL = 'tasks.json';
             const list = document.getElementById('works-list');
             if (!list) return;
             const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+            if (isAdmin && !worksAdminSelectedUserId) {
+                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Выберите игрока, чтобы посмотреть его работы.</div>';
+                return;
+            }
             const visible = allSubmissions.filter(item => {
-                if (isAdmin) return true;
+                if (isAdmin) {
+                    return String(item.userId || '') === worksAdminSelectedUserId;
+                }
                 const sameUserId = String(item.userId || '') === String(currentUserId || '');
                 const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(item.owner) === Number(myIndex);
                 return sameUserId || sameOwner;
             });
-            const searchQuery = isAdmin ? normalizeNicknameForFilter(worksAdminSearchQuery) : '';
-            const filteredBySearch = visible.filter(item => {
-                if (!searchQuery) return true;
-                return normalizeNicknameForFilter(getSubmissionPlayerNickname(item)).includes(searchQuery);
-            });
-            const filtered = isAdmin && worksAdminSubtab === 'needs_approval'
-                ? filteredBySearch.filter(item => String(item.status || '') !== 'accepted')
-                : filteredBySearch;
+            const filtered = visible;
 
             if (!filtered.length) {
                 list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';

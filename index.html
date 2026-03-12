@@ -175,12 +175,10 @@
                 <div id="ink-deadline-hint" style="font-size:11px; color:#d84315; margin-top:6px;"></div>
             </div>
             <div id="works-admin-filters" class="works-card" style="display:none;">
-                <div style="font-weight:700; margin-bottom:8px;">Фильтры работ</div>
-                <input type="text" id="works-admin-search" class="admin-input" placeholder="Поиск по никнейму игрока" oninput="onWorksAdminSearchInput(this.value)">
-                <div class="admin-inner-tabs" style="margin:0;">
-                    <button id="works-subtab-all-btn" class="admin-inner-tab-btn active" onclick="setWorksAdminSubtab('all')">Все работы</button>
-                    <button id="works-subtab-needs-approval-btn" class="admin-inner-tab-btn" onclick="setWorksAdminSubtab('needs_approval')">Нуждается в одобрении</button>
-                </div>
+                <div style="font-weight:700; margin-bottom:8px;">Работы конкретного игрока</div>
+                <select id="works-admin-player-select" class="admin-input" onchange="setWorksAdminPlayer(this.value)">
+                    <option value="">Выберите игрока</option>
+                </select>
             </div>
             <div id="works-list"></div>
         </div>
