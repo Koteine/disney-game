@@ -5063,19 +5063,15 @@ const JSON_URL = 'tasks.json';
 
             function updateTicketsTable() {
                 const body = document.getElementById('tickets-body');
-                const isAdmin = (currentUserId === ADMIN_ID);
+                const canUseAdminTickets = false;
                 const adminSubtabs = document.getElementById('admin-tickets-subtabs');
 
-                if (adminSubtabs) adminSubtabs.style.display = isAdmin ? 'flex' : 'none';
+                if (adminSubtabs) adminSubtabs.style.display = 'none';
                 if (document.getElementById('th-user-name')) {
-                    document.getElementById('th-user-name').style.display = isAdmin ? 'table-cell' : 'none';
+                    document.getElementById('th-user-name').style.display = 'none';
                 }
 
-                if (isAdmin) {
-                    switchAdminTicketsSubtab(adminTicketsSubtab);
-                }
-
-                const visibleData = isAdmin
+                const visibleData = canUseAdminTickets
                     ? allTicketsData
                     : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
 
@@ -5088,18 +5084,18 @@ const JSON_URL = 'tasks.json';
                         <tr class="${statusClass}">
                             <td>${t.round || '—'}</td>
                             <td>${t.cell || '—'}</td>
-                            ${isAdmin ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
+                            ${canUseAdminTickets ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
                             <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
                             <td>
                                 <div style="font-size:11px;">${t.sourceLabel}</div>
                                 <button onclick="openTicketTaskDetails('${t.ticketNum}')" style="margin-top:4px; border:1px solid #ddd; background:#fff; border-radius:8px; padding:2px 8px; font-size:14px;">👀</button>
                                 ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
-                                ${isAdmin ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
+                                ${canUseAdminTickets ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
                             </td>
                         </tr>`;
                 }).join('');
 
-                if (isAdmin) {
+                if (canUseAdminTickets) {
                     renderAdminPlayerTickets(expandedRows);
                     renderAdminTicketArchive(expandedRows);
                 }
@@ -7040,7 +7036,6 @@ const JSON_URL = 'tasks.json';
         }
 
         function updateProfileUI() {
-            const isAdminProfile = String(currentUserId) === String(ADMIN_ID);
             const profileMainTitleEl = document.getElementById('profile-main-title');
             const profileTicketsTitleEl = document.getElementById('profile-tickets-title');
             const playerBlockEl = document.getElementById('profile-player-block');
@@ -7048,14 +7043,13 @@ const JSON_URL = 'tasks.json';
             const adminSubtabsEl = document.getElementById('admin-tickets-subtabs');
             const adminAllPanelEl = document.getElementById('admin-tickets-all-panel');
             const adminPlayerPanelEl = document.getElementById('admin-tickets-player-panel');
-            if (profileMainTitleEl) profileMainTitleEl.textContent = isAdminProfile ? 'Список игроков' : '👤 Профиль';
-            if (profileTicketsTitleEl) profileTicketsTitleEl.style.display = isAdminProfile ? 'none' : 'block';
-            if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
-            if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
-            if (adminSubtabsEl) adminSubtabsEl.style.display = isAdminProfile ? 'flex' : 'none';
+            if (profileMainTitleEl) profileMainTitleEl.textContent = '👤 Профиль';
+            if (profileTicketsTitleEl) profileTicketsTitleEl.style.display = 'block';
+            if (playerBlockEl) playerBlockEl.style.display = 'block';
+            if (playerTicketsEl) playerTicketsEl.style.display = 'block';
+            if (adminSubtabsEl) adminSubtabsEl.style.display = 'none';
             if (adminAllPanelEl) adminAllPanelEl.style.display = 'block';
-            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = isAdminProfile ? (adminTicketsSubtab === 'player' ? 'block' : 'none') : 'none';
-            if (isAdminProfile) return;
+            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = 'none';
 
             const nickname = getCurrentPlayerNickname();
             const karma = Math.max(0, Number(seasonProfileData.karma_points) || 0);
