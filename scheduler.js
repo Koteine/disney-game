@@ -15,6 +15,7 @@ function schedulerGetNow() {
 
           let roundSchedules = [];
           let roundSchedulesRef = null;
+          let hasRoundSchedulesSynced = false;
           const ROUND_SCHEDULES_STORAGE_KEY = 'disney_round_schedules_backup_v1';
           const ROUND_SCHEDULE_ACTIVATION_GRACE_MS = 30000;
 
@@ -212,3 +213,54 @@ function syncRoundSchedules() {
     renderRoundSchedules();
   });
 }
+
+async function adminScheduleRound() {
+  try {
+    if (!schedulerIsAdminUser()) return;
+    if (!db) return alert('База данных пока недоступна. Попробуйте чуть позже.');
+
+    const startAtValue = document.getElementById('round-start-at')?.value;
+    const durationMins = Number(document.getElementById('round-duration-mins')?.value || 0);
+    if (!startAtValue) return alert('Выберите дату и время старта раунда.');
+    if (!durationMins || durationMins < 1) return alert('Укажите длительность раунда в минутах.');
+
+    const parser = (typeof window.parseMoscowDateTimeLocalInput === 'function')
+      ? window.parseMoscowDateTimeLocalInput
+      : (v) => new Date(v).getTime();
+    const startAt = Number(parser(startAtValue));
+    if (!Number.isFinite(startAt) || startAt <= schedulerGetNow() - 1000) {
+      return alert('Время старта должно быть в будущем.');
+    }
+
+    const durationMs = Math.max(60000, Math.round(durationMins * 60000));
+    const now = Date.now();
+    await db.ref('round_schedules').push({
+      status: 'scheduled',
+      startAt,
+      durationMs,
+      createdAt: now,
+      activationNotBefore: now + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
+      createdBy: String(window.currentUserId || '') || null
+    });
+
+    await checkScheduledRounds();
+    if (typeof syncRoundSchedules === 'function') syncRoundSchedules();
+  } catch (e) {
+    console.error('adminScheduleRound failed:', e);
+    alert('Не удалось запланировать раунд. Проверьте консоль.');
+  }
+}
+
+async function adminCancelScheduledRound(roundKey) {
+  if (!schedulerIsAdminUser() || !roundKey || !db) return;
+  if (!confirm('Отменить этот запланированный раунд?')) return;
+  await db.ref(`round_schedules/${roundKey}`).transaction(v => {
+    if (!v || v.status !== 'scheduled') return v;
+    return { ...v, status: 'cancelled', cancelledAt: Date.now(), cancelledBy: String(window.currentUserId || '') || null };
+  });
+}
+
+window.syncRoundSchedules = syncRoundSchedules;
+window.checkScheduledRounds = checkScheduledRounds;
+window.adminScheduleRound = adminScheduleRound;
+window.adminCancelScheduledRound = adminCancelScheduledRound;
