@@ -4203,23 +4203,25 @@ const JSON_URL = 'tasks.json';
             }
 
             async function consumeInventoryItem(itemKey, amount = 1) {
-                if (!currentUserId || !itemTypes[itemKey]) return false;
+                const userPathId = String(currentUserPathId || currentUserId || '').trim();
+                if (!userPathId || !itemTypes[itemKey]) return false;
                 const minusAmount = Math.max(1, Number(amount) || 1);
 
                 await waitForDbReady();
-                const ref = db.ref(`whitelist/${currentUserId}/inventory`);
-                const snap = await ref.once('value');
-                const current = snap.val() || {};
-                const next = {
-                    goldenPollen: Number(current.goldenPollen || 0),
-                    inkSaboteur: Number(current.inkSaboteur || 0),
-                    magnifier: Number(current.magnifier || 0),
-                    cloak: Number(current.cloak || 0)
-                };
-                if (next[itemKey] < minusAmount) return false;
-                next[itemKey] -= minusAmount;
-                await ref.set(next);
-                return true;
+                const ref = db.ref(`whitelist/${userPathId}/inventory`);
+                const result = await ref.transaction((current) => {
+                    const next = {
+                        goldenPollen: Number(current?.goldenPollen || 0),
+                        inkSaboteur: Number(current?.inkSaboteur || 0),
+                        magnifier: Number(current?.magnifier || 0),
+                        cloak: Number(current?.cloak || 0)
+                    };
+                    if (next[itemKey] < minusAmount) return;
+                    next[itemKey] -= minusAmount;
+                    return next;
+                });
+
+                return !!result?.committed;
             }
 
             function renderInventory() {
