@@ -267,4 +267,5 @@ async function adminCancelScheduledRound(roundKey) {
 window.syncRoundSchedules = syncRoundSchedules;
 window.checkScheduledRounds = checkScheduledRounds;
 window.adminScheduleRound = adminScheduleRound;
+window.schedulerAdminScheduleRound = adminScheduleRound;
 window.adminCancelScheduledRound = adminCancelScheduledRound;

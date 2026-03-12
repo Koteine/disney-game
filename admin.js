@@ -42,11 +42,15 @@ const formatMoscowDateTime = (...args) => (
             const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
             const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
             const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+            if (!confirm('Точно запустить раунд?')) return;
             const roundNum = await runRoundStart(durationMs);
             if (roundNum) alert(`Раунд №${roundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
           }
 
   async function adminScheduleRound() {
+  if (typeof window.schedulerAdminScheduleRound === 'function' && window.schedulerAdminScheduleRound !== adminScheduleRound) {
+    return window.schedulerAdminScheduleRound();
+  }
   if (!isAdminUser()) return;
 
   const startRaw = document.getElementById('round-start-at')?.value;

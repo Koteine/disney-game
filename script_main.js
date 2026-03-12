@@ -587,6 +587,10 @@ const JSON_URL = 'tasks.json';
                 window.initMushuEventSystem?.();
                 subscribeToCalligraphyDuelInvites();
                 document.getElementById('duel-close-btn')?.addEventListener('click', closeCalligraphyDuelUI);
+                db.ref('.info/serverTimeOffset').on('value', snap => {
+                    galleryServerOffsetMs = Number(snap.val()) || 0;
+                });
+                startGalleryRotationCountdown();
                 if (typeof window.syncRoundSchedules === 'function') window.syncRoundSchedules();
                 setInterval(() => { checkScheduledRounds(); }, 20000);
             } catch(e) { console.error(e); }
@@ -1481,8 +1485,12 @@ const JSON_URL = 'tasks.json';
                 } catch (newsError) {
                     console.warn('activateCloak news publish failed', newsError);
                 }
-                const updated = await db.ref(`board/${cellIdx}`).once('value');
-                showCell(cellIdx, updated.val());
+                try {
+                    const updated = await db.ref(`board/${cellIdx}`).once('value');
+                    showCell(cellIdx, updated.val());
+                } catch (renderError) {
+                    console.warn('activateCloak ui refresh failed', renderError);
+                }
             } catch (e) {
                 console.error('activateCloak failed', e);
                 alert('Не удалось надеть плащ. Обновите страницу и попробуйте ещё раз.');
@@ -6797,16 +6805,20 @@ ${optionsText}
 
         function startGalleryRotationCountdown() {
             if (galleryRotationTimer) clearInterval(galleryRotationTimer);
-            const updateCountdown = () => {
-                const now = getServerNow();
-                const period = 3 * 60 * 60 * 1000;
-                const msLeft = period - (now % period);
+            const period = 3 * 60 * 60 * 1000;
+            const formatCountdown = (msLeft) => {
                 const totalSec = Math.max(0, Math.floor(msLeft / 1000));
                 const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
                 const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
                 const ss = String(totalSec % 60).padStart(2, '0');
+                return `${hh}:${mm}:${ss}`;
+            };
+            const updateCountdown = () => {
+                const now = getServerNow();
+                const nextRotationAt = (Math.floor(now / period) + 1) * period;
+                const msLeft = Math.max(0, nextRotationAt - now);
                 const timerEl = document.getElementById('gallery-rotation-countdown');
-                if (timerEl) timerEl.textContent = `${hh}:${mm}:${ss}`;
+                if (timerEl) timerEl.textContent = formatCountdown(msLeft);
             };
             updateCountdown();
             galleryRotationTimer = setInterval(updateCountdown, 1000);
