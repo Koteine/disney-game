@@ -204,6 +204,7 @@ const JSON_URL = 'tasks.json';
         let activeDuelKey = null;
         let duelNotificationsRef = null;
         let duelsRef = null;
+        let systemNotificationsRef = null;
         let activeDuels = [];
         let duelLocalPoints = [];
         let duelDrawingState = { drawing: false, enabled: false, ended: false };
@@ -844,19 +845,16 @@ const JSON_URL = 'tasks.json';
                 seasonProfilesByUserId = snap.val() || {};
             });
 
-            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+            if (systemNotificationsRef) systemNotificationsRef.off();
+            systemNotificationsRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(20);
+            systemNotificationsRef.on('child_added', snap => {
                 const v = snap.val() || {};
                 if (!v.text) return;
+                if (v.type === 'calligraphy_duel_invite') return;
                 if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
                     db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
                     return;
                 }
-                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
-            });
-
-            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
-                const v = snap.val() || {};
-                if (!v.text) return;
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
 
@@ -4562,6 +4560,7 @@ const JSON_URL = 'tasks.json';
                 const charIndex = Number(whitelistRow?.charIndex);
                 const rosterName = Number.isInteger(charIndex) && players[charIndex] ? String(players[charIndex].n || '').trim() : '';
                 const gameNickname = pickFirstNonEmptyString(
+                    rosterName,
                     seasonProfile?.nickname,
                     seasonProfile?.gameName,
                     seasonProfile?.profile?.nickname,
@@ -4569,22 +4568,9 @@ const JSON_URL = 'tasks.json';
                 );
                 const reserveName = pickFirstNonEmptyString(
                     whitelistRow?.nickname,
-                    whitelistRow?.name,
-                    whitelistRow?.displayName,
-                    whitelistRow?.playerName,
                     rosterName
                 );
-                const telegramDisplayName = pickFirstNonEmptyString(
-                    seasonProfile?.telegramName,
-                    seasonProfile?.telegram_name,
-                    seasonProfile?.first_name,
-                    seasonProfile?.username ? `@${String(seasonProfile.username).replace(/^@/, '')}` : '',
-                    whitelistRow?.telegramName,
-                    whitelistRow?.telegram_name,
-                    whitelistRow?.first_name,
-                    whitelistRow?.username ? `@${String(whitelistRow.username).replace(/^@/, '')}` : ''
-                );
-                const displayName = gameNickname || reserveName || telegramDisplayName || `Игрок ${uid}`;
+                const displayName = gameNickname || reserveName || `Игрок ${uid}`;
                 const avatarUrl = pickFirstNonEmptyString(
                     seasonProfile?.avatar_url,
                     seasonProfile?.photo_url,
@@ -4601,10 +4587,9 @@ const JSON_URL = 'tasks.json';
                     charIndex: Number.isInteger(charIndex) ? charIndex : null,
                     gameNickname,
                     reserveName,
-                    telegramDisplayName,
                     displayName,
                     avatarUrl,
-                    isFallbackName: !gameNickname && !reserveName && !telegramDisplayName
+                    isFallbackName: !gameNickname && !reserveName
                 };
             }
 
@@ -4663,10 +4648,12 @@ const JSON_URL = 'tasks.json';
                 expandTicketsRows(allTicketsData)
                     .filter(t => String(t.userId) === uid || (Number.isInteger(ownerIndex) && Number(t.owner) === ownerIndex))
                     .forEach(t => {
+                        const taskPart = t.taskLabel || t.sourceLabel || 'без задания';
+                        const itemPart = t.itemType ? ` · предмет: ${window.itemTypes?.[t.itemType]?.name || t.itemType}` : '';
                         events.push({
                             ts: Number(t.createdAt || t.archivedAt || t.updatedAt || 0),
                             round: Number(t.round) || null,
-                            text: `Получил(а) билет №${t.ticketNum}${t.round ? ` (раунд ${t.round})` : ''}${t.cell ? `, клетка №${t.cell}` : ''}`
+                            text: `Получил(а) билет №${t.ticketNum}${t.round ? ` (раунд ${t.round})` : ''}${t.cell ? `, клетка №${t.cell}` : ''} · ${taskPart}${itemPart}`
                         });
                     });
 
@@ -4689,10 +4676,11 @@ const JSON_URL = 'tasks.json';
                 Object.entries(board).forEach(([cellIdx, cell]) => {
                     if (!cell) return;
                     if (String(cell.userId || '') !== uid && (!Number.isInteger(ownerIndex) || Number(cell.owner) !== ownerIndex)) return;
+                    const itemPart = cell.itemType ? ` · предмет: ${window.itemTypes?.[cell.itemType]?.name || cell.itemType}` : '';
                     events.push({
                         ts: 0,
                         round: Number(cell.round) || null,
-                        text: `В раунде ${cell.round || '—'} открыл(а) клетку №${Number(cellIdx) + 1}`
+                        text: `В раунде ${cell.round || '—'} открыл(а) клетку №${Number(cellIdx) + 1} · ${getTaskLabelByCell(cell)}${itemPart}`
                     });
                 });
 
@@ -4781,11 +4769,15 @@ const JSON_URL = 'tasks.json';
                     : '<div style="color:#888;">Рюкзак пуст.</div>';
 
                 const ticketsHtml = filtered.length
-                    ? filtered.map(t => `<div style="padding:4px 0; border-bottom:1px dashed #eee;"><b>№${t.ticketNum}</b>${t.round ? ` · раунд ${t.round}` : ''}<br><span style="color:#666;">${t.taskLabel || t.sourceLabel || 'без задания'}</span></div>`).join('')
+                    ? filtered.map(t => {
+                        const taskText = t.taskLabel || t.sourceLabel || 'без задания';
+                        const itemText = t.itemType ? `<div style="color:#6a1b9a; font-size:11px;">${window.itemTypes?.[t.itemType]?.emoji || '🎁'} Предмет: ${window.itemTypes?.[t.itemType]?.name || t.itemType}</div>` : '';
+                        return `<div style="padding:6px 0; border-bottom:1px dashed #eee;"><div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><b>№${t.ticketNum}</b><button onclick="openTicketTaskDetails('${t.ticketNum}')" style="border:1px solid #ddd; background:#fff; border-radius:8px; padding:1px 8px; font-size:14px;">👀</button></div>${t.round ? `<div style="font-size:11px; color:#777;">Раунд ${t.round}</div>` : ''}<div style="color:#666;">${taskText}</div>${itemText}</div>`;
+                    }).join('')
                     : '<div style="color:#888;">У игрока нет билетов.</div>';
 
                 const requestId = ++adminProfileLogRequestId;
-                const cardName = selectedUser.displayName || selectedUser.name || `Игрок ${selectedUser.userId}`;
+                const cardName = selectedUser.displayName || `Игрок ${selectedUser.userId}`;
                 const safeCardName = escapeHtml(cardName);
                 const safeUserId = escapeHtml(selectedUser.userId);
                 const safeAvatarUrl = String(selectedUser.avatarUrl || '').trim();
@@ -4800,10 +4792,10 @@ const JSON_URL = 'tasks.json';
                             <div style="font-size:12px; color:#666;">ID: <b>${safeUserId}</b></div>
                         </div>
                     </div>
-                    <div style="font-size:12px; margin-bottom:10px;"><b>Билеты (${filtered.length})</b><div style="margin-top:4px;">${ticketsHtml}</div></div>
-                    <div style="font-size:12px; margin-bottom:10px;"><b>Предметы в рюкзаке</b><div style="margin-top:4px;">${inventoryHtml}</div></div>
                     <div style="font-size:12px; margin-bottom:10px;"><b>Карма</b><div style="margin-top:4px;">${karmaHtml}</div></div>
-                    <div style="font-size:12px;"><b>Краткий лог действий</b><div id="admin-player-action-log" style="margin-top:6px; color:#666;">Собираю данные…</div></div>
+                    <div style="font-size:12px; margin-bottom:10px;"><b>Рюкзачок</b><div style="margin-top:4px;">${inventoryHtml}</div></div>
+                    <details open style="font-size:12px; margin-bottom:10px;"><summary style="cursor:pointer;"><b>Билеты (${filtered.length})</b></summary><div style="margin-top:6px;">${ticketsHtml}</div></details>
+                    <details open style="font-size:12px;"><summary style="cursor:pointer;"><b>Лог действий игрока</b></summary><div id="admin-player-action-log" style="margin-top:6px; color:#666;">Собираю данные…</div></details>
                 `;
 
                 buildAdminPlayerActionLog(selectedUser).then((events) => {
@@ -4962,7 +4954,8 @@ const JSON_URL = 'tasks.json';
                 const row = expandTicketsRows(allTicketsData).find(t => String(t.ticketNum) === String(ticketNum));
                 if (!row) return alert('Данные по билету не найдены.');
                 const task = Number.isInteger(row.taskIdx) && row.taskIdx >= 0 ? tasks[row.taskIdx] : null;
-                let body = `<div style="text-align:left;"><div style="font-size:12px; color:#666;">🎟 Билет #${row.ticketNum}</div><div style="margin-top:8px; font-size:14px;">${row.taskLabel || 'Описание задания отсутствует'}</div>`;
+                const itemLine = row.itemType ? `<div style="margin-top:8px; font-size:13px; color:#6a1b9a;">${window.itemTypes?.[row.itemType]?.emoji || '🎁'} Предмет в клетке: <b>${window.itemTypes?.[row.itemType]?.name || row.itemType}</b></div>` : '';
+                let body = `<div style="text-align:left;"><div style="font-size:12px; color:#666;">🎟 Билет #${row.ticketNum}</div><div style="margin-top:8px; font-size:14px;">${row.taskLabel || 'Описание задания отсутствует'}</div>${itemLine}`;
                 if (task?.img) body += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-top:10px; border:1px solid #eee;">`;
                 body += '</div>';
                 document.getElementById('mTitle').innerText = 'Задание билета';
@@ -6198,7 +6191,9 @@ const JSON_URL = 'tasks.json';
                 seasonProfilesByUserId = snap.val() || {};
             });
 
-            db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
+            if (systemNotificationsRef) systemNotificationsRef.off();
+            systemNotificationsRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(20);
+            systemNotificationsRef.on('child_added', snap => {
                 const v = snap.val() || {};
                 if (!v.text) return;
                 if (v.type === 'calligraphy_duel_invite') return;
