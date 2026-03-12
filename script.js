@@ -5778,10 +5778,7 @@ const JSON_URL = 'tasks.json';
               createdAt: Date.now(),
               createdBy: currentUserId
             };
-            const pushedRef = await db.ref('round_schedules').push(payload);
-            roundSchedules = [...roundSchedules, { key: pushedRef.key, ...payload }].sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
-            persistRoundSchedulesBackup(roundSchedules);
-            renderRoundSchedules();
+            await db.ref('round_schedules').push(payload);
             alert('Раунд запланирован.');
           }
 
@@ -6100,6 +6097,8 @@ const JSON_URL = 'tasks.json';
 
 
           async function maybeActivateScheduledRound() {
+            if (!hasRoundSchedulesSynced) return;
+
             const due = roundSchedules
               .filter(r => r.status === 'scheduled' && (r.startAt || 0) <= getAdminNow())
               .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
@@ -6138,6 +6137,7 @@ const JSON_URL = 'tasks.json';
               const items = [];
               snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
               roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+              hasRoundSchedulesSynced = true;
               persistRoundSchedulesBackup(roundSchedules);
               renderRoundSchedules();
             });
@@ -6169,6 +6169,7 @@ const JSON_URL = 'tasks.json';
           let eventSchedules = [];
           let eventSchedulesRef = null;
           let adminServerOffsetMs = 0;
+          let hasRoundSchedulesSynced = false;
 
           function getAdminNow() {
             return Date.now() + (Number(adminServerOffsetMs) || 0);
@@ -6384,6 +6385,7 @@ const JSON_URL = 'tasks.json';
 
             ensureDateTimeInputDefault('round-start-at');
             ensureDateTimeInputDefault('event-start-at');
+            hasRoundSchedulesSynced = false;
             const cachedRoundSchedules = restoreRoundSchedulesBackup();
             if (cachedRoundSchedules.length) {
               roundSchedules = cachedRoundSchedules;
