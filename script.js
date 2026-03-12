@@ -5761,6 +5761,9 @@ const JSON_URL = 'tasks.json';
 
           async function adminScheduleRound() {
             if (!isAdminUser()) return;
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return alert('База данных недоступна. Попробуй ещё раз.');
+
             const startRaw = document.getElementById('round-start-at')?.value;
             const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
             const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
@@ -5779,7 +5782,11 @@ const JSON_URL = 'tasks.json';
               activationNotBefore: Date.now() + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
               createdBy: currentUserId
             };
-            await db.ref('round_schedules').push(payload);
+            await database.ref('round_schedules').push(payload);
+            ensureDateTimeInputDefault('round-start-at');
+            await maybeActivateScheduledRound().catch((err) => {
+              console.error('Не удалось проверить моментальный запуск запланированного раунда:', err);
+            });
             alert('Раунд запланирован.');
           }
 
@@ -6109,31 +6116,54 @@ const JSON_URL = 'tasks.json';
 
           async function maybeActivateScheduledRound() {
             if (!hasRoundSchedulesSynced) return;
-            const due = roundSchedules
+            const database = await waitForDbReady().catch(() => null);
+            if (!database) return;
 
+            const now = getAdminNow();
+            const due = roundSchedules
               .filter(r => r.status === 'scheduled'
                 && (r.startAt || 0) <= now
-                && getRoundActivationNotBefore(r) <= now)
-
+                && getRoundActivationNotBefore(r) <= now
+                && (Number(r.retryAt || 0) <= 0 || Number(r.retryAt || 0) <= now))
               .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
             if (!due?.key) return;
 
-            const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
+            const tx = await database.ref(`round_schedules/${due.key}`).transaction(v => {
               const txNow = getAdminNow();
               if (!v || v.status !== 'scheduled') return v;
-
               if (txNow < (v.startAt || 0)) return v;
               if (txNow < getRoundActivationNotBefore(v)) return v;
-
+              if (Number(v.retryAt || 0) > txNow) return v;
               return { ...v, status: 'starting', startedAt: Date.now() };
             });
             if (!tx.committed) return;
 
-            const roundNum = await runRoundStart(due.durationMs || 0);
-            await db.ref(`round_schedules/${due.key}`).update({
+            const scheduledRow = tx.snapshot.val() || {};
+            const durationMs = Number(scheduledRow.durationMs || due.durationMs || 0);
+            let roundNum = null;
+
+            try {
+              roundNum = await runRoundStart(durationMs);
+            } catch (err) {
+              console.error('Ошибка запуска запланированного раунда:', err);
+            }
+
+            if (!roundNum) {
+              await database.ref(`round_schedules/${due.key}`).update({
+                status: 'scheduled',
+                startedAt: null,
+                lastError: 'round_start_failed',
+                retryAt: Date.now() + 10000
+              });
+              return;
+            }
+
+            await database.ref(`round_schedules/${due.key}`).update({
               status: 'completed',
               completedAt: Date.now(),
-              launchedRound: roundNum || null
+              launchedRound: roundNum,
+              lastError: null,
+              retryAt: null
             });
 
             roundSchedules = roundSchedules.map((r) => {
@@ -6142,7 +6172,9 @@ const JSON_URL = 'tasks.json';
                 ...r,
                 status: 'completed',
                 completedAt: Date.now(),
-                launchedRound: roundNum || null
+                launchedRound: roundNum,
+                lastError: null,
+                retryAt: null
               };
             });
             persistRoundSchedulesBackup(roundSchedules);
