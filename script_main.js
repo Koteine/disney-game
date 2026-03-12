@@ -5860,12 +5860,12 @@ ${optionsText}
 
           const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
           const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
-            const raw = String(value || '').trim();
+            const raw = String(value || '').trim().replace(/\s+/g, ' ');
 
             let y, mo, d, h, mi, ss = '0';
 
-            // Нативный формат datetime-local
-            let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+            // Нативный и квази-нативный формат datetime-local: YYYY-MM-DDTHH:mm(:ss) и YYYY-MM-DD HH:mm(:ss)
+            let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
             if (match) {
               [, y, mo, d, h, mi, ss = '0'] = match;
             } else {
@@ -5874,7 +5874,6 @@ ${optionsText}
               if (!match) return NaN;
               [, d, mo, y, h, mi, ss = '0'] = match;
             }
-
 
             const parsed = new Date(
               Number(y),
