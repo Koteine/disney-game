@@ -349,7 +349,6 @@ const formatMoscowDateTime = (...args) => (
           let eventSchedules = [];
           let eventSchedulesRef = null;
           let adminServerOffsetMs = 0;
-          let hasRoundSchedulesSynced = false;
 
           function getAdminNow() {
             return Date.now() + (Number(adminServerOffsetMs) || 0);
@@ -522,7 +521,9 @@ const formatMoscowDateTime = (...args) => (
             window.adminStartRound = adminStartRound;
             window.adminScheduleRound = adminScheduleRound;
             window.adminCancelScheduledRound = adminCancelScheduledRound;
-            window.checkScheduledRounds = checkScheduledRounds;
+            if (typeof window.checkScheduledRounds !== 'function' && typeof window.schedulerCheckScheduledRounds === 'function') {
+              window.checkScheduledRounds = window.schedulerCheckScheduledRounds;
+            }
             window.adminForceRenamePlayer = adminForceRenamePlayer;
             window.executeEmergencyAction = executeEmergencyAction;
             window.adminUndoTicketRevoke = adminUndoTicketRevoke;
