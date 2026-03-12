@@ -5719,6 +5719,8 @@ const JSON_URL = 'tasks.json';
             });
           }
 
+          window.waitForDbReady = waitForDbReady;
+
           const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
           const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
             const raw = String(value || '').trim();
