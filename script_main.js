@@ -4671,6 +4671,15 @@ const JSON_URL = 'tasks.json';
             }
 
             function switchAdminTicketsSubtab(tabName) {
+                const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+                if (!isAdmin) {
+                    adminTicketsSubtab = 'all';
+                    const allPanel = document.getElementById('admin-tickets-all-panel');
+                    const playerPanel = document.getElementById('admin-tickets-player-panel');
+                    if (allPanel) allPanel.style.display = 'block';
+                    if (playerPanel) playerPanel.style.display = 'none';
+                    return;
+                }
                 adminTicketsSubtab = tabName === 'player' ? 'player' : 'all';
                 const allBtn = document.getElementById('admin-tickets-all-btn');
                 const playerBtn = document.getElementById('admin-tickets-player-btn');
@@ -7043,9 +7052,9 @@ const JSON_URL = 'tasks.json';
             if (profileTicketsTitleEl) profileTicketsTitleEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
-            if (adminSubtabsEl) adminSubtabsEl.style.display = isAdminProfile ? 'none' : adminSubtabsEl.style.display;
-            if (adminAllPanelEl) adminAllPanelEl.style.display = isAdminProfile ? 'none' : adminAllPanelEl.style.display;
-            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = isAdminProfile ? 'block' : 'none';
+            if (adminSubtabsEl) adminSubtabsEl.style.display = isAdminProfile ? 'flex' : 'none';
+            if (adminAllPanelEl) adminAllPanelEl.style.display = 'block';
+            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = isAdminProfile ? (adminTicketsSubtab === 'player' ? 'block' : 'none') : 'none';
             if (isAdminProfile) return;
 
             const nickname = getCurrentPlayerNickname();
