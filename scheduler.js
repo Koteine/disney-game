@@ -220,9 +220,14 @@ async function adminScheduleRound() {
     if (!db) return alert('База данных пока недоступна. Попробуйте чуть позже.');
 
     const startAtValue = document.getElementById('round-start-at')?.value;
-    const durationMins = Number(document.getElementById('round-duration-mins')?.value || 0);
+    const days = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
+    const hours = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
+    const mins = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
+    const durationMs = (days * 86400000) + (hours * 3600000) + (mins * 60000);
     if (!startAtValue) return alert('Выберите дату и время старта раунда.');
-    if (!durationMins || durationMins < 1) return alert('Укажите длительность раунда в минутах.');
+    if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs < 60000) {
+      return alert('Укажите длительность раунда. Минимум — 1 минута.');
+    }
 
     const parser = (typeof window.parseMoscowDateTimeLocalInput === 'function')
       ? window.parseMoscowDateTimeLocalInput
@@ -232,7 +237,6 @@ async function adminScheduleRound() {
       return alert('Время старта должно быть в будущем.');
     }
 
-    const durationMs = Math.max(60000, Math.round(durationMins * 60000));
     const now = Date.now();
     await db.ref('round_schedules').push({
       status: 'scheduled',
