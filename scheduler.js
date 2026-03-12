@@ -13,6 +13,10 @@ function schedulerGetNow() {
   return typeof window.getAdminNow === 'function' ? window.getAdminNow() : Date.now();
 }
 
+if (typeof window.formatMoscowDateTime !== 'function') {
+  window.formatMoscowDateTime = (ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+}
+
           let roundSchedules = [];
           let roundSchedulesRef = null;
           let hasRoundSchedulesSynced = false;
@@ -71,6 +75,7 @@ function schedulerGetNow() {
           }
 
           function renderRoundSchedules() {
+            console.info('[scheduler] renderRoundSchedules: before render');
             const statusEl = document.getElementById('admin-round-status');
             const scheduled = roundSchedules.filter(r => String(r.status || 'scheduled') === 'scheduled');
             const recentProcessed = roundSchedules
@@ -216,14 +221,19 @@ function syncRoundSchedules() {
 
 async function adminScheduleRound() {
   try {
+    console.info('[scheduler] adminScheduleRound: click');
     if (!schedulerIsAdminUser()) return;
     if (!db) return alert('База данных пока недоступна. Попробуйте чуть позже.');
+    if (typeof window.waitForDbReady === 'function') {
+      await window.waitForDbReady().catch(() => null);
+    }
 
     const startAtValue = document.getElementById('round-start-at')?.value;
     const days = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
     const hours = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
     const mins = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
     const durationMs = (days * 86400000) + (hours * 3600000) + (mins * 60000);
+    console.info('[scheduler] adminScheduleRound: validation input', { startAtValue, days, hours, mins, durationMs });
     if (!startAtValue) return alert('Выберите дату и время старта раунда.');
     if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs < 60000) {
       return alert('Укажите длительность раунда. Минимум — 1 минута.');
@@ -238,19 +248,33 @@ async function adminScheduleRound() {
     }
 
     const now = Date.now();
-    await db.ref('round_schedules').push({
+    const payload = {
       status: 'scheduled',
       startAt,
       durationMs,
       createdAt: now,
       activationNotBefore: now + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
       createdBy: String(window.currentUserId || '') || null
-    });
+    };
+
+    console.info('[scheduler] adminScheduleRound: before db write', payload);
+    const newRef = db.ref('round_schedules').push();
+    await newRef.set(payload);
+    console.info('[scheduler] adminScheduleRound: db write success', { key: newRef.key });
+
+    if (!Array.isArray(roundSchedules)) roundSchedules = [];
+    if (!roundSchedules.some(item => item?.key === newRef.key)) {
+      roundSchedules = [...roundSchedules, { key: newRef.key, ...payload }]
+        .sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+      hasRoundSchedulesSynced = true;
+      persistRoundSchedulesBackup(roundSchedules);
+      renderRoundSchedules();
+    }
 
     await checkScheduledRounds();
     if (typeof syncRoundSchedules === 'function') syncRoundSchedules();
   } catch (e) {
-    console.error('adminScheduleRound failed:', e);
+    console.error('[scheduler] adminScheduleRound failed:', e);
     alert('Не удалось запланировать раунд. Проверьте консоль.');
   }
 }
@@ -266,6 +290,7 @@ async function adminCancelScheduledRound(roundKey) {
 
 window.syncRoundSchedules = syncRoundSchedules;
 window.checkScheduledRounds = checkScheduledRounds;
+window.schedulerCheckScheduledRounds = checkScheduledRounds;
 window.adminScheduleRound = adminScheduleRound;
 window.schedulerAdminScheduleRound = adminScheduleRound;
 window.adminCancelScheduledRound = adminCancelScheduledRound;
