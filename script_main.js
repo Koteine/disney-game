@@ -1435,9 +1435,13 @@ const JSON_URL = 'tasks.json';
                 const cell = cellSnap.val();
                 if (!cell || Number(cell.userId) !== Number(currentUserId)) return alert('Плащ можно надеть только в своей карточке задания.');
                 if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
-                if ((myInventory.cloak || 0) <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
+                if (inventoryCount('cloak') <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
                 if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
                     return alert('Плащ можно надеть только на обычное задание.');
+                }
+                const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
+                if (debtSnap.val()?.active) {
+                    return alert('Плащ уже активирован: сначала закройте текущий долг по заданиям.');
                 }
 
                 const consumed = await consumeInventoryItem('cloak', 1);
@@ -1445,12 +1449,22 @@ const JSON_URL = 'tasks.json';
 
                 const roundNum = Number(currentRoundNum) || 0;
                 const debt = { cellIdx: Number(cellIdx), round: roundNum, dueRound: roundNum + 1, active: true, acceptedRounds: {} };
-                await db.ref(`board/${cellIdx}`).update({ deferred: true, deferredAt: Date.now(), deferredRound: roundNum, invisibleMode: true });
-                await db.ref(`whitelist/${currentUserId}/debt`).set(debt);
+                const now = Date.now();
+                await db.ref().update({
+                    [`board/${cellIdx}/deferred`]: true,
+                    [`board/${cellIdx}/deferredAt`]: now,
+                    [`board/${cellIdx}/deferredRound`]: roundNum,
+                    [`board/${cellIdx}/invisibleMode`]: true,
+                    [`whitelist/${currentUserId}/debt`]: debt
+                });
 
                 alert('🎭 Вы скрылись под плащом. Теперь вы обязаны сдать ЭТО задание и СЛЕДУЮЩЕЕ до конца следующего раунда, иначе сгорят оба билета');
                 const playerName = players?.[myIndex]?.n || 'Игрок';
-                await postNews(`🎭 ${playerName} активировал(а) Плащ-невидимку и отложил(а) задание до следующего раунда.`);
+                try {
+                    await postNews(`🎭 ${playerName} активировал(а) Плащ-невидимку и отложил(а) задание до следующего раунда.`);
+                } catch (newsError) {
+                    console.warn('activateCloak news publish failed', newsError);
+                }
                 const updated = await db.ref(`board/${cellIdx}`).once('value');
                 showCell(cellIdx, updated.val());
             } catch (e) {
