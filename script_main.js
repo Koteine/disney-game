@@ -2165,6 +2165,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function toggleAdminEmergencyActions() {
+            if (!isAdminUser()) return;
             toggleExpandablePanel('admin-emergency-body', 'admin-emergency-toggle-btn');
         }
 
@@ -2245,6 +2246,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function toggleEmergencySection(sectionName) {
+            if (!isAdminUser()) return;
             const map = {
                 grant: 'admin-emergency-grant-body',
                 revoke: 'admin-emergency-revoke-body',
@@ -3994,6 +3996,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function saveNewUserRandomly() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             const id = document.getElementById('new-user-id').value;
             if (!id) return;
 
@@ -4272,6 +4275,7 @@ const JSON_URL = 'tasks.json';
         }
 
       function syncAdminList() {
+            if (!isAdminUser()) return;
             db.ref('whitelist').on('value', snap => {
                 const users = [];
                 snap.forEach(u => {
@@ -4330,6 +4334,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function toggleAdminPlayersList() {
+            if (!isAdminUser()) return;
             const wrap = document.getElementById('active-players-wrap');
             const btn = document.querySelector('#tab-admin button[onclick="toggleAdminPlayersList()"]');
             if (!wrap || !btn) return;
@@ -4338,8 +4343,12 @@ const JSON_URL = 'tasks.json';
             btn.innerText = expanded ? '👥 Список игроков: развернуть' : '👥 Список игроков: свернуть';
         }
 
-        function kick(id) { if(confirm("Удалить?")) db.ref('whitelist/'+id).remove(); }
+        function kick(id) {
+            if (!isAdminUser()) return;
+            if(confirm("Удалить?")) db.ref('whitelist/'+id).remove();
+        }
         async function adminResetGame() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             if (!confirm('Подтвердить сброс текущей сессии?')) return;
             if (!confirm('Это удалит players/ и игровые пулы. Карма сезона сохранится. Продолжить?')) return;
 
@@ -4391,9 +4400,11 @@ const JSON_URL = 'tasks.json';
             location.reload();
         }
         async function adminFullReset() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             alert('player_season_status защищен от полного сброса. Очистка отключена.');
         }
         async function adminTriggerSpin() {
+            if (!isAdminUser()) return;
             await adminPickWinnerNow();
         }
 
