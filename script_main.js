@@ -4198,8 +4198,9 @@ const JSON_URL = 'tasks.json';
             let archiveRefs = [];
             let archiveByKey = {};
             let revokedTicketsMap = {};
-            let adminTicketsSubtab = 'all';
+            let adminTicketsSubtab = 'player';
             let selectedAdminTicketUserId = null;
+            let adminProfileLogRequestId = 0;
 
             function clearArchiveSubscriptions() {
                 archiveRefs.forEach(ref => ref.off());
@@ -4411,61 +4412,207 @@ const JSON_URL = 'tasks.json';
 
             function getAdminPlayersAlphabetically() {
                 const whitelist = window.cachedWhitelistData || {};
-                const users = Object.entries(whitelist)
-                    .map(([userId, data]) => ({ userId: String(userId), charIndex: data?.charIndex }))
-                    .filter(p => Number.isInteger(p.charIndex) && players[p.charIndex])
-                    .map(p => ({ ...p, name: players[p.charIndex].n }));
+                const usersById = new Map();
+
+                Object.entries(whitelist).forEach(([userId, data]) => {
+                    const uid = String(userId || '').trim();
+                    if (!uid) return;
+                    const charIndex = Number(data?.charIndex);
+                    const rosterName = Number.isInteger(charIndex) && players[charIndex] ? String(players[charIndex].n || '').trim() : '';
+                    const seasonProfile = seasonProfilesByUserId?.[uid] || {};
+                    const seasonName = String(seasonProfile.nickname || '').trim();
+                    const deleted = Boolean(data?.deletedAt || seasonProfile?.deletedAt);
+                    usersById.set(uid, {
+                        userId: uid,
+                        charIndex: Number.isInteger(charIndex) ? charIndex : null,
+                        name: seasonName || rosterName || `Игрок ${uid}`,
+                        deleted,
+                        isFallbackName: !seasonName && !rosterName
+                    });
+                });
+
+                Object.entries(seasonProfilesByUserId || {}).forEach(([userId, profile]) => {
+                    const uid = String(userId || '').trim();
+                    if (!uid || usersById.has(uid)) return;
+                    const seasonName = String(profile?.nickname || '').trim();
+                    usersById.set(uid, {
+                        userId: uid,
+                        charIndex: null,
+                        name: seasonName || `Игрок ${uid}`,
+                        deleted: Boolean(profile?.deletedAt),
+                        isFallbackName: !seasonName
+                    });
+                });
+
+                const users = Array.from(usersById.values()).filter(u => !u.deleted);
 
                 users.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
                 return users;
             }
 
+            function formatAdminProfileLogTime(ts) {
+                const value = Number(ts || 0);
+                if (!value) return '';
+                return new Date(value).toLocaleString('ru-RU');
+            }
+
+            async function buildAdminPlayerActionLog(selectedUser) {
+                if (!selectedUser?.userId) return [];
+                const uid = String(selectedUser.userId);
+                const ownerIndex = Number(selectedUser.charIndex);
+                const events = [];
+
+                expandTicketsRows(allTicketsData)
+                    .filter(t => String(t.userId) === uid || (Number.isInteger(ownerIndex) && Number(t.owner) === ownerIndex))
+                    .forEach(t => {
+                        events.push({
+                            ts: Number(t.createdAt || t.archivedAt || t.updatedAt || 0),
+                            round: Number(t.round) || null,
+                            text: `Получил(а) билет №${t.ticketNum}${t.round ? ` (раунд ${t.round})` : ''}${t.cell ? `, клетка №${t.cell}` : ''}`
+                        });
+                    });
+
+                allSubmissions
+                    .filter(s => String(resolveSubmissionOwnerUserId(s)) === uid)
+                    .forEach(s => {
+                        events.push({
+                            ts: Number(s.createdAt || s.updatedAt || 0),
+                            round: Number(s.round) || null,
+                            text: `Сдал(а) работу${s.round ? ` за раунд ${s.round}` : ''}${Number.isInteger(s.cellIdx) ? ` (клетка №${s.cellIdx + 1})` : ''}`
+                        });
+                    });
+
+                const [boardSnap, duelsSnap] = await Promise.all([
+                    db.ref('board').once('value'),
+                    db.ref(DUEL_PATH).limitToLast(200).once('value')
+                ]);
+
+                const board = boardSnap.val() || {};
+                Object.entries(board).forEach(([cellIdx, cell]) => {
+                    if (!cell) return;
+                    if (String(cell.userId || '') !== uid && (!Number.isInteger(ownerIndex) || Number(cell.owner) !== ownerIndex)) return;
+                    events.push({
+                        ts: 0,
+                        round: Number(cell.round) || null,
+                        text: `В раунде ${cell.round || '—'} открыл(а) клетку №${Number(cellIdx) + 1}`
+                    });
+                });
+
+                const duels = duelsSnap.val() || {};
+                Object.values(duels).forEach(duel => {
+                    if (!duel) return;
+                    const isParticipant = String(duel.challengerId || '') === uid || String(duel.opponentId || '') === uid;
+                    if (!isParticipant) return;
+                    const opponentId = String(duel.challengerId || '') === uid ? String(duel.opponentId || '') : String(duel.challengerId || '');
+                    const opponentName = seasonProfilesByUserId?.[opponentId]?.nickname || (window.cachedWhitelistData?.[opponentId]?.charIndex >= 0 ? players[window.cachedWhitelistData[opponentId].charIndex]?.n : '') || `ID ${opponentId}`;
+                    events.push({
+                        ts: Number(duel.createdAt || duel.startedAt || 0),
+                        round: null,
+                        text: `Запросил(а) дуэль с игроком «${opponentName}»`
+                    });
+                    if (duel.status === 'finished' || duel.finishedAt) {
+                        events.push({
+                            ts: Number(duel.finishedAt || 0),
+                            round: null,
+                            text: `Завершил(а) дуэль каллиграфии${duel.winnerId ? (String(duel.winnerId) === uid ? ' (победа)' : ' (поражение)') : ''}`
+                        });
+                    }
+                });
+
+                return events
+                    .sort((a, b) => {
+                        const ta = Number(a.ts || 0);
+                        const tb = Number(b.ts || 0);
+                        if (ta && tb) return tb - ta;
+                        if (ta) return -1;
+                        if (tb) return 1;
+                        return Number(b.round || 0) - Number(a.round || 0);
+                    })
+                    .slice(0, 30);
+            }
+
             function renderAdminPlayerTickets(expandedRows) {
-                const playersListEl = document.getElementById('admin-ticket-players-list');
-                const ticketsListEl = document.getElementById('admin-player-tickets-list');
-                const titleEl = document.getElementById('admin-player-tickets-title');
-                if (!playersListEl || !ticketsListEl || !titleEl) return;
+                const selectEl = document.getElementById('admin-player-select');
+                const summaryEl = document.getElementById('admin-player-summary');
+                if (!selectEl || !summaryEl) return;
 
                 const users = getAdminPlayersAlphabetically();
                 if (!users.length) {
-                    playersListEl.innerHTML = '<div style="color:#888; font-size:12px;">Игроков пока нет.</div>';
-                    titleEl.innerText = 'Выбери игрока, чтобы увидеть его билетики';
-                    ticketsListEl.innerHTML = '';
+                    selectEl.innerHTML = '<option value="">Игроков пока нет</option>';
+                    summaryEl.innerHTML = '<div style="color:#888; font-size:12px;">Нет доступных игроков.</div>';
                     return;
                 }
 
                 if (!selectedAdminTicketUserId || !users.some(u => u.userId === String(selectedAdminTicketUserId))) {
-                    selectedAdminTicketUserId = users[0].userId;
+                    selectedAdminTicketUserId = '';
                 }
 
-                playersListEl.innerHTML = users.map(u => {
-                    const active = String(selectedAdminTicketUserId) === String(u.userId);
-                    return `<button onclick="selectAdminTicketUser('${u.userId}')" style="text-align:left; border:1px solid ${active ? '#f48fb1' : '#eee'}; background:${active ? '#fff0f6' : '#fff'}; border-radius:8px; padding:8px;">${u.name}</button>`;
-                }).join('');
+                const previousValue = String(selectEl.value || selectedAdminTicketUserId || '');
+                selectEl.innerHTML = ['<option value="">Выберите игрока</option>']
+                    .concat(users.map(u => `<option value="${u.userId}">${u.name}${u.isFallbackName ? ' (без имени)' : ''}</option>`))
+                    .join('');
+                const selectedFromOptions = users.some(u => String(u.userId) === previousValue) ? previousValue : String(selectedAdminTicketUserId || '');
+                selectEl.value = selectedFromOptions;
+                selectedAdminTicketUserId = selectEl.value;
 
                 const selectedUser = users.find(u => String(u.userId) === String(selectedAdminTicketUserId));
+                if (!selectedUser) {
+                    summaryEl.innerHTML = '<div style="font-size:12px; color:#666;">Выберите игрока, чтобы посмотреть подробную информацию</div>';
+                    return;
+                }
+
                 const filtered = expandedRows
                     .filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex))
                     .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
 
-                titleEl.innerText = selectedUser ? `Билетики игрока: ${selectedUser.name}` : 'Билетики игрока';
-                if (!filtered.length) {
-                    ticketsListEl.innerHTML = '<div style="font-size:12px; color:#888;">У игрока пока нет билетиков.</div>';
-                    return;
-                }
+                const season = seasonProfilesByUserId?.[selectedUser.userId] || {};
+                const karmaValues = Object.entries(season)
+                    .filter(([k, v]) => k.toLowerCase().includes('karma') && (typeof v === 'number' || /^\d+$/.test(String(v || ''))));
+                const karmaHtml = karmaValues.length
+                    ? karmaValues.map(([key, value]) => `<div>${key}: <b>${Number(value) || 0}</b></div>`).join('')
+                    : '<div>karma_points: <b>0</b></div>';
 
-                ticketsListEl.innerHTML = filtered.map(t => `
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px dashed #eee;">
-                        <div style="text-align:left;">
-                            <div style="font-weight:700; color:${t.isRevoked ? '#9e9e9e' : '#222'}; text-decoration:${t.isRevoked ? 'line-through' : 'none'};">🎟 ${t.ticketNum}</div>
-                            <div style="font-size:11px; color:#666;">${t.sourceLabel}</div>
-                            <button onclick="openTicketTaskDetails('${t.ticketNum}')" style="margin-top:4px; border:1px solid #ddd; background:#fff; border-radius:8px; padding:2px 8px; font-size:14px;">👀</button>
-                        </div>
-                        <button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; background:#fff; border-radius:8px; padding:5px 8px; font-size:11px;">
-                            ${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}
-                        </button>
-                    </div>
-                `).join('');
+                const inv = (window.cachedWhitelistData?.[selectedUser.userId]?.inventory && typeof window.cachedWhitelistData[selectedUser.userId].inventory === 'object')
+                    ? window.cachedWhitelistData[selectedUser.userId].inventory
+                    : {};
+                const inventoryRows = Object.keys(inv)
+                    .filter(k => Number(inv[k] || 0) > 0)
+                    .sort((a, b) => (window.itemTypes?.[a]?.name || a).localeCompare(window.itemTypes?.[b]?.name || b, 'ru'));
+                const inventoryHtml = inventoryRows.length
+                    ? inventoryRows.map(key => `<div>${window.itemTypes?.[key]?.emoji || '🎁'} ${window.itemTypes?.[key]?.name || key}: <b>${Number(inv[key])}</b></div>`).join('')
+                    : '<div style="color:#888;">Рюкзак пуст.</div>';
+
+                const ticketsHtml = filtered.length
+                    ? filtered.map(t => `<div style="padding:4px 0; border-bottom:1px dashed #eee;"><b>№${t.ticketNum}</b>${t.round ? ` · раунд ${t.round}` : ''}<br><span style="color:#666;">${t.taskLabel || t.sourceLabel || 'без задания'}</span></div>`).join('')
+                    : '<div style="color:#888;">У игрока нет билетов.</div>';
+
+                const requestId = ++adminProfileLogRequestId;
+                summaryEl.innerHTML = `
+                    <div style="font-size:14px; font-weight:700; margin-bottom:8px;">${selectedUser.name}</div>
+                    <div style="font-size:12px; margin-bottom:10px;"><b>Билеты (${filtered.length})</b><div style="margin-top:4px;">${ticketsHtml}</div></div>
+                    <div style="font-size:12px; margin-bottom:10px;"><b>Предметы в рюкзаке</b><div style="margin-top:4px;">${inventoryHtml}</div></div>
+                    <div style="font-size:12px; margin-bottom:10px;"><b>Карма</b><div style="margin-top:4px;">${karmaHtml}</div></div>
+                    <div style="font-size:12px;"><b>Краткий лог действий</b><div id="admin-player-action-log" style="margin-top:6px; color:#666;">Собираю данные…</div></div>
+                `;
+
+                buildAdminPlayerActionLog(selectedUser).then((events) => {
+                    if (requestId !== adminProfileLogRequestId) return;
+                    const logEl = document.getElementById('admin-player-action-log');
+                    if (!logEl) return;
+                    if (!events.length) {
+                        logEl.innerHTML = 'Нет данных по действиям игрока.';
+                        return;
+                    }
+                    logEl.innerHTML = events.map(ev => {
+                        const timeLabel = formatAdminProfileLogTime(ev.ts);
+                        const prefix = timeLabel ? `${timeLabel} · ` : '';
+                        return `<div style="padding:4px 0; border-bottom:1px dashed #eee;">${prefix}${ev.text}</div>`;
+                    }).join('');
+                }).catch(() => {
+                    if (requestId !== adminProfileLogRequestId) return;
+                    const logEl = document.getElementById('admin-player-action-log');
+                    if (logEl) logEl.innerHTML = 'Не удалось собрать лог действий.';
+                });
             }
 
             function renderAdminTicketArchive() {
@@ -6443,19 +6590,19 @@ const JSON_URL = 'tasks.json';
         function updateProfileUI() {
             const isAdminProfile = String(currentUserId) === String(ADMIN_ID);
             const profileMainTitleEl = document.getElementById('profile-main-title');
+            const profileTicketsTitleEl = document.getElementById('profile-tickets-title');
             const playerBlockEl = document.getElementById('profile-player-block');
             const playerTicketsEl = document.getElementById('profile-player-tickets-block');
-            const adminBannerEl = document.getElementById('admin-profile-banner');
             const adminSubtabsEl = document.getElementById('admin-tickets-subtabs');
             const adminAllPanelEl = document.getElementById('admin-tickets-all-panel');
             const adminPlayerPanelEl = document.getElementById('admin-tickets-player-panel');
-            if (profileMainTitleEl) profileMainTitleEl.textContent = isAdminProfile ? '🎫 Панель' : '👤 Профиль';
+            if (profileMainTitleEl) profileMainTitleEl.textContent = isAdminProfile ? 'Список игроков' : '👤 Профиль';
+            if (profileTicketsTitleEl) profileTicketsTitleEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerBlockEl) playerBlockEl.style.display = isAdminProfile ? 'none' : 'block';
             if (playerTicketsEl) playerTicketsEl.style.display = isAdminProfile ? 'none' : 'block';
             if (adminSubtabsEl) adminSubtabsEl.style.display = isAdminProfile ? 'none' : adminSubtabsEl.style.display;
             if (adminAllPanelEl) adminAllPanelEl.style.display = isAdminProfile ? 'none' : adminAllPanelEl.style.display;
-            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = isAdminProfile ? 'none' : adminPlayerPanelEl.style.display;
-            if (adminBannerEl) adminBannerEl.style.display = isAdminProfile ? 'block' : 'none';
+            if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = isAdminProfile ? 'block' : 'none';
             if (isAdminProfile) return;
 
             const nickname = getCurrentPlayerNickname();

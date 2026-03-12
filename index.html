@@ -83,10 +83,9 @@
             </div>
         </div>
 
-   <div id="tab-tickets" class="tab-content">
-    <h1 id="profile-main-title">👤 Профиль</h1>
-    <div id="admin-profile-banner" class="works-card" style="display:none; margin-bottom:8px; font-weight:800; color:#6a1b9a;">Панель Администратора</div>
-    <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
+	   <div id="tab-tickets" class="tab-content">
+	    <h1 id="profile-main-title">👤 Профиль</h1>
+	    <div id="profile-player-block" class="works-card" style="margin-bottom:8px; text-align:center;">
         <div id="profile-avatar" style="width:72px; height:72px; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; font-size:32px; color:#fff; background:linear-gradient(135deg,#7e57c2,#ec407a);">🎨</div>
         <div id="profile-nickname" style="font-weight:800; font-size:16px;">Путешественник</div>
         <div style="margin-top:10px; text-align:left;">
@@ -99,7 +98,7 @@
         <b>🎫 Мои билеты</b>
         <div id="profile-ticket-balance" style="margin-top:6px; font-size:14px;">0</div>
     </div>
-    <h1 style="font-size:18px;">🎫 История билетов</h1>
+	    <h1 id="profile-tickets-title" style="font-size:18px;">🎫 История билетов</h1>
     <div id="admin-tickets-subtabs" class="admin-inner-tabs" style="display:none; margin:8px;">
         <button id="admin-tickets-all-btn" class="admin-inner-tab-btn active" onclick="switchAdminTicketsSubtab('all')">Все билеты в игре</button>
         <button id="admin-tickets-player-btn" class="admin-inner-tab-btn" onclick="switchAdminTicketsSubtab('player')">Билеты игрока</button>
@@ -120,17 +119,18 @@
             </table>
         </div>
     </div>
-    <div id="admin-tickets-player-panel" class="admin-inner-panel" style="margin:0 8px;">
-        <div class="works-card" style="margin:0 0 8px 0;">
-            <b>Игроки (по алфавиту)</b>
-            <div id="admin-ticket-players-list" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div>
-        </div>
-        <div class="works-card" style="margin:0;">
-            <b id="admin-player-tickets-title">Выбери игрока, чтобы увидеть его билетики</b>
-            <div id="admin-player-tickets-list" style="margin-top:8px;"></div>
-        </div>
-    </div>
-</div>
+	    <div id="admin-tickets-player-panel" class="admin-inner-panel" style="margin:0 8px;">
+	        <div class="works-card" style="margin:0 0 8px 0; text-align:center;">
+	            <b style="display:block; margin-bottom:8px;">Список игроков</b>
+	            <select id="admin-player-select" class="admin-input" style="margin:0;" onchange="selectAdminTicketUser(this.value)">
+	                <option value="">Выберите игрока</option>
+	            </select>
+	        </div>
+	        <div class="works-card" style="margin:0;">
+	            <div id="admin-player-summary" style="font-size:12px; color:#666;">Выберите игрока, чтобы посмотреть подробную информацию</div>
+	        </div>
+	    </div>
+	</div>
 
         <div id="tab-wheel" class="tab-content">
             <h1>🃏 Магические карты</h1>
