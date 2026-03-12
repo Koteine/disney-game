@@ -4935,17 +4935,18 @@ const JSON_URL = 'tasks.json';
                 const ownerIndex = Number(selectedUser.charIndex);
                 const events = [];
 
-                expandTicketsRows(allTicketsData)
-                    .filter(t => String(t.userId) === uid || (Number.isInteger(ownerIndex) && Number(t.owner) === ownerIndex))
-                    .forEach(t => {
-                        const taskPart = t.taskLabel || t.sourceLabel || 'без задания';
-                        const itemPart = t.itemType ? ` · предмет: ${window.itemTypes?.[t.itemType]?.name || t.itemType}` : '';
-                        events.push({
-                            ts: Number(t.createdAt || t.archivedAt || t.updatedAt || 0),
-                            round: Number(t.round) || null,
-                            text: `Получил(а) билет №${t.ticketNum}${t.round ? ` (раунд ${t.round})` : ''}${t.cell ? `, клетка №${t.cell}` : ''} · ${taskPart}${itemPart}`
-                        });
+                const userTicketRows = expandTicketsRows(allTicketsData)
+                    .filter(t => String(t.userId) === uid || (Number.isInteger(ownerIndex) && Number(t.owner) === ownerIndex));
+
+                userTicketRows.forEach(t => {
+                    const taskPart = t.taskLabel || t.sourceLabel || 'без задания';
+                    const itemPart = t.itemType ? ` · предмет: ${window.itemTypes?.[t.itemType]?.name || t.itemType}` : '';
+                    events.push({
+                        ts: Number(t.createdAt || t.archivedAt || t.updatedAt || t.ts || 0),
+                        round: Number(t.round) || null,
+                        text: `Получил(а) билет №${t.ticketNum}${t.round ? ` (раунд ${t.round})` : ''}${t.cell ? `, клетка №${t.cell}` : ''} · ${taskPart}${itemPart}`
                     });
+                });
 
                 allSubmissions
                     .filter(s => String(resolveSubmissionOwnerUserId(s)) === uid)
@@ -4957,9 +4958,12 @@ const JSON_URL = 'tasks.json';
                         });
                     });
 
-                const [boardSnap, duelsSnap] = await Promise.all([
+                const [boardSnap, duelsSnap, newsSnap, gallerySnap, mushuFeedSnap] = await Promise.all([
                     db.ref('board').once('value'),
-                    db.ref(DUEL_PATH).limitToLast(200).once('value')
+                    db.ref(DUEL_PATH).limitToLast(300).once('value'),
+                    db.ref('news_feed').limitToLast(300).once('value'),
+                    db.ref('gallery_compliments').once('value'),
+                    db.ref('current_event/feed_log').limitToLast(500).once('value')
                 ]);
 
                 const board = boardSnap.val() || {};
@@ -4968,9 +4972,9 @@ const JSON_URL = 'tasks.json';
                     if (String(cell.userId || '') !== uid && (!Number.isInteger(ownerIndex) || Number(cell.owner) !== ownerIndex)) return;
                     const itemPart = cell.itemType ? ` · предмет: ${window.itemTypes?.[cell.itemType]?.name || cell.itemType}` : '';
                     events.push({
-                        ts: 0,
+                        ts: Number(cell.updatedAt || cell.createdAt || 0),
                         round: Number(cell.round) || null,
-                        text: `В раунде ${cell.round || '—'} открыл(а) клетку №${Number(cellIdx) + 1} · ${getTaskLabelByCell(cell)}${itemPart}`
+                        text: `Открыл(а) клетку №${Number(cellIdx) + 1}${cell.round ? ` (раунд ${cell.round})` : ''} · ${getTaskLabelByCell(cell)}${itemPart}`
                     });
                 });
 
@@ -4981,21 +4985,44 @@ const JSON_URL = 'tasks.json';
                     if (!isParticipant) return;
                     const opponentId = String(duel.challengerId || '') === uid ? String(duel.opponentId || '') : String(duel.challengerId || '');
                     const opponentName = seasonProfilesByUserId?.[opponentId]?.nickname || (window.cachedWhitelistData?.[opponentId]?.charIndex >= 0 ? players[window.cachedWhitelistData[opponentId].charIndex]?.n : '') || `ID ${opponentId}`;
-                    events.push({
-                        ts: Number(duel.createdAt || duel.startedAt || 0),
-                        round: null,
-                        text: `Запросил(а) дуэль с игроком «${opponentName}»`
-                    });
+                    events.push({ ts: Number(duel.createdAt || duel.startedAt || 0), round: null, text: `Участвовал(а) в дуэли каллиграфии против «${opponentName}»` });
                     if (duel.status === 'finished' || duel.finishedAt) {
-                        events.push({
-                            ts: Number(duel.finishedAt || 0),
-                            round: null,
-                            text: `Завершил(а) дуэль каллиграфии${duel.winnerId ? (String(duel.winnerId) === uid ? ' (победа)' : ' (поражение)') : ''}`
-                        });
+                        events.push({ ts: Number(duel.finishedAt || 0), round: null, text: `Дуэль завершена${duel.winnerId ? (String(duel.winnerId) === uid ? ' (победа)' : ' (поражение)') : ''}` });
                     }
                 });
 
+                const candidateNames = [selectedUser.gameNickname, selectedUser.reserveName, selectedUser.displayName].map(v => String(v || '').trim()).filter(Boolean);
+                (newsSnap.val() ? Object.values(newsSnap.val()) : []).forEach(row => {
+                    const rowText = String(row?.text || '').trim();
+                    if (!rowText || !candidateNames.some(name => rowText.includes(name))) return;
+                    events.push({ ts: Number(row.createdAt || 0), round: null, text: `Лента событий: ${rowText}` });
+                });
+
+                const gallery = gallerySnap.val() || {};
+                Object.entries(gallery).forEach(([workId, byUser]) => {
+                    if (!byUser || typeof byUser !== 'object') return;
+                    const reaction = byUser[uid];
+                    if (!reaction) return;
+                    const ownerSubmission = allSubmissions.find(s => String(s.id || s.key || '') === String(workId));
+                    const targetOwnerId = ownerSubmission ? resolveSubmissionOwnerUserId(ownerSubmission) : '';
+                    let targetName = 'неизвестной работы';
+                    if (targetOwnerId) {
+                        const targetProfile = seasonProfilesByUserId?.[targetOwnerId] || {};
+                        const targetWhitelist = window.cachedWhitelistData?.[targetOwnerId] || {};
+                        targetName = resolveAdminPlayerIdentity(String(targetOwnerId), targetWhitelist, targetProfile).displayName;
+                    }
+                    const reactionEmoji = reaction.type === 'heart' ? '❤️' : reaction.type === 'sun' ? '🌞' : '👏';
+                    events.push({ ts: Number(reaction.at || 0), round: ownerSubmission?.round || null, text: `Голосовал(а) в галерее за работу игрока «${targetName}» реакцией ${reactionEmoji}` });
+                });
+
+                const mushuLog = mushuFeedSnap.val() || {};
+                Object.values(mushuLog).forEach(entry => {
+                    if (String(entry?.uid || '') !== uid) return;
+                    events.push({ ts: Number(entry.at || 0), round: null, text: `Участвовал(а) в событии «Покорми Мушу» (фрукт: ${entry.fruit || '—'}, сытость +${Number(entry.satiety || 0)})` });
+                });
+
                 return events
+                    .filter(ev => String(ev.text || '').trim())
                     .sort((a, b) => {
                         const ta = Number(a.ts || 0);
                         const tb = Number(b.ts || 0);
@@ -5004,88 +5031,57 @@ const JSON_URL = 'tasks.json';
                         if (tb) return 1;
                         return Number(b.round || 0) - Number(a.round || 0);
                     })
-                    .slice(0, 30);
+                    .slice(0, 80);
             }
 
             function renderAdminPlayerTickets(expandedRows) {
                 const selectEl = document.getElementById('admin-player-select');
                 const summaryEl = document.getElementById('admin-player-summary');
                 if (!selectEl || !summaryEl) return;
-
                 const users = getAdminPlayersAlphabetically();
                 if (!users.length) {
                     selectEl.innerHTML = '<option value="">Игроков пока нет</option>';
                     summaryEl.innerHTML = '<div style="color:#888; font-size:12px;">Нет доступных игроков.</div>';
                     return;
                 }
-
-                if (!selectedAdminTicketUserId || !users.some(u => u.userId === String(selectedAdminTicketUserId))) {
-                    selectedAdminTicketUserId = '';
-                }
-
+                if (!selectedAdminTicketUserId || !users.some(u => u.userId === String(selectedAdminTicketUserId))) selectedAdminTicketUserId = '';
                 const previousValue = String(selectEl.value || selectedAdminTicketUserId || '');
-                selectEl.innerHTML = ['<option value="">Выберите игрока</option>']
-                    .concat(users.map(u => `<option value="${u.userId}">${u.name}${u.isFallbackName ? ' (без имени)' : ''}</option>`))
-                    .join('');
+                selectEl.innerHTML = ['<option value="">Выберите игрока</option>'].concat(users.map(u => `<option value="${u.userId}">${escapeHtml(u.gameNickname || u.displayName)}</option>`)).join('');
                 const selectedFromOptions = users.some(u => String(u.userId) === previousValue) ? previousValue : String(selectedAdminTicketUserId || '');
                 selectEl.value = selectedFromOptions;
                 selectedAdminTicketUserId = selectEl.value;
-
                 const selectedUser = users.find(u => String(u.userId) === String(selectedAdminTicketUserId));
                 if (!selectedUser) {
                     summaryEl.innerHTML = '<div style="font-size:12px; color:#666;">Выберите игрока, чтобы посмотреть подробную информацию</div>';
                     return;
                 }
 
-                const filtered = expandedRows
-                    .filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex))
-                    .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
-
+                const filtered = expandedRows.filter(t => String(t.userId) === String(selectedAdminTicketUserId) || String(t.owner) === String(selectedUser?.charIndex)).sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
                 const season = seasonProfilesByUserId?.[selectedUser.userId] || {};
-                const karmaValues = Object.entries(season)
-                    .filter(([k, v]) => k.toLowerCase().includes('karma') && (typeof v === 'number' || /^\d+$/.test(String(v || ''))));
-                const karmaHtml = karmaValues.length
-                    ? karmaValues.map(([key, value]) => `<div>${key}: <b>${Number(value) || 0}</b></div>`).join('')
-                    : '<div>karma_points: <b>0</b></div>';
-
-                const inv = (window.cachedWhitelistData?.[selectedUser.userId]?.inventory && typeof window.cachedWhitelistData[selectedUser.userId].inventory === 'object')
-                    ? window.cachedWhitelistData[selectedUser.userId].inventory
-                    : {};
-                const inventoryRows = Object.keys(inv)
-                    .filter(k => Number(inv[k] || 0) > 0)
-                    .sort((a, b) => (window.itemTypes?.[a]?.name || a).localeCompare(window.itemTypes?.[b]?.name || b, 'ru'));
-                const inventoryHtml = inventoryRows.length
-                    ? inventoryRows.map(key => `<div>${window.itemTypes?.[key]?.emoji || '🎁'} ${window.itemTypes?.[key]?.name || key}: <b>${Number(inv[key])}</b></div>`).join('')
-                    : '<div style="color:#888;">Рюкзак пуст.</div>';
-
-                const ticketsHtml = filtered.length
-                    ? filtered.map(t => {
-                        const taskText = t.taskLabel || t.sourceLabel || 'без задания';
-                        const itemText = t.itemType ? `<div style="color:#6a1b9a; font-size:11px;">${window.itemTypes?.[t.itemType]?.emoji || '🎁'} Предмет: ${window.itemTypes?.[t.itemType]?.name || t.itemType}</div>` : '';
-                        return `<div style="padding:6px 0; border-bottom:1px dashed #eee;"><div style="display:flex; align-items:center; justify-content:space-between; gap:8px;"><b>№${t.ticketNum}</b><button onclick="openTicketTaskDetails('${t.ticketNum}')" style="border:1px solid #ddd; background:#fff; border-radius:8px; padding:1px 8px; font-size:14px;">👀</button></div>${t.round ? `<div style="font-size:11px; color:#777;">Раунд ${t.round}</div>` : ''}<div style="color:#666;">${taskText}</div>${itemText}</div>`;
-                    }).join('')
-                    : '<div style="color:#888;">У игрока нет билетов.</div>';
+                const karmaPoints = Math.max(0, Number(season.karma_points) || 0);
+                const karmaMeta = getKarmaVisualMeta(karmaPoints);
+                const inv = (window.cachedWhitelistData?.[selectedUser.userId]?.inventory && typeof window.cachedWhitelistData[selectedUser.userId].inventory === 'object') ? window.cachedWhitelistData[selectedUser.userId].inventory : {};
+                const inventoryRows = Object.keys(inv).filter(k => Number(inv[k] || 0) > 0).sort((a, b) => (window.itemTypes?.[a]?.name || a).localeCompare(window.itemTypes?.[b]?.name || b, 'ru'));
+                const inventoryHtml = inventoryRows.length ? inventoryRows.map(key => `<div>${window.itemTypes?.[key]?.emoji || '🎁'} ${window.itemTypes?.[key]?.name || key}: <b>${Number(inv[key])}</b></div>`).join('') : '<div style="color:#888;">Рюкзак пуст.</div>';
+                const ticketsHtml = filtered.length ? filtered.map(t => `<div style="padding:6px 0; border-bottom:1px dashed #eee;"><div><b>Билет №${t.ticketNum}</b></div><div style="font-size:11px; color:#777;">Раунд: ${t.round || '—'} · Клетка: ${t.cell || '—'}</div><div style="color:#555; font-size:12px; margin-top:3px;">${escapeHtml(t.taskLabel || t.sourceLabel || 'Описание задания отсутствует')}</div></div>`).join('') : '<div style="color:#888;">У игрока нет билетов.</div>';
 
                 const requestId = ++adminProfileLogRequestId;
                 const cardName = selectedUser.displayName || `Игрок ${selectedUser.userId}`;
                 const safeCardName = escapeHtml(cardName);
                 const safeUserId = escapeHtml(selectedUser.userId);
                 const safeAvatarUrl = String(selectedUser.avatarUrl || '').trim();
-                const avatarHtml = safeAvatarUrl
-                    ? `<img src="${escapeHtml(safeAvatarUrl)}" alt="Аватар ${safeCardName}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:1px solid #ddd;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">\n                       <div style="display:none; width:44px; height:44px; border-radius:50%; background:#f0f0f0; color:#777; align-items:center; justify-content:center; font-weight:700;">👤</div>`
-                    : '<div style="width:44px; height:44px; border-radius:50%; background:#f0f0f0; color:#777; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">👤</div>';
+                const avatarHtml = safeAvatarUrl ? `<img src="${escapeHtml(safeAvatarUrl)}" alt="Аватар ${safeCardName}" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:1px solid #ddd;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
+<div style="display:none; width:56px; height:56px; border-radius:50%; background:#f0f0f0; color:#777; align-items:center; justify-content:center; font-weight:700;">👤</div>` : '<div style="width:56px; height:56px; border-radius:50%; background:#f0f0f0; color:#777; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">👤</div>';
                 summaryEl.innerHTML = `
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; padding:8px; border:1px solid #eee; border-radius:10px; background:#fafafa;">
                         <div style="flex:0 0 auto;">${avatarHtml}</div>
-                        <div style="min-width:0;">
-                            <div style="font-size:14px; font-weight:700;">${safeCardName}</div>
-                            <div style="font-size:12px; color:#666;">ID: <b>${safeUserId}</b></div>
-                        </div>
+                        <div style="min-width:0;"><div style="font-size:14px; font-weight:700;">${safeCardName}</div><div style="font-size:12px; color:#666;">ID игрока: <b>${safeUserId}</b></div></div>
                     </div>
-                    <div style="font-size:12px; margin-bottom:10px;"><b>Карма</b><div style="margin-top:4px;">${karmaHtml}</div></div>
+                    <div style="font-size:12px; margin-bottom:10px;"><b>Состояние кармы</b><div style="margin-top:4px;">${karmaPoints} / ${MAX_RANK_KARMA}</div><div style="color:#6a1b9a;">${escapeHtml(karmaMeta.title)}</div></div>
                     <div style="font-size:12px; margin-bottom:10px;"><b>Рюкзачок</b><div style="margin-top:4px;">${inventoryHtml}</div></div>
-                    <details open style="font-size:12px; margin-bottom:10px;"><summary style="cursor:pointer;"><b>Билеты (${filtered.length})</b></summary><div style="margin-top:6px;">${ticketsHtml}</div></details>
-                    <details open style="font-size:12px;"><summary style="cursor:pointer;"><b>Лог действий игрока</b></summary><div id="admin-player-action-log" style="margin-top:6px; color:#666;">Собираю данные…</div></details>
+                    <div style="font-size:12px; margin-bottom:10px;"><b>Общее количество билетов:</b> ${filtered.length}</div>
+                    <details open style="font-size:12px; margin-bottom:10px;"><summary style="cursor:pointer;"><b>Билеты и задания (${filtered.length})</b></summary><div style="margin-top:6px;">${ticketsHtml}</div></details>
+                    <details open style="font-size:12px;"><summary style="cursor:pointer;"><b>Лог по игроку</b></summary><div id="admin-player-action-log" style="margin-top:6px; color:#666;">Собираю данные…</div></details>
                 `;
 
                 buildAdminPlayerActionLog(selectedUser).then((events) => {
@@ -5093,13 +5089,13 @@ const JSON_URL = 'tasks.json';
                     const logEl = document.getElementById('admin-player-action-log');
                     if (!logEl) return;
                     if (!events.length) {
-                        logEl.innerHTML = 'Нет данных по действиям игрока.';
+                        logEl.innerHTML = 'Нет доступных данных для лога по игроку.';
                         return;
                     }
                     logEl.innerHTML = events.map(ev => {
                         const timeLabel = formatAdminProfileLogTime(ev.ts);
                         const prefix = timeLabel ? `${timeLabel} · ` : '';
-                        return `<div style="padding:4px 0; border-bottom:1px dashed #eee;">${prefix}${ev.text}</div>`;
+                        return `<div style="padding:4px 0; border-bottom:1px dashed #eee;">${prefix}${escapeHtml(ev.text)}</div>`;
                     }).join('');
                 }).catch(() => {
                     if (requestId !== adminProfileLogRequestId) return;
@@ -5197,43 +5193,36 @@ const JSON_URL = 'tasks.json';
 
             function updateTicketsTable() {
                 const body = document.getElementById('tickets-body');
-                const canUseAdminTickets = false;
+                if (!body) return;
+                const canUseAdminTickets = Number(currentUserId) === Number(ADMIN_ID);
                 const adminSubtabs = document.getElementById('admin-tickets-subtabs');
 
-                if (adminSubtabs) adminSubtabs.style.display = 'none';
-                if (document.getElementById('th-user-name')) {
-                    document.getElementById('th-user-name').style.display = 'none';
-                }
+                if (adminSubtabs) adminSubtabs.style.display = canUseAdminTickets ? 'flex' : 'none';
+                if (document.getElementById('th-user-name')) document.getElementById('th-user-name').style.display = canUseAdminTickets ? 'table-cell' : 'none';
 
-                const visibleData = canUseAdminTickets
-                    ? allTicketsData
-                    : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
-
-                const expandedRows = expandTicketsRows(visibleData)
-                    .sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
+                const visibleData = canUseAdminTickets ? allTicketsData : allTicketsData.filter(t => t.owner === myIndex || Number(t.userId) === Number(currentUserId));
+                const expandedRows = expandTicketsRows(visibleData).sort((a, b) => Number(a.ticketNum) - Number(b.ticketNum));
 
                 body.innerHTML = expandedRows.map(t => {
                     const statusClass = t.excluded || t.isRevoked ? 'row-excluded' : '';
+                    const ownerIdentity = resolveAdminPlayerIdentity(String(t.userId || ''), window.cachedWhitelistData?.[String(t.userId || '')], seasonProfilesByUserId?.[String(t.userId || '')] || {});
                     return `
                         <tr class="${statusClass}">
                             <td>${t.round || '—'}</td>
                             <td>${t.cell || '—'}</td>
-                            ${canUseAdminTickets ? `<td style="color:${charColors[t.owner]}; font-weight:bold;">${players[t.owner]?.n || 'Неизвестный'}</td>` : ''}
+                            ${canUseAdminTickets ? `<td style="font-weight:bold;">${escapeHtml(ownerIdentity.gameNickname || ownerIdentity.displayName || 'Неизвестный')}</td>` : ''}
                             <td><b style="text-decoration:${t.isRevoked ? 'line-through' : 'none'};">${t.ticketNum}</b></td>
-                            <td>
-                                <div style="font-size:11px;">${t.sourceLabel}</div>
-                                <button onclick="openTicketTaskDetails('${t.ticketNum}')" style="margin-top:4px; border:1px solid #ddd; background:#fff; border-radius:8px; padding:2px 8px; font-size:14px;">👀</button>
-                                ${t.adminNote ? `<div style="font-size:10px; color:#666;">${t.adminNote}</div>` : ''}
-                                ${canUseAdminTickets ? `<button onclick="toggleTicketRevocation('${t.ticketNum}', ${!t.isRevoked})" style="margin-top:4px; background:none; border:1px solid ${t.isRevoked ? '#43a047' : '#e53935'}; color:${t.isRevoked ? '#2e7d32' : '#b71c1c'}; border-radius:8px; font-size:10px; padding:3px 6px;">${t.isRevoked ? '↩️ Отменить' : '✂️ Вычеркнуть'}</button>` : ''}
-                            </td>
+                            <td><div style="font-size:11px;">${escapeHtml(t.sourceLabel || '—')}</div><button onclick="openTicketTaskDetails('${t.ticketNum}')" style="margin-top:4px; border:1px solid #ddd; background:#fff; border-radius:8px; padding:2px 8px; font-size:14px;">👀</button>${t.adminNote ? `<div style="font-size:10px; color:#666;">${escapeHtml(t.adminNote)}</div>` : ''}</td>
                         </tr>`;
                 }).join('');
 
                 if (canUseAdminTickets) {
+                    switchAdminTicketsSubtab(adminTicketsSubtab || 'player');
                     renderAdminPlayerTickets(expandedRows);
                     renderAdminTicketArchive(expandedRows);
+                } else if (typeof updateProfileTicketBalance === 'function') {
+                    updateProfileTicketBalance(expandedRows);
                 }
-                if (typeof updateProfileTicketBalance === 'function') updateProfileTicketBalance(expandedRows);
             }
 
             function openTicketTaskDetails(ticketNum) {
@@ -7170,6 +7159,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function updateProfileUI() {
+            const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
             const profileMainTitleEl = document.getElementById('profile-main-title');
             const profileTicketsTitleEl = document.getElementById('profile-tickets-title');
             const playerBlockEl = document.getElementById('profile-player-block');
@@ -7177,6 +7167,16 @@ const JSON_URL = 'tasks.json';
             const adminSubtabsEl = document.getElementById('admin-tickets-subtabs');
             const adminAllPanelEl = document.getElementById('admin-tickets-all-panel');
             const adminPlayerPanelEl = document.getElementById('admin-tickets-player-panel');
+            if (isAdmin) {
+                if (profileMainTitleEl) profileMainTitleEl.textContent = '👤 Профили игроков';
+                if (profileTicketsTitleEl) profileTicketsTitleEl.style.display = 'none';
+                if (playerBlockEl) playerBlockEl.style.display = 'none';
+                if (playerTicketsEl) playerTicketsEl.style.display = 'none';
+                if (adminSubtabsEl) adminSubtabsEl.style.display = 'flex';
+                if (adminAllPanelEl) adminAllPanelEl.style.display = adminTicketsSubtab === 'all' ? 'block' : 'none';
+                if (adminPlayerPanelEl) adminPlayerPanelEl.style.display = adminTicketsSubtab === 'all' ? 'none' : 'block';
+                return;
+            }
             if (profileMainTitleEl) profileMainTitleEl.textContent = '👤 Профиль';
             if (profileTicketsTitleEl) profileTicketsTitleEl.style.display = 'block';
             if (playerBlockEl) playerBlockEl.style.display = 'block';
