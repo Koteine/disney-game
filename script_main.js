@@ -5861,11 +5861,21 @@ ${optionsText}
           const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
           const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
             const raw = String(value || '').trim();
-            const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
-            if (!match) return NaN;
-            const [, y, mo, d, h, mi, ss = '0'] = match;
-            // datetime-local хранит локальное время устройства без таймзоны.
-            // Парсим вручную в локальный timestamp, без неявного Date.parse(...).
+
+            let y, mo, d, h, mi, ss = '0';
+
+            // Нативный формат datetime-local
+            let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+            if (match) {
+              [, y, mo, d, h, mi, ss = '0'] = match;
+            } else {
+              // Фолбэк для строкового формата DD.MM.YYYY HH:mm(:(ss))
+              match = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+              if (!match) return NaN;
+              [, d, mo, y, h, mi, ss = '0'] = match;
+            }
+
+
             const parsed = new Date(
               Number(y),
               Number(mo) - 1,
