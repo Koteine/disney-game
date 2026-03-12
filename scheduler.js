@@ -1,7 +1,17 @@
 // Вынесенный планировщик раундов
 
-const isAdminUser = (...args) => (window.isAdminUser ? window.isAdminUser(...args) : false);
-const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.formatMoscowDateTime(...args) : new Date(args[0] || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
+function schedulerIsAdminUser(...args) {
+  return typeof window.isAdminUser === 'function' ? window.isAdminUser(...args) : false;
+}
+
+function schedulerFormatMoscowDateTime(...args) {
+  if (typeof window.formatMoscowDateTime === 'function') return window.formatMoscowDateTime(...args);
+  return new Date(args[0] || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+}
+
+function schedulerGetNow() {
+  return typeof window.getAdminNow === 'function' ? window.getAdminNow() : Date.now();
+}
 
           let roundSchedules = [];
           let roundSchedulesRef = null;
@@ -69,9 +79,9 @@ const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.
 
             const content = scheduled.length
               ? scheduled.map((r, i) => {
-                  const start = formatMoscowDateTime(r.startAt || 0);
+                  const start = schedulerFormatMoscowDateTime(r.startAt || 0);
                   const mins = Math.max(1, Math.round((r.durationMs || 0) / 60000));
-                  const cancelBtn = isAdminUser()
+                  const cancelBtn = schedulerIsAdminUser()
                     ? ` <button onclick="adminCancelScheduledRound('${r.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`
                     : '';
                   return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start}, длительность ${mins} мин.${cancelBtn}</div>`;
@@ -82,7 +92,7 @@ const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.
 
             const processedContent = recentProcessed.length
               ? recentProcessed.map((r, i) => {
-                  const start = formatMoscowDateTime(r.startAt || 0);
+                  const start = schedulerFormatMoscowDateTime(r.startAt || 0);
                   const statusText = r.status === 'completed'
                     ? `запущен (Раунд №${r.launchedRound || '—'})`
                     : (r.status === 'cancelled' ? 'отменён' : 'в запуске');
@@ -96,7 +106,7 @@ const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.
 
           async function maybeActivateScheduledRound() {
             if (!hasRoundSchedulesSynced) return;
-            const now = getAdminNow();
+            const now = schedulerGetNow();
             const due = roundSchedules
 
               .filter(r => String(r.status || 'scheduled') === 'scheduled'
@@ -107,7 +117,7 @@ const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.
             if (!due?.key) return;
 
             const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
-              const txNow = getAdminNow();
+              const txNow = schedulerGetNow();
               if (!v || v.status !== 'scheduled') return v;
 
               if (txNow < (v.startAt || 0)) return v;
@@ -152,7 +162,7 @@ const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.
       renderRoundSchedules();
     }
 
-    const now = getAdminNow();
+    const now = schedulerGetNow();
     const due = (Array.isArray(roundSchedules) ? roundSchedules : [])
       .filter(r =>
         String(r.status || 'scheduled') === 'scheduled' &&
@@ -164,7 +174,7 @@ const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.
     if (!due?.key) return;
 
     const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
-      const txNow = getAdminNow();
+      const txNow = schedulerGetNow();
       if (!v || v.status !== 'scheduled') return v;
       if (txNow < (v.startAt || 0)) return v;
       if (txNow < getRoundActivationNotBefore(v)) return v;
