@@ -307,6 +307,51 @@ const formatMoscowDateTime = (...args) => (
             alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
           }
 
+          async function adminResetMiniEvents() {
+            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
+            if (!confirm('Сбросить зависшие мини-ивенты импульса и дуэлей каллиграфов?')) return;
+
+            const [duelsSnap, notificationsSnap, seasonSnap] = await Promise.all([
+              db.ref('calligraphy_duels').once('value'),
+              db.ref('system_notifications').once('value'),
+              db.ref('player_season_status').once('value')
+            ]);
+
+            const updates = {};
+            const now = Date.now();
+
+            duelsSnap.forEach((snap) => {
+              const duel = snap.val() || {};
+              const status = String(duel.status || '');
+              if (!['pending', 'active', 'resolving', 'declined', 'expired'].includes(status)) return;
+              updates[`calligraphy_duels/${snap.key}/status`] = 'reset';
+              updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
+              updates[`calligraphy_duels/${snap.key}/resetBy`] = String(currentUserId || '');
+            });
+
+            notificationsSnap.forEach((userSnap) => {
+              userSnap.forEach((notifSnap) => {
+                const notif = notifSnap.val() || {};
+                if (!String(notif.type || '').startsWith('calligraphy_duel_')) return;
+                updates[`system_notifications/${userSnap.key}/${notifSnap.key}`] = null;
+              });
+            });
+
+            seasonSnap.forEach((userSnap) => {
+              updates[`player_season_status/${userSnap.key}/last_impulse_time`] = 0;
+              updates[`player_season_status/${userSnap.key}/updatedAt`] = now;
+            });
+
+            if (!Object.keys(updates).length) {
+              alert('Активных данных импульса не найдено: сбрасывать нечего.');
+              return;
+            }
+
+            await db.ref().update(updates);
+            await postNews('🧹 Администратор сбросил(а) мини-ивенты импульса/дуэлей.');
+            alert('Готово: зависшая механика импульса очищена.');
+          }
+
           async function resetAllInventories() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             if (!confirm('Обнулить рюкзаки всех игроков?')) return;
@@ -528,6 +573,7 @@ const formatMoscowDateTime = (...args) => (
             window.executeEmergencyAction = executeEmergencyAction;
             window.adminUndoTicketRevoke = adminUndoTicketRevoke;
             window.adminResetCurrentRound = adminResetCurrentRound;
+            window.adminResetMiniEvents = adminResetMiniEvents;
             window.resetAllInventories = resetAllInventories;
             window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
             window.startEpicEvent = startEpicEvent;

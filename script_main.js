@@ -264,7 +264,8 @@ const JSON_URL = 'tasks.json';
          *                                МЕХАНИКА: ИМПУЛЬС (КУЛДАУН АКТИВАЦИИ)                                         *
          * Пауза между повторными активациями импульса, чтобы ограничить частоту использования.                        *
          ************************************************************************************************************/
-        const IMPULSE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+        const IMPULSE_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+        const DUEL_INVITE_TTL_MS = 15 * 60 * 1000;
         /************************************************************************************************************
          *                                  МЕХАНИКА: ДУЭЛИ КАЛЛИГРАФИИ                                                  *
          * Путь хранения дуэлей в Firebase Realtime Database.                                                           *
@@ -1592,7 +1593,7 @@ const JSON_URL = 'tasks.json';
             const duelKey = db.ref(DUEL_PATH).push().key;
             const payload = {
                 type: 'calligraphy_duel_invite',
-                text: `${players[myIndex]?.n || 'Игрок'} бросает тебе вызов в Дуэли Каллиграфов! Принять?`,
+                text: `Игрок "${players[myIndex]?.n || 'Игрок'}" приглашает тебя на дуэль каллиграфов`,
                 fromUserId: String(currentUserId),
                 duelKey,
                 symbol,
@@ -1603,15 +1604,16 @@ const JSON_URL = 'tasks.json';
                 db.ref(`system_notifications/${cellOwnerUserId}`).push(payload),
                 db.ref(`system_notifications/${currentUserId}`).push({
                     type: 'calligraphy_duel_wait_notice',
-                    text: '🕒 Вы отправили дуэль! Ждите до 15 минут, пока соперник примет вызов.',
+                    text: `Ты вызвал игрока "${decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок'}" на дуэль. Ждём схватку!`,
                     createdAt: now,
-                    expiresAt: now + (15 * 60 * 1000),
+                    expiresAt: now + DUEL_INVITE_TTL_MS,
                     duelKey,
                     targetUserId: String(cellOwnerUserId)
                 }),
                 db.ref(`player_season_status/${currentUserId}`).update({ last_impulse_time: now, updatedAt: now }),
                 db.ref(`${DUEL_PATH}/${duelKey}`).set({
                     createdAt: now,
+                    expiresAt: now + DUEL_INVITE_TTL_MS,
                     status: 'pending',
                     symbol,
                     challengerId: String(currentUserId),
@@ -1623,7 +1625,31 @@ const JSON_URL = 'tasks.json';
                 })
             ]);
             const ownerName = decodeURIComponent(String(ownerNameEncoded || ''));
-            alert(`Импульс отправлен игроку ${ownerName || 'Игрок'} ✨`);
+            alert(`Ты вызвал игрока "${ownerName || 'Игрок'}" на дуэль. Ждём схватку!`);
+        }
+
+        async function declineCalligraphyDuel(duelKey) {
+            if (!duelKey) return;
+            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
+            let challengerId = '';
+            const tx = await ref.transaction((row) => {
+                if (!row || row.status !== 'pending') return row;
+                challengerId = String(row.challengerId || '');
+                return {
+                    ...row,
+                    status: 'declined',
+                    declinedAt: Date.now(),
+                    declinedBy: String(currentUserId)
+                };
+            });
+            if (!tx.committed) return;
+            if (challengerId) {
+                await db.ref(`system_notifications/${challengerId}`).push({
+                    type: 'calligraphy_duel_declined',
+                    text: 'Соперник уклонился от дуэли. Можно отправить новый импульс.',
+                    createdAt: Date.now()
+                });
+            }
         }
 
         async function acceptCalligraphyDuel(duelKey) {
@@ -1639,8 +1665,12 @@ const JSON_URL = 'tasks.json';
                 const challengerAccepted = !!row.players[String(row.challengerId)]?.accepted;
                 const opponentAccepted = !!row.players[String(row.opponentId)]?.accepted;
                 if (challengerAccepted && opponentAccepted) {
+                    const now = getServerNowMs();
                     row.status = 'active';
-                    row.startedAt = Date.now();
+                    row.startedAt = now;
+                    row.countdownFrom = 5;
+                    row.duelStartAt = now + 5000;
+                    row.drawDurationMs = 7000;
                 }
                 return row;
             });
@@ -1836,23 +1866,31 @@ const JSON_URL = 'tasks.json';
             duelDrawingState = { drawing: false, enabled: false, ended: false };
             refNode.textContent = duelData.symbol?.char || '永';
             subtitle.textContent = `Символ: ${duelData.symbol?.char || '永'} (${duelData.symbol?.title || 'Вечность'})`;
-            timer.textContent = 'Время рисования: 7 сек';
-            countdown.textContent = '3';
+            const countdownFrom = Number(duelData.countdownFrom || 5);
+            const drawDurationMs = Number(duelData.drawDurationMs || 7000);
+            const duelStartAt = Number(duelData.duelStartAt || (Number(duelData.startedAt || 0) + (countdownFrom * 1000)));
+            timer.textContent = `Время рисования: ${Math.ceil(drawDurationMs / 1000)} сек`;
+            countdown.textContent = String(Math.max(1, countdownFrom));
             overlay.style.display = 'flex';
 
             clearInterval(duelCountdownInterval);
-            let c = 3;
+            let drawStarted = false;
             duelCountdownInterval = setInterval(() => {
-                c -= 1;
-                if (c > 0) {
-                    countdown.textContent = String(c);
-                } else if (c === 0) {
+                const serverNow = getServerNowMs();
+                const msToStart = duelStartAt - serverNow;
+                if (msToStart > 0) {
+                    countdown.textContent = String(Math.max(1, Math.ceil(msToStart / 1000)));
+                    return;
+                }
+                if (!drawStarted) {
+                    drawStarted = true;
+                    clearInterval(duelCountdownInterval);
                     countdown.textContent = 'Рисуй!';
                     duelDrawingState.enabled = true;
-                    const startedAt = Date.now();
+                    const startedAt = duelStartAt;
                     clearInterval(duelTimerInterval);
                     duelTimerInterval = setInterval(() => {
-                        const left = Math.max(0, 7000 - (Date.now() - startedAt));
+                        const left = Math.max(0, drawDurationMs - (getServerNowMs() - startedAt));
                         timer.textContent = `Время рисования: ${Math.ceil(left / 1000)} сек`;
                         if (left <= 0) {
                             clearInterval(duelTimerInterval);
@@ -1861,14 +1899,12 @@ const JSON_URL = 'tasks.json';
                             countdown.textContent = 'Готово';
                             db.ref(`${DUEL_PATH}/${duelKey}/players/${currentUserId}`).update({
                                 points: duelLocalPoints,
-                                finishedAt: Date.now()
+                                finishedAt: getServerNowMs()
                             });
                         }
                     }, 180);
-                } else {
-                    clearInterval(duelCountdownInterval);
                 }
-            }, 1000);
+            }, 150);
         }
 
         function closeCalligraphyDuelUI() {
@@ -1880,6 +1916,59 @@ const JSON_URL = 'tasks.json';
             activeDuelKey = null;
         }
 
+        async function expirePendingCalligraphyDuel(duelKey) {
+            if (!duelKey) return;
+            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
+            let challengerId = '';
+            const tx = await ref.transaction((row) => {
+                if (!row || row.status !== 'pending') return row;
+                if (Number(row.expiresAt || 0) > getServerNowMs()) return row;
+                challengerId = String(row.challengerId || '');
+                return {
+                    ...row,
+                    status: 'expired',
+                    expiredAt: getServerNowMs()
+                };
+            });
+            if (!tx.committed || !challengerId) return;
+            await db.ref(`system_notifications/${challengerId}`).push({
+                type: 'calligraphy_duel_timeout',
+                text: 'Жаль, твоя перчатка-вызов улетела в кусты и соперник её не заметил. Попробуй ещё разок',
+                createdAt: Date.now()
+            });
+        }
+
+        function showCalligraphyInviteNotification(notificationKey, payload) {
+            const wrap = document.getElementById('player-notification-wrap');
+            if (!wrap || !notificationKey) return;
+            const id = `duel-invite-${notificationKey}`;
+            if (document.getElementById(id)) return;
+            const card = document.createElement('div');
+            card.id = id;
+            card.className = 'player-notification';
+            card.style.borderColor = '#ffd54f';
+            const text = String(payload?.text || 'Игрок приглашает тебя на дуэль каллиграфов');
+            card.innerHTML = `
+                <div style="font-size:13px; line-height:1.4; color:#4a148c; margin-bottom:8px;">${text}</div>
+                <div style="display:flex; gap:8px;">
+                    <button class="admin-btn" style="margin:0; flex:1; background:#2e7d32;" data-action="accept">Согласиться</button>
+                    <button class="admin-btn" style="margin:0; flex:1; background:#6d4c41;" data-action="decline">Уклониться</button>
+                </div>`;
+            const closeAndDropNotification = async () => {
+                card.remove();
+                await db.ref(`system_notifications/${currentUserId}/${notificationKey}`).remove();
+            };
+            card.querySelector('[data-action="accept"]')?.addEventListener('click', async () => {
+                await acceptCalligraphyDuel(payload?.duelKey);
+                await closeAndDropNotification();
+            });
+            card.querySelector('[data-action="decline"]')?.addEventListener('click', async () => {
+                await declineCalligraphyDuel(payload?.duelKey);
+                await closeAndDropNotification();
+            });
+            wrap.appendChild(card);
+        }
+
         function subscribeToCalligraphyDuelInvites() {
             if (!currentUserId) return;
             if (duelInvitesRef) duelInvitesRef.off();
@@ -1887,10 +1976,7 @@ const JSON_URL = 'tasks.json';
             duelInvitesRef.on('child_added', snap => {
                 const v = snap.val() || {};
                 if (v.type !== 'calligraphy_duel_invite') return;
-                const fromName = players[myIndex]?.n || 'Игрок';
-                const ok = confirm(`${v.text || `${fromName} бросает тебе вызов в Дуэли Каллиграфов! Принять?`}`);
-                if (ok) acceptCalligraphyDuel(v.duelKey);
-                db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
+                showCalligraphyInviteNotification(snap.key, v);
             });
 
             if (activeDuelRef) activeDuelRef.off();
@@ -1911,6 +1997,11 @@ const JSON_URL = 'tasks.json';
                             if (!currentStartedAt || (Date.now() - currentStartedAt) <= (20 * 60 * 1000)) return current;
                             return { ...current, status: 'done', finishedAt: Date.now(), expiredByTimeout: true, winnerId: '', loserId: '' };
                         }).catch((err) => console.error('stale duel cleanup failed', err));
+                        return;
+                    }
+
+                    if (row.status === 'pending' && Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= getServerNowMs()) {
+                        expirePendingCalligraphyDuel(duelSnap.key).catch((err) => console.error('pending duel timeout failed', err));
                         return;
                     }
 
@@ -2026,7 +2117,8 @@ const JSON_URL = 'tasks.json';
                 teleport: 'admin-emergency-teleport-body',
                 items: 'admin-emergency-items-body',
                 archive: 'admin-emergency-archive-body',
-                karma: 'admin-emergency-karma-body'
+                karma: 'admin-emergency-karma-body',
+                resetEvents: 'admin-emergency-reset-events-body'
             };
             const targetId = map[sectionName];
             if (!targetId) return;
@@ -2755,12 +2847,21 @@ const JSON_URL = 'tasks.json';
                     if (!duel || typeof duel !== 'object') return false;
                     return String(duel.challengerId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
                 });
+                const pendingOutgoingDuel = activeDuels.find((duel) => {
+                    if (!duel || typeof duel !== 'object') return false;
+                    return String(duel.challengerId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
+                });
                 if (hasPendingOutgoingDuel) {
-                    if (statusLabel) statusLabel.textContent = 'Вы бросили вызов! Ждем ответа соперника...';
+                    const expiresAt = Number(pendingOutgoingDuel?.expiresAt || 0);
+                    const msLeft = Math.max(0, expiresAt - getServerNowMs());
+                    const mm = String(Math.floor(msLeft / 60000)).padStart(2, '0');
+                    const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
+                    if (statusLabel) statusLabel.textContent = `Вы бросили вызов! Ждём ответа соперника (${mm}:${ss})`;
                     if (statusLabel) statusLabel.style.display = 'block';
                     if (rollBtn) rollBtn.disabled = true;
                     return true;
                 }
+                if (statusLabel) statusLabel.style.display = 'none';
                 return false;
             };
 
@@ -6100,25 +6201,12 @@ const JSON_URL = 'tasks.json';
             db.ref(`system_notifications/${currentUserId}`).limitToLast(20).on('child_added', snap => {
                 const v = snap.val() || {};
                 if (!v.text) return;
+                if (v.type === 'calligraphy_duel_invite') return;
                 if (v.expiresAt && Number(v.expiresAt) < Date.now()) {
                     db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
                     return;
                 }
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
-            });
-
-            if (duelNotificationsRef) duelNotificationsRef.off();
-            duelNotificationsRef = db.ref(DUEL_PATH).limitToLast(40);
-            duelNotificationsRef.on('child_added', snap => {
-                const duel = snap.val() || {};
-                const me = String(currentUserId);
-                if (String(duel.opponentId || '') !== me) return;
-                if (String(duel.status || '') !== 'pending') return;
-                showPlayerNotification({
-                    id: `duel-pending-${snap.key}`,
-                    text: duel.text || 'Тебя вызвали на дуэль! Открой уведомления и прими вызов.',
-                    borderColor: '#ffd54f'
-                });
             });
 
             if (duelsRef) duelsRef.off();
