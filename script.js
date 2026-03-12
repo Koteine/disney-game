@@ -1520,6 +1520,14 @@ const JSON_URL = 'tasks.json';
             };
             await Promise.all([
                 db.ref(`system_notifications/${cellOwnerUserId}`).push(payload),
+                db.ref(`system_notifications/${currentUserId}`).push({
+                    type: 'calligraphy_duel_wait_notice',
+                    text: '🕒 Вы отправили дуэль! Ждите до 15 минут, пока соперник примет вызов.',
+                    createdAt: now,
+                    expiresAt: now + (15 * 60 * 1000),
+                    duelKey,
+                    targetUserId: String(cellOwnerUserId)
+                }),
                 db.ref(`player_season_status/${currentUserId}`).update({ last_impulse_time: now, updatedAt: now }),
                 db.ref(`${DUEL_PATH}/${duelKey}`).set({
                     createdAt: now,
@@ -5688,14 +5696,17 @@ const JSON_URL = 'tasks.json';
 
           const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
           const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
-            const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-            if (!m) return NaN;
-            const [, y, mon, d, h, min] = m.map(Number);
-            return Date.UTC(y, mon - 1, d, h - 3, min, 0, 0);
+            const parsed = new Date(String(value || '')).getTime();
+            return Number.isFinite(parsed) ? parsed : NaN;
           });
           const toMoscowDateTimeLocalInput = window.toMoscowDateTimeLocalInput || ((ts) => {
-            const date = new Date((Number(ts) || Date.now()) + (3 * 60 * 60000));
-            return date.toISOString().slice(0, 16);
+            const date = new Date(Number(ts) || Date.now());
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            const hh = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
           });
 
           const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
