@@ -277,6 +277,8 @@ ${optionsText}
             window.itemTypes = itemTypes;
             window.inkChallengeOptions = inkChallengeOptions;
             window.addInventoryItem = addInventoryItem;
+            window.consumeInventoryItem = consumeInventoryItem;
+            window.inventoryCount = inventoryCount;
             window.renderInventory = renderInventory;
             window.activateGoldenPollen = activateGoldenPollen;
             window.activateMagnifier = activateMagnifier;
