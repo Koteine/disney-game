@@ -219,6 +219,7 @@ const JSON_URL = 'tasks.json';
         let duelCountdownInterval = null;
         let duelWaitNoticeInterval = null;
         let duelResultShownByKey = {};
+        let duelRowListeners = {};
 
 
         /************************************************************************************************************
@@ -1745,14 +1746,21 @@ const JSON_URL = 'tasks.json';
                     row.countdownFrom = 5;
                     row.duelStartAt = now + 5000;
                     row.drawDurationMs = 7000;
+                    row.duelStartedNoticePosted = false;
                 }
                 return row;
             });
             const duelNow = (await ref.once('value')).val() || {};
             if (duelNow.status === 'active') {
-                const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
-                const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
-                await postNews(`${a} и ${b} сошлись в дуэли каллиграфов`);
+                const startedFeedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelStartedNoticePosted`).transaction((posted) => {
+                    if (posted) return;
+                    return { at: getServerNowMs(), by: String(currentUserId || '') };
+                });
+                if (startedFeedTx.committed) {
+                    const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
+                    const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
+                    await postNews(`${a} и ${b} сошлись в дуэли каллиграфов`);
+                }
                 const now = getServerNowMs();
                 await db.ref().update({
                     [`player_season_status/${duelNow.challengerId}/last_impulse_time`]: now,
@@ -1856,11 +1864,11 @@ const JSON_URL = 'tasks.json';
             if (!duelKey) return;
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
             const lockTx = await ref.transaction(row => {
-                if (!row) return row;
+                if (!row) return;
                 const now = Date.now();
                 const lockAge = now - Number(row.resolvingAt || 0);
                 const canTakeOverStaleLock = row.status === 'resolving' && lockAge > 30000;
-                if (row.status !== 'active' && !canTakeOverStaleLock) return row;
+                if (row.status !== 'active' && !canTakeOverStaleLock) return;
                 row.status = 'resolving';
                 row.resolvingAt = now;
                 row.resolvingBy = String(currentUserId || 'system');
@@ -1884,50 +1892,89 @@ const JSON_URL = 'tasks.json';
             const loserId = participants.find(uid => String(uid) !== String(winnerId)) || '';
             const winnerName = duel.players?.[winnerId]?.nickname || 'Игрок';
 
+            const resolveTx = await ref.transaction((row) => {
+                if (!row) return;
+                if (row.status === 'done' || row.notificationsPosted) return;
+                if (row.status !== 'resolving') return;
+                return {
+                    ...row,
+                    status: 'done',
+                    finishedAt: Date.now(),
+                    scores,
+                    winnerId,
+                    loserId,
+                    notificationsPosted: false,
+                    duelResolvedNoticePosted: false,
+                    rewardsGrantedAt: row.rewardsGrantedAt || 0
+                };
+            });
+            if (!resolveTx.committed) return;
+
             if (winnerId) {
                 const rewardItemKey = DUEL_REWARD_ITEMS[Math.floor(Math.random() * DUEL_REWARD_ITEMS.length)];
                 const rewardMeta = window.itemTypes?.[rewardItemKey] || { emoji: '🎁', name: 'Случайный предмет' };
-                await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction(v => (Number(v) || 0) + 1);
-                const ticket = await claimSequentialTickets(1);
-                if (ticket?.length) {
-                    const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
-                    const owner = Number(winnerStateSnap.val()?.charIndex);
-                    if (Number.isInteger(owner)) {
-                        await db.ref('tickets_archive').push({
-                            owner,
-                            userId: Number(winnerId),
-                            ticket: String(ticket[0]),
-                            taskIdx: -1,
-                            round: currentRoundNum,
-                            cell: 0,
-                            cellIdx: -1,
-                            isEventReward: true,
-                            eventId: 'calligraphy_duel',
-                            taskLabel: 'Награда за победу в дуэли каллиграфов',
-                            archivedAt: Date.now(),
-                            excluded: false
-                        });
+                const rewardTx = await db.ref(`${DUEL_PATH}/${duelKey}/rewardsGrantedAt`).transaction((v) => {
+                    if (Number(v) > 0) return;
+                    return Date.now();
+                });
+                if (rewardTx.committed) {
+                    await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction(v => (Number(v) || 0) + 1);
+                    const ticket = await claimSequentialTickets(1);
+                    if (ticket?.length) {
+                        const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
+                        const owner = Number(winnerStateSnap.val()?.charIndex);
+                        if (Number.isInteger(owner)) {
+                            await db.ref('tickets_archive').push({
+                                owner,
+                                userId: Number(winnerId),
+                                ticket: String(ticket[0]),
+                                taskIdx: -1,
+                                round: currentRoundNum,
+                                cell: 0,
+                                cellIdx: -1,
+                                isEventReward: true,
+                                eventId: 'calligraphy_duel',
+                                taskLabel: 'Награда за победу в дуэли каллиграфов',
+                                archivedAt: Date.now(),
+                                excluded: false
+                            });
+                        }
                     }
                 }
-                await db.ref(`system_notifications/${winnerId}`).push({
-                    text: `🏆 Дуэль каллиграфов выиграна! +1 билет и ${rewardMeta.emoji} ${rewardMeta.name} в рюкзак.`,
-                    createdAt: Date.now(),
-                    type: 'calligraphy_duel_result'
-                });
             }
-            if (loserId) {
-                await db.ref(`player_season_status/${loserId}`).update({
-                    karma_points: firebase.database.ServerValue.increment(1),
-                    updatedAt: Date.now()
-                });
-                await db.ref(`system_notifications/${loserId}`).push({
-                    text: 'Не расстраивайся! Твоя точность растет (+1 к карме)',
-                    createdAt: Date.now(),
-                    type: 'calligraphy_duel_result'
-                });
+
+            const notificationsTx = await db.ref(`${DUEL_PATH}/${duelKey}/notificationsPosted`).transaction((v) => {
+                if (v) return;
+                return { at: Date.now(), by: String(currentUserId || '') };
+            });
+            if (notificationsTx.committed) {
+                if (winnerId) {
+                    await db.ref(`system_notifications/${winnerId}`).push({
+                        text: 'Вот это точность! Молодец! Заслуженные награды уже зачислены',
+                        createdAt: Date.now(),
+                        type: 'calligraphy_duel_result'
+                    });
+                }
+                if (loserId) {
+                    await db.ref(`player_season_status/${loserId}`).update({
+                        karma_points: firebase.database.ServerValue.increment(1),
+                        updatedAt: Date.now()
+                    });
+                    await db.ref(`system_notifications/${loserId}`).push({
+                        text: 'Увы! У соперника более точное перо! Но зато ты получаешь +1 в карму',
+                        createdAt: Date.now(),
+                        type: 'calligraphy_duel_result'
+                    });
+                }
             }
-            await ref.update({ status: 'done', finishedAt: Date.now(), scores, winnerId, loserId });
-            if (winnerName) await postNews(`${winnerName} победил(а) в дуэли`);
+
+            const resolvedFeedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelResolvedNoticePosted`).transaction((posted) => {
+                if (posted) return;
+                return { at: Date.now(), by: String(currentUserId || '') };
+            });
+            if (resolvedFeedTx.committed && winnerName) {
+                await postNews(`${winnerName} победил(а) в дуэли`);
+            }
         }
 
         async function openCalligraphyDuelUI(duelKey, duelData) {
@@ -2081,12 +2128,14 @@ const JSON_URL = 'tasks.json';
         function showCalligraphyInviteNotification(notificationKey, payload) {
             const wrap = document.getElementById('player-notification-wrap');
             if (!wrap || !notificationKey) return;
+            if (!payload?.duelKey) return;
             const id = `duel-invite-${notificationKey}`;
             if (document.getElementById(id)) return;
             const card = document.createElement('div');
             card.id = id;
             card.className = 'player-notification';
             card.style.borderColor = '#ffd54f';
+            card.style.pointerEvents = 'auto';
             const text = String(payload?.text || 'Игрок приглашает тебя на дуэль каллиграфов');
             card.innerHTML = `
                 <div style="font-size:13px; line-height:1.4; color:#4a148c; margin-bottom:8px;">${text}</div>
@@ -2098,20 +2147,97 @@ const JSON_URL = 'tasks.json';
                 card.remove();
                 await db.ref(`system_notifications/${currentUserId}/${notificationKey}`).remove();
             };
-            card.querySelector('[data-action="accept"]')?.addEventListener('click', async () => {
-                await acceptCalligraphyDuel(payload?.duelKey);
-                await closeAndDropNotification();
+            let processing = false;
+            const handleInviteAction = async (action) => {
+                if (processing) return;
+                processing = true;
+                card.querySelectorAll('button').forEach((btn) => {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.75';
+                });
+                try {
+                    if (action === 'accept') {
+                        await acceptCalligraphyDuel(payload.duelKey);
+                    } else {
+                        await declineCalligraphyDuel(payload.duelKey);
+                    }
+                    await closeAndDropNotification();
+                } finally {
+                    processing = false;
+                }
+            };
+            card.querySelector('[data-action="accept"]')?.addEventListener('click', (evt) => {
+                evt.stopPropagation();
+                handleInviteAction('accept');
             });
-            card.querySelector('[data-action="decline"]')?.addEventListener('click', async () => {
-                await declineCalligraphyDuel(payload?.duelKey);
-                await closeAndDropNotification();
+            card.querySelector('[data-action="decline"]')?.addEventListener('click', (evt) => {
+                evt.stopPropagation();
+                handleInviteAction('decline');
             });
             wrap.appendChild(card);
+        }
+
+        function clearCalligraphyDuelRowListeners() {
+            Object.values(duelRowListeners).forEach((entry) => {
+                if (!entry?.ref || !entry?.handler) return;
+                entry.ref.off('value', entry.handler);
+            });
+            duelRowListeners = {};
+        }
+
+        function bindCalligraphyDuelRowListener(duelKey) {
+            if (!duelKey || duelRowListeners[duelKey]) return;
+            const duelRef = db.ref(`${DUEL_PATH}/${duelKey}`);
+            const handler = (duelSnap) => {
+                const row = duelSnap.val() || {};
+                const me = String(currentUserId);
+                const startedAt = Number(row.startedAt || row.createdAt || 0);
+                const isStaleActive = row.status === 'active' && startedAt > 0 && (Date.now() - startedAt) > (20 * 60 * 1000);
+
+                if (isStaleActive) {
+                    db.ref(`${DUEL_PATH}/${duelSnap.key}`).transaction((current) => {
+                        if (!current || current.status !== 'active') return current;
+                        const currentStartedAt = Number(current.startedAt || current.createdAt || 0);
+                        if (!currentStartedAt || (Date.now() - currentStartedAt) <= (20 * 60 * 1000)) return current;
+                        return { ...current, status: 'done', finishedAt: Date.now(), expiredByTimeout: true, winnerId: '', loserId: '' };
+                    }).catch((err) => console.error('stale duel cleanup failed', err));
+                    return;
+                }
+
+                if (row.status === 'pending' && Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= getServerNowMs()) {
+                    expirePendingCalligraphyDuel(duelSnap.key).catch((err) => console.error('pending duel timeout failed', err));
+                    return;
+                }
+
+                if (row.status === 'active' && activeDuelKey !== duelSnap.key) {
+                    openCalligraphyDuelUI(duelSnap.key, row);
+                }
+                const allFinished = Object.values(row.players || {}).length >= 2 && Object.values(row.players || {}).every(p => Array.isArray(p.points) && p.points.length > 0);
+                if (row.status === 'active' && allFinished) {
+                    finishCalligraphyDuel(duelSnap.key).catch(err => console.error('finish duel failed', err));
+                }
+                if (row.status === 'done') {
+                    if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
+                    if (duelResultShownByKey[duelSnap.key]) return;
+                    duelResultShownByKey[duelSnap.key] = true;
+                    const myScore = Number(row.scores?.[me] || 0);
+                    const winner = String(row.winnerId || '') === me;
+                    if (winner) {
+                        launchCelebrationFireworks();
+                        alert(`Победа в дуэли! Точность: ${myScore}%`);
+                    } else if (!row.expiredByTimeout) {
+                        alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
+                    }
+                }
+            };
+            duelRef.on('value', handler);
+            duelRowListeners[duelKey] = { ref: duelRef, handler };
         }
 
         function subscribeToCalligraphyDuelInvites() {
             if (!currentUserId) return;
             if (duelInvitesRef) duelInvitesRef.off();
+            clearCalligraphyDuelRowListeners();
             duelInvitesRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(30);
             duelInvitesRef.on('child_added', snap => {
                 const v = snap.val() || {};
@@ -2125,47 +2251,13 @@ const JSON_URL = 'tasks.json';
                 const duel = snap.val() || {};
                 const me = String(currentUserId);
                 if (![String(duel.challengerId), String(duel.opponentId)].includes(me)) return;
-                db.ref(`${DUEL_PATH}/${snap.key}`).on('value', duelSnap => {
-                    const row = duelSnap.val() || {};
-                    const startedAt = Number(row.startedAt || row.createdAt || 0);
-                    const isStaleActive = row.status === 'active' && startedAt > 0 && (Date.now() - startedAt) > (20 * 60 * 1000);
-
-                    if (isStaleActive) {
-                        db.ref(`${DUEL_PATH}/${duelSnap.key}`).transaction((current) => {
-                            if (!current || current.status !== 'active') return current;
-                            const currentStartedAt = Number(current.startedAt || current.createdAt || 0);
-                            if (!currentStartedAt || (Date.now() - currentStartedAt) <= (20 * 60 * 1000)) return current;
-                            return { ...current, status: 'done', finishedAt: Date.now(), expiredByTimeout: true, winnerId: '', loserId: '' };
-                        }).catch((err) => console.error('stale duel cleanup failed', err));
-                        return;
-                    }
-
-                    if (row.status === 'pending' && Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= getServerNowMs()) {
-                        expirePendingCalligraphyDuel(duelSnap.key).catch((err) => console.error('pending duel timeout failed', err));
-                        return;
-                    }
-
-                    if (row.status === 'active' && activeDuelKey !== duelSnap.key) {
-                        openCalligraphyDuelUI(duelSnap.key, row);
-                    }
-                    const allFinished = Object.values(row.players || {}).length >= 2 && Object.values(row.players || {}).every(p => Array.isArray(p.points) && p.points.length > 0);
-                    if (row.status === 'active' && allFinished) {
-                        finishCalligraphyDuel(duelSnap.key).catch(err => console.error('finish duel failed', err));
-                    }
-                    if (row.status === 'done') {
-                        if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
-                        if (duelResultShownByKey[duelSnap.key]) return;
-                        duelResultShownByKey[duelSnap.key] = true;
-                        const myScore = Number(row.scores?.[me] || 0);
-                        const winner = String(row.winnerId || '') === me;
-                        if (winner) {
-                            launchCelebrationFireworks();
-                            alert(`Победа в дуэли! Точность: ${myScore}%`);
-                        } else if (!row.expiredByTimeout) {
-                            alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
-                        }
-                    }
-                });
+                bindCalligraphyDuelRowListener(snap.key);
+            });
+            activeDuelRef.on('child_removed', snap => {
+                const entry = duelRowListeners[snap.key];
+                if (!entry?.ref || !entry?.handler) return;
+                entry.ref.off('value', entry.handler);
+                delete duelRowListeners[snap.key];
             });
         }
 
