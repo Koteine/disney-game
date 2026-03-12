@@ -1426,26 +1426,36 @@ const JSON_URL = 'tasks.json';
         }
 
         async function activateCloak(cellIdx) {
-            const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
-            const cell = cellSnap.val();
-            if (!cell || Number(cell.userId) !== Number(currentUserId)) return alert('Плащ можно надеть только в своей карточке задания.');
-            if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
-            if ((myInventory.cloak || 0) <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
-            if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
-                return alert('Плащ можно надеть только на обычное задание.');
+            try {
+                await waitForDbReady();
+                if (!currentUserId) return alert('Сначала войдите в игру, затем попробуйте снова.');
+
+                const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
+                const cell = cellSnap.val();
+                if (!cell || Number(cell.userId) !== Number(currentUserId)) return alert('Плащ можно надеть только в своей карточке задания.');
+                if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
+                if ((myInventory.cloak || 0) <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
+                if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
+                    return alert('Плащ можно надеть только на обычное задание.');
+                }
+
+                const consumed = await consumeInventoryItem('cloak', 1);
+                if (!consumed) return alert('Плащ уже израсходован.');
+
+                const roundNum = Number(currentRoundNum) || 0;
+                const debt = { cellIdx: Number(cellIdx), round: roundNum, dueRound: roundNum + 1, active: true, acceptedRounds: {} };
+                await db.ref(`board/${cellIdx}`).update({ deferred: true, deferredAt: Date.now(), deferredRound: roundNum, invisibleMode: true });
+                await db.ref(`whitelist/${currentUserId}/debt`).set(debt);
+
+                alert('🎭 Вы скрылись под плащом. Теперь вы обязаны сдать ЭТО задание и СЛЕДУЮЩЕЕ до конца следующего раунда, иначе сгорят оба билета');
+                const playerName = players?.[myIndex]?.n || 'Игрок';
+                await postNews(`🎭 ${playerName} активировал(а) Плащ-невидимку и отложил(а) задание до следующего раунда.`);
+                const updated = await db.ref(`board/${cellIdx}`).once('value');
+                showCell(cellIdx, updated.val());
+            } catch (e) {
+                console.error('activateCloak failed', e);
+                alert('Не удалось надеть плащ. Обновите страницу и попробуйте ещё раз.');
             }
-
-            const consumed = await consumeInventoryItem('cloak', 1);
-            if (!consumed) return alert('Плащ уже израсходован.');
-
-            const debt = { cellIdx: Number(cellIdx), round: Number(currentRoundNum), dueRound: Number(currentRoundNum) + 1, active: true, acceptedRounds: {} };
-            await db.ref(`board/${cellIdx}`).update({ deferred: true, deferredAt: Date.now(), deferredRound: currentRoundNum, invisibleMode: true });
-            await db.ref(`whitelist/${currentUserId}/debt`).set(debt);
-
-            alert('🎭 Вы скрылись под плащом. Теперь вы обязаны сдать ЭТО задание и СЛЕДУЮЩЕЕ до конца следующего раунда, иначе сгорят оба билета');
-            await postNews(`🎭 ${players[myIndex].n} активировал(а) Плащ-невидимку и отложил(а) задание до следующего раунда.`);
-            const updated = await db.ref(`board/${cellIdx}`).once('value');
-            showCell(cellIdx, updated.val());
         }
 
         function askForcedSurrenderExit() {
