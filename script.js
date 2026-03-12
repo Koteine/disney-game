@@ -5819,28 +5819,45 @@ const JSON_URL = 'tasks.json';
           }
 
           async function adminScheduleRound() {
-            if (!isAdminUser()) return;
-            const startRaw = document.getElementById('round-start-at')?.value;
-            const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
-            const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
-            const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
-            const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
-            if (!startRaw) return alert('Выбери дату и время старта раунда.');
-            if (!durationMs || durationMs < 60000) return alert('Минимальная длительность раунда — 1 минута.');
-            const startAt = parseMoscowDateTimeLocalInput(startRaw);
-            if (!Number.isFinite(startAt) || startAt <= getAdminNow() - 1000) return alert('Время старта должно быть в будущем.');
+  if (!isAdminUser()) return;
 
-            const payload = {
-              status: 'scheduled',
-              startAt,
-              durationMs,
-              createdAt: Date.now(),
-              activationNotBefore: Date.now() + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
-              createdBy: currentUserId
-            };
-            await db.ref('round_schedules').push(payload);
-            alert('Раунд запланирован.');
-          }
+  const startRaw = document.getElementById('round-start-at')?.value;
+  const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
+  const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
+  const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
+  const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+
+  if (!startRaw) return alert('Выбери дату и время старта раунда.');
+  if (!durationMs || durationMs < 60000) return alert('Минимальная длительность раунда — 1 минута.');
+
+  const startAt = parseMoscowDateTimeLocalInput(startRaw);
+  if (!Number.isFinite(startAt) || startAt <= getAdminNow() - 1000) {
+    return alert('Время старта должно быть в будущем.');
+  }
+
+  const payload = {
+    status: 'scheduled',
+    startAt,
+    durationMs,
+    createdAt: Date.now(),
+    activationNotBefore: Date.now() + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
+    createdBy: currentUserId
+  };
+
+  const ref = db.ref('round_schedules').push();
+  await ref.set(payload);
+
+  // локально показываем сразу, не дожидаясь listener
+  roundSchedules = [...(Array.isArray(roundSchedules) ? roundSchedules : []), {
+    key: ref.key,
+    ...payload
+  }].sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+
+  renderRoundSchedules();
+  persistRoundSchedulesBackup(roundSchedules);
+
+  alert('Раунд запланирован.');
+}
 
           async function adminCancelScheduledRound(scheduleId) {
             if (!scheduleId || !isAdminUser()) return;
