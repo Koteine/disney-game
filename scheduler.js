@@ -1,5 +1,8 @@
 // Вынесенный планировщик раундов
 
+const isAdminUser = (...args) => (window.isAdminUser ? window.isAdminUser(...args) : false);
+const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.formatMoscowDateTime(...args) : new Date(args[0] || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
+
           let roundSchedules = [];
           let roundSchedulesRef = null;
           const ROUND_SCHEDULES_STORAGE_KEY = 'disney_round_schedules_backup_v1';
