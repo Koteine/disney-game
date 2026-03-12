@@ -4398,8 +4398,18 @@ const JSON_URL = 'tasks.json';
         }
 
         function switchTab(id, el) {
+            const isAdminTab = id === 'tab-admin';
+            if (isAdminTab && !isAdminUser()) {
+                const gameNavBtn = document.querySelector('.nav-item[onclick*="tab-game"]');
+                id = 'tab-game';
+                el = gameNavBtn || el;
+            }
+
+            const nextTab = document.getElementById(id);
+            if (!nextTab) return;
+
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('tab-active'));
-            document.getElementById(id).classList.add('tab-active');
+            nextTab.classList.add('tab-active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             if (el) el.classList.add('active');
             if (id === 'tab-wheel') drawWheel();
