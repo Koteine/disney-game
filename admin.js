@@ -1,5 +1,13 @@
 // Вынесенные админские функции
 
+const isAdminUser = (...args) => (window.isAdminUser ? window.isAdminUser(...args) : false);
+const waitForDbReady = (...args) => {
+  if (window.waitForDbReady) return window.waitForDbReady(...args);
+  return Promise.reject(new Error('waitForDbReady is not defined'));
+};
+const parseMoscowDateTimeLocalInput = (...args) => (window.parseMoscowDateTimeLocalInput ? window.parseMoscowDateTimeLocalInput(...args) : NaN);
+const formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.formatMoscowDateTime(...args) : new Date(args[0] || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
+
           async function adminStartNewRound() {
             const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
             const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
