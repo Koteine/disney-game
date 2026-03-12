@@ -5861,6 +5861,7 @@ ${optionsText}
           const formatMoscowDateTime = window.formatMoscowDateTime || ((ts) => new Date(ts || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
           const parseMoscowDateTimeLocalInput = window.parseMoscowDateTimeLocalInput || ((value) => {
             const raw = String(value || '').trim();
+
             let y, mo, d, h, mi, ss = '0';
 
             // Нативный формат datetime-local
@@ -5874,7 +5875,7 @@ ${optionsText}
               [, d, mo, y, h, mi, ss = '0'] = match;
             }
 
-            // Сравнение везде идёт по timestamp (число), без сравнения строк.
+
             const parsed = new Date(
               Number(y),
               Number(mo) - 1,
@@ -6781,13 +6782,42 @@ ${optionsText}
             el.textContent = String(mine.length);
         }
 
-        function pickExhibitWork(acceptedWorks) {
-            if (!acceptedWorks.length) return null;
+        function resolveSubmissionOwnerUserId(work) {
+            const directUserId = String(work?.userId || '').trim();
+            if (directUserId) return directUserId;
+            const byOwnerTicket = allTicketsData.find(t => Number(t.owner) === Number(work?.owner) && t.userId);
+            return String(byOwnerTicket?.userId || '').trim();
+        }
+
+        function getGalleryApprovedPool() {
+            return (allSubmissions || []).filter(work => {
+                if (!work || String(work.status || '') !== 'accepted') return false;
+                if (!(work.afterImageData || work.imageData)) return false;
+
+                const ownerUserId = resolveSubmissionOwnerUserId(work);
+                if (!ownerUserId || ownerUserId === String(ADMIN_ID)) return false;
+
+                const profile = seasonProfilesByUserId?.[ownerUserId];
+                if (!profile || profile.deletedAt) return false;
+
+                return true;
+            });
+        }
+
+        function pickExhibitWorks(acceptedWorks, size = 1) {
+            if (!acceptedWorks.length) return [];
+            const safeSize = Math.max(1, Number(size) || 1);
+            if (acceptedWorks.length <= safeSize) return [...acceptedWorks];
+
             const slot = getGallerySlot();
-            let seed = slot % 2147483647;
-            seed = (seed * 48271) % 2147483647;
-            const idx = seed % acceptedWorks.length;
-            return acceptedWorks[idx];
+            let seed = (slot % 2147483647) || 1;
+            const pool = [...acceptedWorks];
+            for (let i = pool.length - 1; i > 0; i -= 1) {
+                seed = (seed * 48271) % 2147483647;
+                const j = seed % (i + 1);
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            return pool.slice(0, safeSize);
         }
 
         async function spendTicketsTransaction(cost) {
@@ -6954,13 +6984,13 @@ ${optionsText}
         function renderGalleryTab() {
             const wrap = document.getElementById('gallery-content');
             if (!wrap) return;
-            const approved = (allSubmissions || []).filter(x => x.status === 'accepted' && (x.afterImageData || x.imageData) && String(x.userId || '') !== String(ADMIN_ID));
-            const picked = pickExhibitWork(approved);
+            const approvedPool = getGalleryApprovedPool();
+            const picked = pickExhibitWorks(approvedPool, 1)[0] || null;
             if (!picked) {
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Твое место в истории пустует... Будь первым, чью работу увидят все!</p><button class="admin-btn" onclick="switchTab('tab-works', document.querySelector('.nav-item[onclick*=\"tab-works\"]'))" style="margin:0; width:100%;">Перейти к заданиям</button></div>`;
                 return;
             }
-            const ownerUserId = String(picked.userId || allTicketsData.find(t => Number(t.owner) === Number(picked.owner) && t.userId)?.userId || '').trim();
+            const ownerUserId = resolveSubmissionOwnerUserId(picked);
             const exhibitId = `${ownerUserId || 'unknown'}_${picked.id}_${getGallerySlot()}`;
             const img = picked.afterImageData || picked.imageData;
             wrap.innerHTML = `
