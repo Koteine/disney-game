@@ -1,12 +1,27 @@
 // Вынесенные админские функции
 
-var isAdminUser = (...args) => (window.isAdminUser ? window.isAdminUser(...args) : false);
-var waitForDbReady = (...args) => {
-  if (window.waitForDbReady) return window.waitForDbReady(...args);
+const isAdminUser = (...args) => (
+  typeof window.isAdminUser === 'function' && window.isAdminUser !== isAdminUser
+    ? window.isAdminUser(...args)
+    : false
+);
+const waitForDbReady = (...args) => {
+  if (typeof window.waitForDbReady === 'function' && window.waitForDbReady !== waitForDbReady) {
+    return window.waitForDbReady(...args);
+  }
+  if (window.db) return Promise.resolve(window.db);
   return Promise.reject(new Error('waitForDbReady is not defined'));
 };
-var parseMoscowDateTimeLocalInput = (...args) => (window.parseMoscowDateTimeLocalInput ? window.parseMoscowDateTimeLocalInput(...args) : NaN);
-var formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.formatMoscowDateTime(...args) : new Date(args[0] || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }));
+const parseMoscowDateTimeLocalInput = (...args) => (
+  typeof window.parseMoscowDateTimeLocalInput === 'function' && window.parseMoscowDateTimeLocalInput !== parseMoscowDateTimeLocalInput
+    ? window.parseMoscowDateTimeLocalInput(...args)
+    : NaN
+);
+const formatMoscowDateTime = (...args) => (
+  typeof window.formatMoscowDateTime === 'function' && window.formatMoscowDateTime !== formatMoscowDateTime
+    ? window.formatMoscowDateTime(...args)
+    : new Date(args[0] || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })
+);
 
           async function adminStartNewRound() {
             const d = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
@@ -503,7 +518,6 @@ var formatMoscowDateTime = (...args) => (window.formatMoscowDateTime ? window.fo
           }
 
           async function initAdminPage() {
-            window.waitForDbReady = window.waitForDbReady || waitForDbReady;
             exposeAdminActions();
             ensureAdminTabVisibility();
 
