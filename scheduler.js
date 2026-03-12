@@ -228,7 +228,10 @@ async function adminScheduleRound() {
       await window.waitForDbReady().catch(() => null);
     }
 
-    const startAtValue = document.getElementById('round-start-at')?.value;
+    const startAtInput = document.getElementById('round-start-at');
+    const startAtValue = String(startAtInput?.value || '').trim();
+    const startAtInputType = String(startAtInput?.type || '').toLowerCase();
+    console.log(startAtValue);
     const days = parseInt(document.getElementById('r-days')?.value || '0', 10) || 0;
     const hours = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
     const mins = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
@@ -241,7 +244,25 @@ async function adminScheduleRound() {
 
     const parser = (typeof window.parseMoscowDateTimeLocalInput === 'function')
       ? window.parseMoscowDateTimeLocalInput
-      : (v) => new Date(v).getTime();
+      : (rawValue) => {
+        const raw = String(rawValue || '').trim();
+        let y, mo, d, h, mi, ss = '0';
+
+        let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (match) {
+          [, y, mo, d, h, mi, ss = '0'] = match;
+        } else {
+          match = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+          if (!match) return NaN;
+          [, d, mo, y, h, mi, ss = '0'] = match;
+        }
+
+        const parsed = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(ss), 0).getTime();
+        return Number.isFinite(parsed) ? parsed : NaN;
+      };
+    if (startAtInputType === 'datetime-local' && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(startAtValue)) {
+      console.warn('[scheduler] #round-start-at type=datetime-local but value is not ISO local datetime:', startAtValue);
+    }
     const startAt = Number(parser(startAtValue));
     if (!Number.isFinite(startAt) || startAt <= schedulerGetNow() - 1000) {
       return alert('Время старта должно быть в будущем.');
