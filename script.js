@@ -196,6 +196,8 @@ const JSON_URL = 'tasks.json';
         let activeDuelRef = null;
         let activeDuelKey = null;
         let duelNotificationsRef = null;
+        let duelsRef = null;
+        let activeDuels = [];
         let duelLocalPoints = [];
         let duelDrawingState = { drawing: false, enabled: false, ended: false };
         let duelTimerInterval = null;
@@ -576,7 +578,15 @@ const JSON_URL = 'tasks.json';
                 window.initMushuEventSystem?.();
                 subscribeToCalligraphyDuelInvites();
                 document.getElementById('duel-close-btn')?.addEventListener('click', closeCalligraphyDuelUI);
+                setInterval(checkScheduledRounds, 30000);
             } catch(e) { console.error(e); }
+        }
+
+        function checkScheduledRounds() {
+            if (typeof window.checkScheduledRounds === 'function') {
+                return window.checkScheduledRounds();
+            }
+            return Promise.resolve();
         }
 
         function playExplosion() {
@@ -1138,18 +1148,12 @@ const JSON_URL = 'tasks.json';
 
             const boardSnap = await db.ref('board').once('value');
             const board = boardSnap.val() || {};
-            const roundCell = Object.values(board).find(c => c && Number(c.userId) === Number(currentUserId) && c.round === currentRoundNum);
-
             const now = Date.now();
             const msLeft = roundEndTime - now;
             const isRoundActive = msLeft > 0;
             const currentRoundWorks = allSubmissions.filter(s => Number(s.round) === Number(currentRoundNum));
             const hasCurrentRoundWork = currentRoundWorks.some(s => String(s.userId) === String(currentUserId));
-            const computedDurationMs = Number(currentRoundDurationMs) > 0
-                ? Number(currentRoundDurationMs)
-                : (Number(currentRoundStartedAt) > 0 ? Math.max(0, Number(roundEndTime) - Number(currentRoundStartedAt)) : 0);
-            const isLessThanHalfTimeLeft = computedDurationMs > 0 ? msLeft <= (computedDurationMs * 0.5) : false;
-            if (roundCell && isRoundActive && !hasCurrentRoundWork && isLessThanHalfTimeLeft) {
+            if (isRoundActive && !hasCurrentRoundWork) {
                 const remindKey = `workReminderShownRound${currentRoundNum}`;
                 if (!window[remindKey]) {
                     window[remindKey] = true;
@@ -2634,7 +2638,23 @@ const JSON_URL = 'tasks.json';
             if (window.timerInt) clearInterval(window.timerInt);
             const btn = document.getElementById('dice-btn');
 
+            const renderDice = () => {
+                const statusLabel = document.getElementById('duel-status-label');
+                const rollBtn = document.getElementById('roll-button') || btn;
+                const hasPendingOutgoingDuel = activeDuels.some((duel) => {
+                    if (!duel || typeof duel !== 'object') return false;
+                    return String(duel.fromId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
+                });
+                if (hasPendingOutgoingDuel) {
+                    if (statusLabel) statusLabel.textContent = 'Вы бросили вызов! Ждем ответа соперника...';
+                    if (rollBtn) rollBtn.disabled = true;
+                    return true;
+                }
+                return false;
+            };
+
             window.timerInt = setInterval(async () => {
+                const duelLockActive = renderDice();
                 await checkInkDeadline();
                 await activateScheduledEventIfNeeded();
                 await failExpiredEventIfNeeded();
@@ -2685,6 +2705,9 @@ const JSON_URL = 'tasks.json';
                 myRoundHasMove = (userState.last_round === currentRoundNum);
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
+                if (duelLockActive) {
+                    btn.disabled = true;
+                }
                 updateEventUiState();
             }, 1000);
         }
@@ -6172,6 +6195,48 @@ const JSON_URL = 'tasks.json';
             });
           }
 
+          async function adminStartRound(roundId, durationMs) {
+            const normalizedDurationMs = Number(durationMs) || 0;
+            if (!normalizedDurationMs || normalizedDurationMs <= 0) return null;
+            const roundNum = await runRoundStart(normalizedDurationMs);
+            if (!roundId) return roundNum;
+            await db.ref(`round_schedules/${roundId}`).update({
+              status: 'completed',
+              completedAt: Date.now(),
+              launchedRound: roundNum || null
+            });
+            return roundNum;
+          }
+
+          async function checkScheduledRounds() {
+            if (!Array.isArray(roundSchedules) || !roundSchedules.length) {
+              const schedulesSnap = await db.ref('round_schedules').once('value');
+              const items = [];
+              schedulesSnap.forEach(s => items.push({ key: s.key, status: 'scheduled', ...(s.val() || {}) }));
+              roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
+            }
+
+            const now = getAdminNow();
+            const due = (Array.isArray(roundSchedules) ? roundSchedules : [])
+              .filter(r => String(r.status || 'scheduled') === 'scheduled'
+                && now >= Number(r.startAt || 0)
+                && getRoundActivationNotBefore(r) <= now)
+              .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
+
+            if (!due?.key) return;
+
+            const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
+              const txNow = getAdminNow();
+              if (!v || v.status !== 'scheduled') return v;
+              if (txNow < (v.startAt || 0)) return v;
+              if (txNow < getRoundActivationNotBefore(v)) return v;
+              return { ...v, status: 'starting', startedAt: Date.now() };
+            });
+            if (!tx.committed) return;
+
+            await adminStartRound(due.key, due.durationMs || 0);
+          }
+
           function syncRoundSchedules() {
             if (roundSchedulesRef) roundSchedulesRef.off();
             roundSchedulesRef = db.ref('round_schedules');
@@ -6381,8 +6446,10 @@ const JSON_URL = 'tasks.json';
             window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
             window.switchAdminInnerTab = switchAdminInnerTab;
             window.adminStartNewRound = adminStartNewRound;
+            window.adminStartRound = adminStartRound;
             window.adminScheduleRound = adminScheduleRound;
             window.adminCancelScheduledRound = adminCancelScheduledRound;
+            window.checkScheduledRounds = checkScheduledRounds;
             window.adminForceRenamePlayer = adminForceRenamePlayer;
             window.executeEmergencyAction = executeEmergencyAction;
             window.adminUndoTicketRevoke = adminUndoTicketRevoke;
@@ -6454,7 +6521,7 @@ const JSON_URL = 'tasks.json';
             if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
             window.adminRoundInterval = setInterval(async () => {
               ensureAdminTabVisibility();
-              await maybeActivateScheduledRound();
+              await checkScheduledRounds();
             }, 1000);
 
             if (window.adminEventScheduleInterval) clearInterval(window.adminEventScheduleInterval);
@@ -6596,6 +6663,14 @@ const JSON_URL = 'tasks.json';
                     text: duel.text || 'Тебя вызвали на дуэль! Открой уведомления и прими вызов.',
                     borderColor: '#ffd54f'
                 });
+            });
+
+            if (duelsRef) duelsRef.off();
+            duelsRef = db.ref('duels');
+            duelsRef.on('value', snap => {
+                const items = [];
+                snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
+                activeDuels = items;
             });
 
             if (challengeRef) challengeRef.off();
@@ -6914,18 +6989,13 @@ const JSON_URL = 'tasks.json';
 
             const boardSnap = await db.ref('board').once('value');
             const board = boardSnap.val() || {};
-            const roundCell = Object.values(board).find(c => c && Number(c.userId) === Number(currentUserId) && c.round === currentRoundNum);
 
             const now = Date.now();
             const msLeft = roundEndTime - now;
             const isRoundActive = msLeft > 0;
             const currentRoundWorks = allSubmissions.filter(s => Number(s.round) === Number(currentRoundNum));
             const hasCurrentRoundWork = currentRoundWorks.some(s => String(s.userId) === String(currentUserId));
-            const computedDurationMs = Number(currentRoundDurationMs) > 0
-                ? Number(currentRoundDurationMs)
-                : (Number(currentRoundStartedAt) > 0 ? Math.max(0, Number(roundEndTime) - Number(currentRoundStartedAt)) : 0);
-            const isLessThanHalfTimeLeft = computedDurationMs > 0 ? msLeft <= (computedDurationMs * 0.5) : false;
-            if (roundCell && isRoundActive && !hasCurrentRoundWork && isLessThanHalfTimeLeft) {
+            if (isRoundActive && !hasCurrentRoundWork) {
                 const remindKey = `workReminderShownRound${currentRoundNum}`;
                 if (!window[remindKey]) {
                     window[remindKey] = true;
