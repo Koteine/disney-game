@@ -245,7 +245,7 @@
                     </div>
                 </div>
             </div>
-            <div class="admin-section">
+            <div id="admin-players-section" class="admin-section">
                 <b>Игроки:</b>
                 <button onclick="toggleAdminPlayersList()" class="admin-btn" style="background:#607D8B; width:100%; margin:8px 0 6px;">👥 Список игроков: развернуть</button>
                 <div id="active-players-wrap" style="display:none;">
@@ -254,7 +254,7 @@
                 <input type="number" id="new-user-id" placeholder="Telegram ID" class="admin-input" style="margin-top:10px;">
                 <button onclick="saveNewUserRandomly()" class="admin-btn" style="background:#2196F3; width:100%; margin:0;">ДОБАВИТЬ</button>
             </div>
-            <div class="admin-section">
+            <div id="admin-emergency-section" class="admin-section">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <b>Экстренные действия:</b>
                     <button id="admin-emergency-toggle-btn" class="news-toggle-btn" onclick="toggleAdminEmergencyActions()">Развернуть</button>

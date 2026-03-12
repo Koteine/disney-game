@@ -4412,6 +4412,13 @@ const JSON_URL = 'tasks.json';
             nextTab.classList.add('tab-active');
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             if (el) el.classList.add('active');
+
+            const adminPlayersSection = document.getElementById('admin-players-section');
+            const adminEmergencySection = document.getElementById('admin-emergency-section');
+            const showAdminWindows = isAdminUser() && id === 'tab-admin';
+            if (adminPlayersSection) adminPlayersSection.style.display = showAdminWindows ? '' : 'none';
+            if (adminEmergencySection) adminEmergencySection.style.display = showAdminWindows ? '' : 'none';
+
             if (id === 'tab-wheel') drawWheel();
             if (id === 'tab-works') {
                 fillSubmissionTaskOptions();
