@@ -76,6 +76,8 @@ const JSON_URL = 'tasks.json';
         const db = firebase.database();
         const tg = window.Telegram.WebApp;
         const ADMIN_ID = 341995937;
+        window.db = db;
+        window.ADMIN_ID = ADMIN_ID;
         let currentUserId = 0;
         let currentUserPathId = '';
         let currentUserRole = 'player';
@@ -86,6 +88,9 @@ const JSON_URL = 'tasks.json';
             currentUserId = Number(telegramUser.id) || 0;
             currentUserPathId = String(telegramUser.id || '').trim();
             currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? 'admin' : 'player';
+            window.currentUserId = currentUserId;
+            window.currentUserPathId = currentUserPathId;
+            window.currentUserRole = currentUserRole;
         }
         const onValue = (ref, handler) => ref.on('value', handler);
         function adminUpdate(path, patch) {
@@ -2019,6 +2024,10 @@ const JSON_URL = 'tasks.json';
             if (!canvas || canvas.dataset.ready === '1') return;
             canvas.dataset.ready = '1';
             const isAdminUser = () => Number(currentUserId) === Number(ADMIN_ID);
+          window.isAdminUser = isAdminUser;
+          window.formatMoscowDateTime = formatMoscowDateTime;
+          window.parseMoscowDateTimeLocalInput = parseMoscowDateTimeLocalInput;
+          window.toMoscowDateTimeLocalInput = toMoscowDateTimeLocalInput;
 
             const getPos = evt => {
                 const rect = canvas.getBoundingClientRect();
