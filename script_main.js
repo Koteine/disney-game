@@ -6572,6 +6572,7 @@ const JSON_URL = 'tasks.json';
             return true;
         }
 
+        const GALLERY_ROTATION_PERIOD_MS = 2 * 60 * 60 * 1000;
         let galleryServerOffsetMs = 0;
         let galleryRotationTimer = null;
         let selectedKarmaUserId = '';
@@ -6581,12 +6582,12 @@ const JSON_URL = 'tasks.json';
         }
 
         function getGallerySlot(timestamp = getServerNow()) {
-            return Math.floor(timestamp / (3 * 60 * 60 * 1000));
+            return Math.floor(timestamp / GALLERY_ROTATION_PERIOD_MS);
         }
 
         function startGalleryRotationCountdown() {
             if (galleryRotationTimer) clearInterval(galleryRotationTimer);
-            const period = 3 * 60 * 60 * 1000;
+            const period = GALLERY_ROTATION_PERIOD_MS;
             const formatCountdown = (msLeft) => {
                 const totalSec = Math.max(0, Math.floor(msLeft / 1000));
                 const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
@@ -6603,6 +6604,30 @@ const JSON_URL = 'tasks.json';
             };
             updateCountdown();
             galleryRotationTimer = setInterval(updateCountdown, 1000);
+        }
+
+        async function getGalleryComplimentStats(exhibitId) {
+            const counts = { clap: 0, heart: 0, sun: 0 };
+            const id = String(exhibitId || '').trim();
+            if (!id) return counts;
+            const snap = await db.ref(`gallery_compliments/${id}`).once('value');
+            const raw = snap.val() || {};
+            Object.values(raw).forEach((entry) => {
+                const type = String(entry?.type || '').trim();
+                if (Object.prototype.hasOwnProperty.call(counts, type)) counts[type] += 1;
+            });
+            return counts;
+        }
+
+        async function updateGalleryFeedbackLine(exhibitId) {
+            const feedbackEl = document.getElementById('gallery-feedback-line');
+            if (!feedbackEl) return;
+            const expectedExhibitId = String(feedbackEl.dataset.exhibitId || '').trim();
+            const requestedExhibitId = String(exhibitId || '').trim();
+            if (!requestedExhibitId || expectedExhibitId !== requestedExhibitId) return;
+            const stats = await getGalleryComplimentStats(requestedExhibitId);
+            if (String(feedbackEl.dataset.exhibitId || '').trim() !== requestedExhibitId) return;
+            feedbackEl.textContent = `Отклик игроков: ${stats.clap} 👏 · ${stats.heart} ❤️ · ${stats.sun} ☀️. Так держать!`;
         }
 
         function playGalleryChime() {
@@ -6713,6 +6738,7 @@ const JSON_URL = 'tasks.json';
             launchVoteConfetti();
             alert('Комплимент отправлен!');
             updateProfileTicketBalance();
+            renderGalleryTab();
         }
 
         function renderGalleryTab() {
@@ -6730,9 +6756,8 @@ const JSON_URL = 'tasks.json';
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
-                    <div style="font-size:12px; color:#8d6e63; margin-bottom:6px;">Ротация каждые 3 часа</div>
                     <img src="${img}" class="gallery-image" alt="Выставленная работа">
-                    <div style="font-size:12px; margin-top:6px;">Автор: <b>${picked.ownerName || players[picked.owner]?.n || 'Художник'}</b></div>
+                    <div id="gallery-feedback-line" data-exhibit-id="${exhibitId}" style="font-size:12px; margin-top:6px;">Отклик игроков: 0 👏 · 0 ❤️ · 0 ☀️. Так держать!</div>
                     <div class="gallery-compliments" style="margin-top:8px;">
                         <div class="compliment-option">
                             <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
@@ -6748,6 +6773,7 @@ const JSON_URL = 'tasks.json';
                         </div>
                     </div>
                 </div>`;
+            updateGalleryFeedbackLine(exhibitId);
         }
 
         function adminRenderKarmaSearchResults() {
