@@ -80,6 +80,9 @@
         .collapse-body.expanded { display:block; }
         .player-notification { position:fixed; top:14px; left:50%; transform:translateX(-50%); width:min(92vw,560px); background:#fff; border:2px solid #f48fb1; border-radius:14px; box-shadow:0 12px 30px rgba(0,0,0,0.24); padding:12px 34px 12px 12px; z-index:2600; text-align:left; }
         .player-notification-close { position:absolute; right:10px; top:8px; border:none; background:transparent; font-size:18px; color:#ad1457; font-weight:bold; }
+        .duel-status-label { width:95%; margin:8px auto 2px; background:#fff7df; border:2px solid #ffd54f; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.12); padding:10px 12px; color:#4a148c; text-align:left; }
+        #duel-status-text { font-size:13px; line-height:1.35; font-weight:700; }
+        #duel-status-timer { font-size:12px; margin-top:5px; color:#6d4c41; }
         .admin-mini-box { position:fixed; right:8px; bottom:78px; width:min(92vw,340px); background:#fff; border:1px solid #f8bbd0; border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,0.15); z-index:1200; text-align:left; }
         .admin-mini-box.hidden .admin-mini-body { display:none; }
         .admin-mini-head { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; font-size:12px; font-weight:bold; color:#ad1457; }
