@@ -810,7 +810,7 @@ const JSON_URL = 'tasks.json';
 
                         if (link.status === 'expired_single' && Number(link.playerA?.userId) === Number(currentUserId)) {
                             shownMagicLinks[linkSnap.key] = true;
-                            alert('Упс! Магическая связь не нашла пару, выполняй задание в одиночку');
+                            alert('Очень жаль, но мы не нашли тебе напарника');
                         }
                     });
                 });
@@ -2845,7 +2845,8 @@ const JSON_URL = 'tasks.json';
                 updates[`magic_links/${roundNum}/${linkSnap.key}/status`] = 'expired_single';
                 updates[`magic_links/${roundNum}/${linkSnap.key}/expiredAt`] = now;
                 updates[`magic_links/${roundNum}/${linkSnap.key}/resolvedBy`] = reason;
-                updates[`magic_links/${roundNum}/${linkSnap.key}/soloFallbackNotice`] = 'Упс! Магическая связь не нашла пару, выполняй задание в одиночку';
+                updates[`magic_links/${roundNum}/${linkSnap.key}/timeoutHandledAt`] = now;
+                updates[`magic_links/${roundNum}/${linkSnap.key}/soloFallbackNotice`] = 'Очень жаль, но мы не нашли тебе напарника';
 
                 const boardEntry = Object.entries(board).find(([_, c]) => c && c.round === roundNum && c.isMagic && String(c.magicLinkId || '') === String(linkSnap.key));
                 if (boardEntry) {
@@ -2867,7 +2868,7 @@ const JSON_URL = 'tasks.json';
             }
         }
 
-        async function resolveMagicPartnerAfterRoll(roundNum, currentRollUserId) {
+        async function resolveMagicPartnerAfterRoll(roundNum, currentRollUserId, currentRollCharIndex) {
             if (!Number.isInteger(roundNum) || roundNum <= 0) return;
             const linksRef = db.ref(`magic_links/${roundNum}`);
             const linksSnap = await linksRef.once('value');
@@ -2883,16 +2884,32 @@ const JSON_URL = 'tasks.json';
                 if (Number(link.playerA?.userId) === Number(currentRollUserId)) return;
                 waiting.push({ key: linkSnap.key, ...link });
             });
-            if (!waiting.length) return;
+            if (!waiting.length) return null;
 
             waiting.sort((a, b) => Number(a.waitingSince || 0) - Number(b.waitingSince || 0));
             const selected = waiting[0];
+            const partnerName = players[currentRollCharIndex]?.n || 'Игрок';
             await linksRef.child(selected.key).update({
                 status: 'paired',
                 pairedAt: now,
-                playerB: { userId: currentRollUserId, charIndex: myIndex, name: players[myIndex]?.n || 'Игрок' }
+                playerB: { userId: currentRollUserId, charIndex: currentRollCharIndex, name: partnerName },
+                playerANotifiedAt: 0,
+                playerBNotifiedAt: 0
             });
-            await postNews(`🔮 ${selected.playerA?.name || 'Игрок'} нашёл(ла) магическую пару: ${players[myIndex]?.n || 'Игрок'}.`);
+            const boardSnap = await db.ref('board').once('value');
+            const board = boardSnap.val() || {};
+            const playerACellEntry = Object.entries(board).find(([_, c]) => c && c.round === roundNum && c.isMagic && String(c.magicLinkId || '') === String(selected.key));
+            if (playerACellEntry) {
+                const [playerACellIdx] = playerACellEntry;
+                await db.ref(`board/${playerACellIdx}`).update({
+                    magicLinkActive: true,
+                    magicLinkPartnerUserId: String(currentRollUserId),
+                    magicLinkPartnerName: partnerName,
+                    isMagicSolo: false
+                });
+            }
+            await postNews(`🔮 ${selected.playerA?.name || 'Игрок'} нашёл(ла) магическую пару: ${partnerName}.`);
+            return { key: selected.key, playerA: selected.playerA || null, playerB: { userId: currentRollUserId, charIndex: currentRollCharIndex, name: partnerName } };
         }
 
         async function roll() {
@@ -2911,7 +2928,7 @@ const JSON_URL = 'tasks.json';
             if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
 
             const cellIdx = free[Math.floor(Math.random()*free.length)];
-            const isMagic = rData?.magicCell === cellIdx;
+            let isMagic = rData?.magicCell === cellIdx;
             const isTrap = rData.traps && rData.traps.includes(cellIdx);
             const isMiniGame = rData?.miniGameCell === cellIdx;
             const isWordSketch = rData?.wordSketchCell === cellIdx;
@@ -2935,25 +2952,36 @@ const JSON_URL = 'tasks.json';
             const pendingItemTicket = (itemType === 'inkSaboteur') ? tStr : '';
             if (itemType === 'inkSaboteur') tStr = '';
 
-            await resolveMagicPartnerAfterRoll(currentRoundNum, currentUserId);
+            const matchedMagicLink = await resolveMagicPartnerAfterRoll(currentRoundNum, currentUserId, myIndex);
+            if (matchedMagicLink) isMagic = true;
 
             let taskIdx = -1;
             let trapText = "";
             let magicLinkId = null;
             let magicSoloTaskIdx = -1;
+            let magicLinkPartnerUserId = '';
+            let magicLinkPartnerName = '';
+            let magicLinkActive = false;
             if (isMagic) {
                 magicSoloTaskIdx = avail[Math.floor(Math.random()*avail.length)];
-                const linkRef = db.ref(`magic_links/${currentRoundNum}`).push();
-                await linkRef.set({
-                    createdAt: Date.now(),
-                    waitingSince: Date.now(),
-                    status: 'waiting_for_partner',
-                    playerA: { userId: currentUserId, charIndex: myIndex, name: players[myIndex].n },
-                    tasks: magicBondTasks
-                });
-                magicLinkId = linkRef.key;
-                await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и ждёт пару до 2 часов.`);
-                alert('Вау! Это Магические узы! Ждём следующего игрока, который бросит кубик в течение 2 часов.');
+                if (matchedMagicLink) {
+                    magicLinkId = matchedMagicLink.key;
+                    magicLinkPartnerUserId = String(matchedMagicLink.playerA?.userId || '');
+                    magicLinkPartnerName = matchedMagicLink.playerA?.name || 'Игрок';
+                    magicLinkActive = true;
+                } else {
+                    const linkRef = db.ref(`magic_links/${currentRoundNum}`).push();
+                    await linkRef.set({
+                        createdAt: Date.now(),
+                        waitingSince: Date.now(),
+                        status: 'waiting_for_partner',
+                        playerA: { userId: currentUserId, charIndex: myIndex, name: players[myIndex].n },
+                        tasks: magicBondTasks
+                    });
+                    magicLinkId = linkRef.key;
+                    await postNews(`🔮 ${players[myIndex].n} открыл(а) магическую клетку и ждёт пару до 2 часов.`);
+                    alert('Вау! Это Магические узы! Ждём следующего игрока, который бросит кубик в течение 2 часов.');
+                }
             } else if (isTrap) {
                 const traps = [
                     "Детка, это ловушка Капитана Крюка! Чтобы освободиться, рисуй своей не ведущей рукой! Смотри не мухлюй, злой пират всё видит и порвет твой счастливый билетик у тебя на глазах!",
@@ -3004,7 +3032,7 @@ const JSON_URL = 'tasks.json';
                 await postNews(`${players[myIndex].n} наш(ла) предмет «${itemTypes[itemType]?.name || itemType}»`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, magicSoloTaskIdx, isMagicSolo: false, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, magicSoloTaskIdx, magicLinkPartnerUserId, magicLinkPartnerName, magicLinkActive, isMagicSolo: false, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if (itemType === 'inkSaboteur') {
                 await activateInkSaboteur(cellIdx, { autoPick: true });
@@ -3046,6 +3074,8 @@ const JSON_URL = 'tasks.json';
             const ownerAvatarUrl = String(ownerSeason.avatar_url || ownerSeason.photo_url || '').trim();
             const ownerName = players[cell.owner]?.n || 'Игрок';
             const magicPartnerName = (() => {
+                const directPartnerName = String(cell.magicLinkPartnerName || '').trim();
+                if (directPartnerName) return directPartnerName;
                 const partnerUserId = String(cell.magic_link?.partner_user_id || cell.magicLinkPartnerUserId || '').trim();
                 if (!partnerUserId) return '';
                 const p = Object.values(seasonProfilesByUserId || {}).find(v => String(v?.userId || '') === partnerUserId);
@@ -5936,14 +5966,24 @@ const JSON_URL = 'tasks.json';
                         if (shownMagicLinks[shownKey]) return;
 
                         if (link.status === 'paired') {
-                            shownMagicLinks[shownKey] = true;
                             const partner = meA ? link.playerB : link.playerA;
-                            alert(`✨ Магическая связь активна!
-Твой напарник: ${partner?.name || 'Неизвестный'}
-Выберите 1 из 4 совместных заданий в карточке клетки 🔮`);
+                            const partnerName = partner?.name || 'Неизвестный';
+                            const notifyField = meA ? 'playerANotifiedAt' : 'playerBNotifiedAt';
+                            if (!Number(link[notifyField] || 0)) {
+                                shownMagicLinks[shownKey] = true;
+                                db.ref(`magic_links/${currentRoundNum}/${linkSnap.key}/${notifyField}`).set(Date.now()).catch(() => null);
+                                if (meA) {
+                                    alert(`Магическая связь установлена с игроком "${partnerName}"`);
+                                } else {
+                                    alert(`У тебя появилась магическая связь с игроком "${partnerName}"`);
+                                }
+                            }
                         } else if (link.status === 'expired_single' && meA) {
-                            shownMagicLinks[shownKey] = true;
-                            alert('Упс! Магическая связь не нашла пару, выполняй задание в одиночку');
+                            if (!Number(link.timeoutNotifiedAt || 0)) {
+                                shownMagicLinks[shownKey] = true;
+                                db.ref(`magic_links/${currentRoundNum}/${linkSnap.key}/timeoutNotifiedAt`).set(Date.now()).catch(() => null);
+                                alert('Очень жаль, но мы не нашли тебе напарника');
+                            }
                         }
                     });
                 });
