@@ -5776,6 +5776,7 @@ const JSON_URL = 'tasks.json';
               startAt,
               durationMs,
               createdAt: Date.now(),
+              activationNotBefore: Date.now() + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
               createdBy: currentUserId
             };
             await db.ref('round_schedules').push(payload);
@@ -6018,6 +6019,15 @@ const JSON_URL = 'tasks.json';
           let roundSchedules = [];
           let roundSchedulesRef = null;
           const ROUND_SCHEDULES_STORAGE_KEY = 'disney_round_schedules_backup_v1';
+          const ROUND_SCHEDULE_ACTIVATION_GRACE_MS = 30000;
+
+          function getRoundActivationNotBefore(item) {
+            const direct = Number(item?.activationNotBefore || 0);
+            if (Number.isFinite(direct) && direct > 0) return direct;
+            const createdAt = Number(item?.createdAt || 0);
+            if (Number.isFinite(createdAt) && createdAt > 0) return createdAt + ROUND_SCHEDULE_ACTIVATION_GRACE_MS;
+            return 0;
+          }
 
           function sanitizeRoundSchedulesForBackup(items) {
             return (Array.isArray(items) ? items : [])
@@ -6029,6 +6039,7 @@ const JSON_URL = 'tasks.json';
                   startAt: Number(item.startAt || 0),
                   durationMs: Number(item.durationMs || 0),
                   createdAt: Number(item.createdAt || 0),
+                  activationNotBefore: Number(item.activationNotBefore || 0),
                   createdBy: item.createdBy || null,
                   cancelledAt: Number(item.cancelledAt || 0) || null,
                   cancelledBy: item.cancelledBy || null,
@@ -6098,15 +6109,22 @@ const JSON_URL = 'tasks.json';
 
           async function maybeActivateScheduledRound() {
             if (!hasRoundSchedulesSynced) return;
-
             const due = roundSchedules
-              .filter(r => r.status === 'scheduled' && (r.startAt || 0) <= getAdminNow())
+
+              .filter(r => r.status === 'scheduled'
+                && (r.startAt || 0) <= now
+                && getRoundActivationNotBefore(r) <= now)
+
               .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
             if (!due?.key) return;
 
             const tx = await db.ref(`round_schedules/${due.key}`).transaction(v => {
+              const txNow = getAdminNow();
               if (!v || v.status !== 'scheduled') return v;
-              if (getAdminNow() < (v.startAt || 0)) return v;
+
+              if (txNow < (v.startAt || 0)) return v;
+              if (txNow < getRoundActivationNotBefore(v)) return v;
+
               return { ...v, status: 'starting', startedAt: Date.now() };
             });
             if (!tx.committed) return;
