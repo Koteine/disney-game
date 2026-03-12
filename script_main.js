@@ -1444,17 +1444,18 @@ const JSON_URL = 'tasks.json';
         async function activateCloak(cellIdx) {
             try {
                 await waitForDbReady();
-                if (!currentUserId) return alert('Сначала войдите в игру, затем попробуйте снова.');
+                const userPathId = String(currentUserPathId || currentUserId || '').trim();
+                if (!userPathId) return alert('Сначала войдите в игру, затем попробуйте снова.');
 
                 const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
                 const cell = cellSnap.val();
-                if (!cell || Number(cell.userId) !== Number(currentUserId)) return alert('Плащ можно надеть только в своей карточке задания.');
+                if (!cell || String(cell.userId || '') !== userPathId) return alert('Плащ можно надеть только в своей карточке задания.');
                 if (cell.excluded) return alert('Для сданной клетки плащ недоступен.');
                 if (inventoryCount('cloak') <= 0) return alert('В рюкзаке нет Плаща-невидимки.');
                 if (cell.isTrap || cell.isMagic || cell.isMiniGame || cell.isWordSketch || cell.isMagnet || cell.isGold || cell.isInkChallenge || cell.isWandBlessing) {
                     return alert('Плащ можно надеть только на обычное задание.');
                 }
-                const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
+                const debtSnap = await db.ref(`whitelist/${userPathId}/debt`).once('value');
                 if (debtSnap.val()?.active) {
                     return alert('Плащ уже активирован: сначала закройте текущий долг по заданиям.');
                 }
@@ -1470,7 +1471,7 @@ const JSON_URL = 'tasks.json';
                     [`board/${cellIdx}/deferredAt`]: now,
                     [`board/${cellIdx}/deferredRound`]: roundNum,
                     [`board/${cellIdx}/invisibleMode`]: true,
-                    [`whitelist/${currentUserId}/debt`]: debt
+                    [`whitelist/${userPathId}/debt`]: debt
                 });
 
                 alert('🎭 Вы скрылись под плащом. Теперь вы обязаны сдать ЭТО задание и СЛЕДУЮЩЕЕ до конца следующего раунда, иначе сгорят оба билета');
