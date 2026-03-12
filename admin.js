@@ -505,13 +505,25 @@ const formatMoscowDateTime = (...args) => (
             });
           }
 
+          function isAdminSessionVisible() {
+            const tgUserId = Number(window.Telegram?.WebApp?.initDataUnsafe?.user?.id || 0);
+            const sessionUserId = Number(window.currentUserId || currentUserId || tgUserId || 0);
+            const adminId = Number(window.ADMIN_ID || ADMIN_ID || 0);
+            return sessionUserId === adminId;
+          }
+
           function ensureAdminTabVisibility() {
             const navAdminBtn = document.getElementById('nav-admin-btn');
             const tabAdmin = document.getElementById('tab-admin');
-            const adminVisible = Number(currentUserId) === Number(ADMIN_ID);
+            const wheelAdminBtn = document.getElementById('wheel-admin-btn');
+            const adminVisible = isAdminSessionVisible();
+
             if (navAdminBtn) navAdminBtn.style.display = adminVisible ? 'flex' : 'none';
+            if (wheelAdminBtn && !adminVisible) wheelAdminBtn.innerHTML = '';
+
             if (tabAdmin) {
               tabAdmin.style.display = adminVisible ? '' : 'none';
+              tabAdmin.setAttribute('aria-hidden', adminVisible ? 'false' : 'true');
               if (!adminVisible && tabAdmin.classList.contains('tab-active') && typeof switchTab === 'function') {
                 const gameNavBtn = document.querySelector('.nav-item[onclick*="tab-game"]');
                 switchTab('tab-game', gameNavBtn);
@@ -591,6 +603,18 @@ const formatMoscowDateTime = (...args) => (
           async function initAdminPage() {
             exposeAdminActions();
             ensureAdminTabVisibility();
+
+            if (!isAdminSessionVisible()) {
+              if (window.adminRoundInterval) {
+                clearInterval(window.adminRoundInterval);
+                window.adminRoundInterval = null;
+              }
+              if (window.adminEventScheduleInterval) {
+                clearInterval(window.adminEventScheduleInterval);
+                window.adminEventScheduleInterval = null;
+              }
+              return;
+            }
 
             const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;

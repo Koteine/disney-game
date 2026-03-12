@@ -245,17 +245,19 @@ async function adminScheduleRound() {
     const parser = (typeof window.parseMoscowDateTimeLocalInput === 'function')
       ? window.parseMoscowDateTimeLocalInput
       : (rawValue) => {
-        const raw = String(rawValue || '').trim();
-        let y, mo, d, h, mi, ss = '0';
+        const raw = String(rawValue || '').trim().replace(/\s+/g, ' ');
+        if (!raw) return NaN;
 
-        let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
-        if (match) {
-          [, y, mo, d, h, mi, ss = '0'] = match;
-        } else {
-          match = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
-          if (!match) return NaN;
-          [, d, mo, y, h, mi, ss = '0'] = match;
+        const normalizedIsoLocal = raw.replace(' ', 'T');
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalizedIsoLocal)) {
+          const direct = new Date(normalizedIsoLocal).getTime();
+          if (Number.isFinite(direct)) return direct;
         }
+
+        let y, mo, d, h, mi, ss = '0';
+        const match = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (!match) return NaN;
+        [, d, mo, y, h, mi, ss = '0'] = match;
 
         const parsed = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(ss), 0).getTime();
         return Number.isFinite(parsed) ? parsed : NaN;
@@ -264,7 +266,8 @@ async function adminScheduleRound() {
       console.warn('[scheduler] #round-start-at type=datetime-local but value is not ISO local datetime:', startAtValue);
     }
     const startAt = Number(parser(startAtValue));
-    if (!Number.isFinite(startAt) || startAt <= schedulerGetNow() - 1000) {
+    const nowTs = Number(schedulerGetNow()) || Date.now();
+    if (!Number.isFinite(startAt) || startAt <= nowTs) {
       return alert('Время старта должно быть в будущем.');
     }
 
