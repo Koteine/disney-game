@@ -188,6 +188,8 @@ const JSON_URL = 'tasks.json';
         let wheelSpinInterval = null;
         let wheelSystemInterval = null;
         let winnerHistoryItems = [];
+        let newsFeedItems = [];
+        let lastRoundEndNewsRound = 0;
         let currentDrawSchedule = null;
         let magicDrawAnimationState = null;
         let activeMagicDrawId = null;
@@ -272,7 +274,7 @@ const JSON_URL = 'tasks.json';
          *                                МЕХАНИКА: НАГРАДЫ ЗА ДУЭЛИ (ПРЕДМЕТЫ)                                          *
          * Белый список предметов, которые могут выдаваться участникам/победителям дуэлей.                             *
          ************************************************************************************************************/
-        const DUEL_REWARD_ITEMS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
+        const DUEL_REWARD_ITEMS = ['goldenPollen', 'magnifier', 'cloak'];
 
         /************************************************************************************************************
          *                                  МЕХАНИКА: МАГИЧЕСКАЯ СВЯЗЬ (ПАРНЫЕ ЗАДАНИЯ)                                 *
@@ -585,6 +587,7 @@ const JSON_URL = 'tasks.json';
                 window.initMushuEventSystem?.();
                 subscribeToCalligraphyDuelInvites();
                 document.getElementById('duel-close-btn')?.addEventListener('click', closeCalligraphyDuelUI);
+                if (typeof window.syncRoundSchedules === 'function') window.syncRoundSchedules();
                 setInterval(() => { checkScheduledRounds(); }, 20000);
             } catch(e) { console.error(e); }
         }
@@ -810,6 +813,18 @@ const JSON_URL = 'tasks.json';
             });
 
             syncTicketData();
+
+            if (newsRef) newsRef.off();
+            newsRef = db.ref('news_feed').limitToLast(60);
+            newsRef.on('value', snap => {
+                const items = [];
+                snap.forEach(row => {
+                    const value = row.val() || {};
+                    items.push({ id: row.key, text: value.text || '', createdAt: Number(value.createdAt || 0) });
+                });
+                newsFeedItems = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                renderNewsFeed();
+            });
 
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
@@ -1205,7 +1220,7 @@ const JSON_URL = 'tasks.json';
                 text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
                 borderColor: '#ef5350'
             });
-            await postNews(`🚫 ${players[myIndex].n} пропустил(а) сдачу работы за раунд №${previousRound}. Билеты аннулированы, участие в игре остановлено.`);
+            await postNews(`${players[myIndex].n} выбыл(а) из игры`);
         }
 
         function readImageAsDataURL(file) {
@@ -1403,7 +1418,7 @@ const JSON_URL = 'tasks.json';
                     await db.ref(`whitelist/${currentUserId}/wand_blessing`).update({ isResolved: true, surrendered: true });
                 }
 
-                await postNews(`🏳️ ${players[myIndex].n} подтвердил(а) выход из игры: за раунд билет не начисляется, дальнейшие раунды недоступны.`);
+                await postNews(`${players[myIndex].n} выбыл(а) из игры`);
                 alert('Ты покидаешь игру. Билет за текущий раунд не начислен, но ранее полученные билетики сохранены.');
                 const updated = await db.ref(`board/${cellIdx}`).once('value');
                 showCell(cellIdx, updated.val());
@@ -1517,6 +1532,27 @@ const JSON_URL = 'tasks.json';
             toggleExpandablePanel('news-list', 'news-toggle-btn');
         }
 
+
+        function renderNewsFeed() {
+            const preview = document.getElementById('news-preview');
+            const list = document.getElementById('news-list');
+            if (!preview || !list) return;
+            if (!newsFeedItems.length) {
+                preview.innerText = 'Пока новостей нет — откройте первую клетку! ✨';
+                list.innerHTML = '';
+                return;
+            }
+            const latest = newsFeedItems[0];
+            preview.innerText = latest.text || 'Новость';
+            list.innerHTML = newsFeedItems.slice(0, 40).map((item, idx) => `<div class="news-item">${idx + 1}. ${item.text || ''}</div>`).join('');
+        }
+
+        async function postNews(text) {
+            const msg = String(text || '').trim();
+            if (!msg) return;
+            await db.ref('news_feed').push({ text: msg, createdAt: Date.now() });
+        }
+
         function getKarmaVisualByPoints(points) {
             const p = Number(points) || 0;
             if (p <= 20) return { border: '#b0bec5', glow: 'rgba(176,190,197,0.55)' };
@@ -1598,6 +1634,12 @@ const JSON_URL = 'tasks.json';
                 }
                 return row;
             });
+            const duelNow = (await ref.once('value')).val() || {};
+            if (duelNow.status === 'active') {
+                const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
+                const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
+                await postNews(`${a} и ${b} сошлись в дуэли каллиграфов`);
+            }
         }
 
         function setupDuelCanvasHandlers() {
@@ -1765,7 +1807,7 @@ const JSON_URL = 'tasks.json';
                 });
             }
             await ref.update({ status: 'done', finishedAt: Date.now(), scores, winnerId, loserId });
-            await postNews(`🖌️ Дуэль каллиграфов завершена. Победитель: ${winnerName}.`);
+            if (winnerName) await postNews(`${winnerName} победил(а) в дуэли`);
         }
 
         async function openCalligraphyDuelUI(duelKey, duelData) {
@@ -1916,7 +1958,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function getAdminItemOptions() {
-            return ['cloak', 'magnifier', 'goldenPollen', 'inkSaboteur', 'magicWand']
+            return ['cloak', 'magnifier', 'goldenPollen', 'magicWand']
                 .filter(k => itemTypes?.[k])
                 .map(k => ({ key: k, label: `${itemTypes[k].emoji || '🎁'} ${itemTypes[k].name || k}` }));
         }
@@ -1939,7 +1981,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function renderInventoryIcons(inv = {}) {
-            const keys = ['cloak', 'magnifier', 'goldenPollen', 'inkSaboteur'];
+            const keys = ['cloak', 'magnifier', 'goldenPollen'];
             const chips = keys.filter(k => Number(inv[k] || 0) > 0).map(k => `${itemTypes?.[k]?.emoji || '🎁'}x${Number(inv[k] || 0)}`);
             return chips.length ? chips.join(' ') : 'Пусто';
         }
@@ -2493,6 +2535,7 @@ const JSON_URL = 'tasks.json';
             });
 
             if (tx.committed) {
+                await postNews(`Запущено событие: ${due.name || due.id}`);
                 if (due.id === MUSHU_EVENT_ID) {
                     const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
                     const usersSnap = await db.ref('users').once('value');
@@ -2721,6 +2764,10 @@ const JSON_URL = 'tasks.json';
                     document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
                     btn.disabled = true;
                     btn.innerText = "⏳ Раунд завершен";
+                    if (Number(currentRoundNum) > 0 && lastRoundEndNewsRound !== Number(currentRoundNum)) {
+                        lastRoundEndNewsRound = Number(currentRoundNum);
+                        await postNews(`Раунд #${currentRoundNum} завершён`);
+                    }
                     await handleMiniGameRoundFailure();
                     return;
                 }
@@ -2857,6 +2904,10 @@ const JSON_URL = 'tasks.json';
             const itemType = itemCells[cellIdx] || null;
             const isGold = !isTrap && !isMagic && !isMiniGame && !isWordSketch && !isMagnet && !itemType && Math.random() < 0.05;
 
+            if (isTrap || isMagic || isMiniGame || isWordSketch || isMagnet || isGold || itemType) {
+                await postNews(`${players[myIndex].n} попал(а) на особую клетку`);
+            }
+
             let tStr = '';
             if (!isMiniGame && !isWordSketch) {
                 const awarded = await claimSequentialTickets(isGold ? 2 : 1);
@@ -2934,16 +2985,22 @@ const JSON_URL = 'tasks.json';
                 if (itemType === 'cloak') {
                     alert('✨ Вы нашли Плащ-невидимку! Он позволит вам пройти одну клетку незамеченным');
                 }
-                await postNews(`${itemTypes[itemType]?.emoji || '🎁'} ${players[myIndex].n} нашёл(ла) предмет: ${itemTypes[itemType]?.name || itemType}.`);
+                await postNews(`${players[myIndex].n} наш(ла) предмет «${itemTypes[itemType]?.name || itemType}»`);
             }
 
             const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, magicSoloTaskIdx, isMagicSolo: false, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
+            if (itemType === 'inkSaboteur') {
+                await activateInkSaboteur(cellIdx, { autoPick: true });
+                await postNews(`${players[myIndex].n} активировал(а) «Клякса-саботаж»`);
+            }
             if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
-            showCell(cellIdx, cellData);
+            const actualCell = (await db.ref('board/'+cellIdx).once('value')).val() || cellData;
+            showCell(cellIdx, actualCell);
 
             if (itemType === 'magicWand') {
+                await postNews(`${players[myIndex].n} активировал(а) «Волшебная палочка»`);
                 await sendWandBlessingImmediately();
             }
         }
@@ -3592,7 +3649,7 @@ const JSON_URL = 'tasks.json';
     const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
 
     const itemCells = {};
-    const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier', 'cloak'];
+    const itemPool = ['goldenPollen', 'magicWand', 'magnifier', 'cloak', 'inkSaboteur'];
     for (const itemType of itemPool) {
         if (!free.length) break;
         const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
@@ -3625,7 +3682,7 @@ const JSON_URL = 'tasks.json';
         itemCells
     });
 
-    await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 5 клеток с предметами.`);
+    await postNews(`Раунд #${newRoundNum} начался`);
 
     alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 }
@@ -4185,6 +4242,7 @@ const JSON_URL = 'tasks.json';
 
             async function addInventoryItem(itemKey, amount = 1) {
                 if (!currentUserId || !itemTypes[itemKey]) return;
+                if (itemKey === 'inkSaboteur') return;
                 const addAmount = Math.max(0, Number(amount) || 0);
                 if (!addAmount) return;
 
@@ -4285,13 +4343,18 @@ const JSON_URL = 'tasks.json';
                 showCell(cellIdx, updated.val());
             }
 
-            async function activateInkSaboteur(cellIdx) {
+            async function activateInkSaboteur(cellIdx, options = {}) {
+                const autoPick = !!options.autoPick;
                 const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
                 const cell = cellSnap.val();
                 if (!cell || Number(cell.userId) !== Number(currentUserId) || cell.itemType !== 'inkSaboteur') {
-                    return alert('Кляксу можно запускать только из своей предметной клетки 🫧.');
+                    if (!autoPick) return alert('Кляксу можно запускать только из своей предметной клетки 🫧.');
+                    return;
                 }
-                if (cell.inkUsed || cell.isInkChallenge) return alert('Клякса для этой клетки уже использована.');
+                if (cell.inkUsed || cell.isInkChallenge) {
+                    if (!autoPick) return alert('Клякса для этой клетки уже использована.');
+                    return;
+                }
 
                 const boardSnap = await db.ref('board').once('value');
                 const board = boardSnap.val() || {};
@@ -4304,14 +4367,25 @@ const JSON_URL = 'tasks.json';
                     targets.push({ cellIdx: Number(idx), cell: c, name: players[c.owner]?.n || `Игрок ${c.userId}` });
                 });
 
-                if (!targets.length) return alert('Нет подходящих игроков для кляксы в текущем раунде.');
+                if (!targets.length) {
+                    if (!autoPick) return alert('Нет подходящих игроков для кляксы в текущем раунде.');
+                    return;
+                }
 
-                const optionsText = targets.map((t, i) => `${i + 1} — ${t.name} (клетка №${t.cellIdx + 1})`).join('\n');
-                const rawChoice = prompt(`Выбери цель для кляксы:\n${optionsText}\n\nВведи номер:`, '1');
-                if (rawChoice === null) return;
-                const pick = Number(rawChoice);
-                if (!Number.isInteger(pick) || pick < 1 || pick > targets.length) return alert('Некорректный номер цели.');
-                const target = targets[pick - 1];
+                let target = null;
+                if (autoPick) {
+                    target = targets[Math.floor(Math.random() * targets.length)];
+                } else {
+                    const optionsText = targets.map((t, i) => `${i + 1} — ${t.name} (клетка №${t.cellIdx + 1})`).join('\n');
+                    const rawChoice = prompt(`Выбери цель для кляксы:
+${optionsText}
+
+Введи номер:`, '1');
+                    if (rawChoice === null) return;
+                    const pick = Number(rawChoice);
+                    if (!Number.isInteger(pick) || pick < 1 || pick > targets.length) return alert('Некорректный номер цели.');
+                    target = targets[pick - 1];
+                }
 
                 const targetPendingTicket = target.cell.ticket || '';
                 const updates = {};
@@ -4338,13 +4412,15 @@ const JSON_URL = 'tasks.json';
                 updates[`board/${cellIdx}/inkUsed`] = true;
                 updates[`board/${cellIdx}/ticket`] = cell.inkPendingTicket || '';
                 updates[`board/${cellIdx}/inkPendingTicket`] = '';
+                updates[`board/${cellIdx}/itemType`] = null;
 
                 await db.ref().update(updates);
                 await postNews(`🫧 ${players[myIndex].n} запустил(а) кляксу: игрок ${target.name} получил(а) усложнение на клетке №${target.cellIdx + 1}.`);
-                alert(`Клякса отправлена игроку ${target.name}. Теперь он(а) должен(на) выбрать усложнение.`);
+                if (!autoPick) alert(`Клякса отправлена игроку ${target.name}. Теперь он(а) должен(на) выбрать усложнение.`);
                 const updated = await db.ref(`board/${cellIdx}`).once('value');
                 showCell(cellIdx, updated.val());
             }
+
 
             window.itemTypes = itemTypes;
             window.inkChallengeOptions = inkChallengeOptions;
@@ -5831,7 +5907,7 @@ const JSON_URL = 'tasks.json';
             const magnetCell = free.length ? free.splice(Math.floor(Math.random() * free.length), 1)[0] : null;
 
             const itemCells = {};
-            const itemPool = ['goldenPollen', 'inkSaboteur', 'magicWand', 'magnifier', 'cloak'];
+            const itemPool = ['goldenPollen', 'magicWand', 'magnifier', 'cloak', 'inkSaboteur'];
             for (const itemType of itemPool) {
               if (!free.length) break;
               const idx = free.splice(Math.floor(Math.random() * free.length), 1)[0];
@@ -5859,12 +5935,15 @@ const JSON_URL = 'tasks.json';
               itemCells
             });
 
-            await postNews(`🚀 Стартовал раунд №${newRoundNum}. На поле появились ловушки, 1 магическая клетка, 2 клетки с мини-играми (пятнашки и «Словесный скетч», без дополнительных механик), 1 магнитная клетка и 5 клеток с предметами.`);
+            await postNews(`Раунд #${newRoundNum} начался`);
             return newRoundNum;
           }
 
-
-
+          window.isAdminUser = isAdminUser;
+          window.ensureDateTimeInputDefault = ensureDateTimeInputDefault;
+          window.switchAdminInnerTab = switchAdminInnerTab;
+          window.runRoundStart = runRoundStart;
+          window.getAdminNow = () => Date.now();
 
         })();
         // END adminpage.js
@@ -5956,6 +6035,18 @@ const JSON_URL = 'tasks.json';
             });
 
             syncTicketData();
+
+            if (newsRef) newsRef.off();
+            newsRef = db.ref('news_feed').limitToLast(60);
+            newsRef.on('value', snap => {
+                const items = [];
+                snap.forEach(row => {
+                    const value = row.val() || {};
+                    items.push({ id: row.key, text: value.text || '', createdAt: Number(value.createdAt || 0) });
+                });
+                newsFeedItems = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                renderNewsFeed();
+            });
 
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
@@ -6370,7 +6461,7 @@ const JSON_URL = 'tasks.json';
                 text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
                 borderColor: '#ef5350'
             });
-            await postNews(`🚫 ${players[myIndex].n} пропустил(а) сдачу работы за раунд №${previousRound}. Билеты аннулированы, участие в игре остановлено.`);
+            await postNews(`${players[myIndex].n} выбыл(а) из игры`);
         }
 
         function readImageAsDataURL(file) {
