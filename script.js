@@ -150,7 +150,7 @@ const JSON_URL = 'tasks.json';
 
         const charColors = generateBrightColors(players.length);
 
-        let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, allTicketsData = [];
+        let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, currentRoundStartedAt = 0, currentRoundDurationMs = 0, allTicketsData = [];
         let archivedTicketsData = [];
         let liveBoardTicketsData = [];
         let shownMagicLinks = {};
@@ -195,6 +195,7 @@ const JSON_URL = 'tasks.json';
         let duelInvitesRef = null;
         let activeDuelRef = null;
         let activeDuelKey = null;
+        let duelNotificationsRef = null;
         let duelLocalPoints = [];
         let duelDrawingState = { drawing: false, enabled: false, ended: false };
         let duelTimerInterval = null;
@@ -750,6 +751,8 @@ const JSON_URL = 'tasks.json';
 
                 currentRoundNum = snap.val().number;
                 roundEndTime = snap.val().endTime;
+                currentRoundStartedAt = Number(snap.val().startedAt || 0);
+                currentRoundDurationMs = Number(snap.val().durationMs || 0);
                 document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
                 updateTimerDisplay();
 
@@ -1137,8 +1140,16 @@ const JSON_URL = 'tasks.json';
             const board = boardSnap.val() || {};
             const roundCell = Object.values(board).find(c => c && Number(c.userId) === Number(currentUserId) && c.round === currentRoundNum);
 
-            const msLeft = roundEndTime - Date.now();
-            if (roundCell && msLeft <= 10 * 3600000 && msLeft > 0 && !hasFullSubmissionForRound(currentRoundNum)) {
+            const now = Date.now();
+            const msLeft = roundEndTime - now;
+            const isRoundActive = msLeft > 0;
+            const currentRoundWorks = allSubmissions.filter(s => Number(s.round) === Number(currentRoundNum));
+            const hasCurrentRoundWork = currentRoundWorks.some(s => String(s.userId) === String(currentUserId));
+            const computedDurationMs = Number(currentRoundDurationMs) > 0
+                ? Number(currentRoundDurationMs)
+                : (Number(currentRoundStartedAt) > 0 ? Math.max(0, Number(roundEndTime) - Number(currentRoundStartedAt)) : 0);
+            const isLessThanHalfTimeLeft = computedDurationMs > 0 ? msLeft <= (computedDurationMs * 0.5) : false;
+            if (roundCell && isRoundActive && !hasCurrentRoundWork && isLessThanHalfTimeLeft) {
                 const remindKey = `workReminderShownRound${currentRoundNum}`;
                 if (!window[remindKey]) {
                     window[remindKey] = true;
@@ -2321,7 +2332,8 @@ const JSON_URL = 'tasks.json';
             const latestCompleted = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'completed').sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))[0];
             const latestFailed = queuedGameEvents.filter(ev => [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(ev.id) && ev.status === 'failed').sort((a, b) => (b.failedAt || 0) - (a.failedAt || 0))[0];
 
-            const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown);
+            const latestCompletedEndedAt = Number(latestCompleted?.completedAt || latestCompleted?.endedAt || 0);
+            const showSuccess = Boolean(latestCompleted && latestCompleted.key !== lastCompletedEpicEventKeyShown && isRecentRoundResult(latestCompletedEndedAt) && checkLastRoundResult(`success-${latestCompleted.key}`));
             successAlert.style.display = showSuccess ? 'block' : 'none';
             if (showSuccess) {
                 successAlert.innerHTML = latestCompleted.id === WALL_BATTLE_EVENT_ID
@@ -2333,7 +2345,8 @@ const JSON_URL = 'tasks.json';
                 setTimeout(() => { if (successAlert) successAlert.style.display = 'none'; }, 12000);
             }
 
-            const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown);
+            const latestFailedEndedAt = Number(latestFailed?.failedAt || latestFailed?.endedAt || 0);
+            const showFail = Boolean(latestFailed && latestFailed.key !== lastFailedEpicEventKeyShown && isRecentRoundResult(latestFailedEndedAt) && checkLastRoundResult(`failed-${latestFailed.key}`));
             failAlert.style.display = showFail ? 'block' : 'none';
             if (showFail) {
                 failAlert.innerText = 'Событие завершилось без выполнения цели.';
@@ -3518,6 +3531,8 @@ const JSON_URL = 'tasks.json';
     // Сохраняем в Firebase
     await db.ref('current_round').set({
         number: newRoundNum,
+        startedAt: Date.now(),
+        durationMs,
         endTime: Date.now() + durationMs,
         traps: traps,
         magicCell: magicCell,
@@ -5737,6 +5752,8 @@ const JSON_URL = 'tasks.json';
 
             await db.ref('current_round').set({
               number: newRoundNum,
+              startedAt: Date.now(),
+              durationMs,
               endTime: Date.now() + durationMs,
               traps,
               magicCell,
@@ -6074,7 +6091,7 @@ const JSON_URL = 'tasks.json';
 
           function renderRoundSchedules() {
             const statusEl = document.getElementById('admin-round-status');
-            const scheduled = roundSchedules.filter(r => r.status === 'scheduled');
+            const scheduled = roundSchedules.filter(r => String(r.status || 'scheduled') === 'scheduled');
             const recentProcessed = roundSchedules
               .filter(r => r.status === 'completed' || r.status === 'starting' || r.status === 'cancelled')
               .sort((a, b) => (b.startAt || 0) - (a.startAt || 0))
@@ -6112,8 +6129,8 @@ const JSON_URL = 'tasks.json';
             const now = getAdminNow();
             const due = roundSchedules
 
-              .filter(r => r.status === 'scheduled'
-                && (r.startAt || 0) <= now
+              .filter(r => String(r.status || 'scheduled') === 'scheduled'
+                && now >= Number(r.startAt || 0)
                 && getRoundActivationNotBefore(r) <= now)
 
               .sort((a, b) => (a.startAt || 0) - (b.startAt || 0))[0];
@@ -6136,17 +6153,6 @@ const JSON_URL = 'tasks.json';
               completedAt: Date.now(),
               launchedRound: roundNum || null
             });
-
-            roundSchedules = roundSchedules.map((r) => {
-              if (r.key !== due.key) return r;
-              return {
-                ...r,
-                status: 'completed',
-                completedAt: Date.now(),
-                launchedRound: roundNum || null
-              };
-            });
-            persistRoundSchedulesBackup(roundSchedules);
           }
 
           function syncRoundSchedules() {
@@ -6154,7 +6160,7 @@ const JSON_URL = 'tasks.json';
             roundSchedulesRef = db.ref('round_schedules');
             roundSchedulesRef.on('value', snap => {
               const items = [];
-              snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
+              snap.forEach(s => items.push({ key: s.key, status: 'scheduled', ...(s.val() || {}) }));
               roundSchedules = items.sort((a, b) => (a.startAt || 0) - (b.startAt || 0));
               hasRoundSchedulesSynced = true;
               persistRoundSchedulesBackup(roundSchedules);
@@ -6496,6 +6502,8 @@ const JSON_URL = 'tasks.json';
 
                 currentRoundNum = snap.val().number;
                 roundEndTime = snap.val().endTime;
+                currentRoundStartedAt = Number(snap.val().startedAt || 0);
+                currentRoundDurationMs = Number(snap.val().durationMs || 0);
                 document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
                 updateTimerDisplay();
 
@@ -6558,6 +6566,19 @@ const JSON_URL = 'tasks.json';
                     return;
                 }
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
+            });
+
+            if (duelNotificationsRef) duelNotificationsRef.off();
+            duelNotificationsRef = db.ref('duels');
+            duelNotificationsRef.on('child_added', snap => {
+                const duel = snap.val() || {};
+                if (String(duel.targetId || '') !== String(currentUserId)) return;
+                if (String(duel.status || '') !== 'pending') return;
+                showPlayerNotification({
+                    id: `duel-pending-${snap.key}`,
+                    text: duel.text || 'Тебя вызвали на дуэль! Открой уведомления и прими вызов.',
+                    borderColor: '#ffd54f'
+                });
             });
 
             if (challengeRef) challengeRef.off();
@@ -6878,8 +6899,16 @@ const JSON_URL = 'tasks.json';
             const board = boardSnap.val() || {};
             const roundCell = Object.values(board).find(c => c && Number(c.userId) === Number(currentUserId) && c.round === currentRoundNum);
 
-            const msLeft = roundEndTime - Date.now();
-            if (roundCell && msLeft <= 10 * 3600000 && msLeft > 0 && !hasFullSubmissionForRound(currentRoundNum)) {
+            const now = Date.now();
+            const msLeft = roundEndTime - now;
+            const isRoundActive = msLeft > 0;
+            const currentRoundWorks = allSubmissions.filter(s => Number(s.round) === Number(currentRoundNum));
+            const hasCurrentRoundWork = currentRoundWorks.some(s => String(s.userId) === String(currentUserId));
+            const computedDurationMs = Number(currentRoundDurationMs) > 0
+                ? Number(currentRoundDurationMs)
+                : (Number(currentRoundStartedAt) > 0 ? Math.max(0, Number(roundEndTime) - Number(currentRoundStartedAt)) : 0);
+            const isLessThanHalfTimeLeft = computedDurationMs > 0 ? msLeft <= (computedDurationMs * 0.5) : false;
+            if (roundCell && isRoundActive && !hasCurrentRoundWork && isLessThanHalfTimeLeft) {
                 const remindKey = `workReminderShownRound${currentRoundNum}`;
                 if (!window[remindKey]) {
                     window[remindKey] = true;
@@ -7306,6 +7335,19 @@ const JSON_URL = 'tasks.json';
                 if (Date.now() < end) requestAnimationFrame(frame);
             };
             frame();
+        }
+
+        function isRecentRoundResult(endedAt) {
+            return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
+        }
+
+        function checkLastRoundResult(roundKey) {
+            const key = String(roundKey || '').trim();
+            if (!key) return false;
+            const sessionKey = `round-result-shown-${key}`;
+            if (sessionStorage.getItem(sessionKey) === '1') return false;
+            sessionStorage.setItem(sessionKey, '1');
+            return true;
         }
 
 
