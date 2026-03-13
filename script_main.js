@@ -2789,7 +2789,8 @@ const JSON_URL = 'tasks.json';
 
                 const uid = Number(uidKey);
                 const user = whitelist[uidKey] || whitelist[uid] || {};
-                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                const parsedOwner = Number(user?.charIndex);
+                const owner = Number.isInteger(parsedOwner) ? parsedOwner : null;
                 if (!Number.isInteger(owner) || !players[owner]) continue;
 
                 const awarded = await claimSequentialTickets(1);
@@ -2864,7 +2865,8 @@ const JSON_URL = 'tasks.json';
                 if (alreadyRewarded[uidKey]) continue;
                 const uid = Number(uidKey);
                 const user = whitelist[uidKey] || whitelist[uid] || {};
-                const owner = Number.isInteger(user.charIndex) ? user.charIndex : null;
+                const parsedOwner = Number(user?.charIndex);
+                const owner = Number.isInteger(parsedOwner) ? parsedOwner : null;
                 if (!Number.isInteger(owner) || !players[owner]) continue;
                 const awarded = await claimSequentialTickets(1);
                 if (!awarded?.length) continue;
@@ -4551,9 +4553,25 @@ const JSON_URL = 'tasks.json';
                 const users = [];
                 snap.forEach(u => {
                     const userData = u.val() || {};
+                    const rawCharIndex = userData.charIndex;
+                    const parsedCharIndex = Number(rawCharIndex);
+                    const charIndex = Number.isInteger(parsedCharIndex) ? parsedCharIndex : null;
+                    const gameplayNickname = Number.isInteger(charIndex) && players[charIndex]?.n
+                        ? String(players[charIndex].n || '').trim()
+                        : '';
+                    const telegramName = String(
+                        userData.telegramFirstName
+                        || userData.telegram_name
+                        || userData.first_name
+                        || userData.name
+                        || userData.username
+                        || ''
+                    ).trim();
                     users.push({
-                        userTgId: u.key,
-                        charIndex: userData.charIndex
+                        userTgId: String(u.key),
+                        charIndex,
+                        gameplayNickname,
+                        telegramName
                     });
                 });
 
@@ -4564,21 +4582,23 @@ const JSON_URL = 'tasks.json';
                     return String(a.userTgId).localeCompare(String(b.userTgId));
                 });
 
-                let h = `<b>Список художников (${users.length}):</b><br>`;
-                users.forEach(({ userTgId, charIndex }) => {
-                    const charName = players[charIndex]?.n || "Неизвестный";
-                    const charColor = charColors[charIndex] || "#333";
+                let h = `<b>Список игроков (${users.length}):</b><div style="max-height:55vh; overflow-y:auto; margin-top:6px;">`;
+                users.forEach(({ userTgId, charIndex, gameplayNickname, telegramName }) => {
+                    const nickname = gameplayNickname || telegramName || `Игрок ${userTgId}`;
+                    const safeNickname = escapeHtml(nickname);
+                    const safeTelegramName = escapeHtml(telegramName || '—');
+                    const charColor = Number.isInteger(charIndex) ? (charColors[charIndex] || "#333") : "#333";
 
                     h += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:5px 0; border-bottom:1px solid #eee;">
-                        <span style="text-align:left;">
-                            <b style="color:${charColor}">${charName}</b><br>
-                            <code style="color:#888; font-size:10px;">ID: ${userTgId}</code>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; font-size:12px; padding:6px 0; border-bottom:1px solid #eee;">
+                        <span style="text-align:left; word-break:break-word; line-height:1.4;">
+                            <b style="color:${charColor}">${safeNickname}</b> | <code style="color:#666;">${escapeHtml(userTgId)}</code> | <span style="color:#666;">${safeTelegramName}</span>
                         </span>
-                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px;">Удалить</button>
+                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px; flex-shrink:0;">Удалить</button>
                     </div>`;
                 });
 
+                h += '</div>';
                 if (!users.length) h += '<small style="color:#999;">Пока список пуст.</small>';
                 document.getElementById('active-players').innerHTML = h;
             });
@@ -4607,9 +4627,10 @@ const JSON_URL = 'tasks.json';
         function toggleAdminPlayersList() {
             if (!isAdminUser()) return;
             const wrap = document.getElementById('active-players-wrap');
-            const btn = document.querySelector('#tab-admin button[onclick="toggleAdminPlayersList()"]');
+            const btn = document.getElementById('admin-players-toggle-btn')
+                || document.querySelector('#tab-admin #admin-players-section button[onclick="toggleAdminPlayersList()"]');
             if (!wrap || !btn) return;
-            const expanded = wrap.style.display !== 'none';
+            const expanded = getComputedStyle(wrap).display !== 'none';
             wrap.style.display = expanded ? 'none' : 'block';
             btn.innerText = expanded ? '👥 Список игроков: развернуть' : '👥 Список игроков: свернуть';
         }
