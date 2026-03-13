@@ -1859,6 +1859,10 @@ const JSON_URL = 'tasks.json';
             const renderDice = () => {
                 const statusLabel = document.getElementById('duel-status-label');
                 const rollBtn = document.getElementById('roll-button') || btn;
+                const statusTextNode = document.getElementById('duel-status-text');
+                const statusTimerNode = document.getElementById('duel-status-timer');
+                const statusOkBtn = document.getElementById('duel-status-ok');
+                const hasUndismissedOutgoingNotice = !!statusOkBtn && statusOkBtn.style.display !== 'none';
                 const hasPendingOutgoingDuel = activeDuels.some((duel) => {
                     if (!duel || typeof duel !== 'object') return false;
                     return String(duel.challengerId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
@@ -1872,12 +1876,11 @@ const JSON_URL = 'tasks.json';
                     const msLeft = Math.max(0, expiresAt - getServerNowMs());
                     const mm = String(Math.floor(msLeft / 60000)).padStart(2, '0');
                     const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
-                    const statusTextNode = document.getElementById('duel-status-text');
-                    const statusTimerNode = document.getElementById('duel-status-timer');
-                    const statusOkBtn = document.getElementById('duel-status-ok');
-                    if (statusTextNode) statusTextNode.textContent = 'Вы бросили вызов! Ждём ответа соперника';
-                    if (statusTimerNode) statusTimerNode.textContent = `⏳ ${mm}:${ss} до авто-отмены`;
-                    if (statusOkBtn) statusOkBtn.style.display = 'none';
+                    if (!hasUndismissedOutgoingNotice) {
+                        if (statusTextNode) statusTextNode.textContent = 'Вы бросили вызов! Ждём ответа соперника';
+                        if (statusTimerNode) statusTimerNode.textContent = `⏳ ${mm}:${ss} до авто-отмены`;
+                        if (statusOkBtn) statusOkBtn.style.display = 'none';
+                    }
                     if (statusLabel) statusLabel.style.display = 'block';
                     if (rollBtn) rollBtn.disabled = true;
                     return true;

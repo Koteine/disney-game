@@ -445,7 +445,25 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
         }
 
         async function acknowledgeDuelNotification(notificationKey) {
-            if (!notificationKey || !currentUserId) return;
+            if (!notificationKey || !currentUserId || !db) return;
+            const notificationRef = db.ref(`system_notifications/${currentUserId}/${notificationKey}`);
+            const snap = await notificationRef.once('value');
+            const payload = snap.val() || {};
+            const type = String(payload.type || '');
+            const isDuelStatusNotice = [
+                'calligraphy_duel_wait_notice',
+                'calligraphy_duel_timeout',
+                'calligraphy_duel_declined'
+            ].includes(type);
+
+            if (isDuelStatusNotice) {
+                await notificationRef.update({
+                    acknowledged: true,
+                    acknowledgedAt: getServerNowMs()
+                });
+                return;
+            }
+
             await closePlayerNotification(`sys-${notificationKey}`, true);
         }
 
@@ -472,6 +490,7 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
             const type = String(payload.type || '');
             const isWaiting = type === 'calligraphy_duel_wait_notice';
             const notifId = `sys-${notificationKey}`;
+            if (payload?.acknowledged) return;
             if (isPlayerNotificationDismissed(notifId)) return;
 
             if (isWaiting) {
