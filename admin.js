@@ -107,10 +107,20 @@ const formatMoscowDateTime = (...args) => (
             if (!userId) return alert('Укажи Telegram ID игрока.');
             if (!Number.isInteger(charIndex) || !players[charIndex]) return alert('Выбери корректный никнейм.');
 
-            const userSnap = await db.ref(`users/${userId}`).once('value');
-            if (!userSnap.exists()) return alert('Игрок с таким ID не найден в users.');
-            await db.ref(`users/${userId}/charIndex`).set(charIndex);
+            const userSnap = await db.ref(`whitelist/${userId}`).once('value');
+            if (!userSnap.exists()) return alert('Игрок с таким ID не найден в whitelist.');
+            await db.ref(`whitelist/${userId}/charIndex`).set(charIndex);
             alert('Никнейм обновлён. Изменение сразу видно всем игрокам.');
+          }
+
+          function syncEmergencyControlsState() {
+            const emergencyBody = document.getElementById('admin-emergency-body');
+            if (!emergencyBody) return;
+            const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
+            const disabled = !isAdminUser();
+            controls.forEach((el) => {
+              el.disabled = disabled;
+            });
           }
 
           async function executeEmergencyAction() {
@@ -624,13 +634,8 @@ const formatMoscowDateTime = (...args) => (
             const database = await waitForDbReadySafe().catch(() => null);
             if (!database) return;
 
-            const emergencyBody = document.getElementById('admin-emergency-body');
-            if (emergencyBody) {
-              const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
-              controls.forEach(el => {
-                el.disabled = !isAdminUser();
-              });
-            }
+            syncEmergencyControlsState();
+            window.addEventListener('load', () => syncEmergencyControlsState(), { once: true });
 
             const executeBtn = document.getElementById('btn-execute-emergency');
             if (executeBtn) executeBtn.onclick = executeEmergencyAction;
@@ -675,6 +680,7 @@ const formatMoscowDateTime = (...args) => (
             if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
             window.adminRoundInterval = setInterval(async () => {
               ensureAdminTabVisibility();
+              syncEmergencyControlsState();
               await checkScheduledRounds();
             }, 1000);
 
