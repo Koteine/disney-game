@@ -2752,7 +2752,7 @@ const JSON_URL = 'tasks.json';
             const ackSnap = await db.ref(ackPath).once('value');
             if (ackSnap.exists()) return;
 
-            const text = '🎨 «Эпичный раскрас» завершён успешно! Цель 95% достигнута. Ты получил(а) уведомление один раз.';
+            const text = '🎨 «Эпичный раскрас» завершён успешно! Цель 95% достигнута!✨';
             const ok = confirm(text);
             if (!ok) return;
             await db.ref(ackPath).set({ at: Date.now() });
