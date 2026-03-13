@@ -4644,6 +4644,25 @@ const JSON_URL = 'tasks.json';
             wrap.appendChild(card);
         }
 
+        function resetMiniEventBadge() {
+            const statusLabel = document.getElementById('duel-status-label');
+            const statusText = document.getElementById('duel-status-text');
+            const statusTimer = document.getElementById('duel-status-timer');
+            const statusOkBtn = document.getElementById('duel-status-ok');
+            if (statusText) statusText.textContent = '';
+            if (statusTimer) statusTimer.textContent = '';
+            if (statusOkBtn) statusOkBtn.style.display = 'none';
+            if (statusLabel) statusLabel.style.display = 'none';
+        }
+
+        function getPlayerNotificationBorderColor(type) {
+            if (type === 'calligraphy_duel_invite') return '#7e57c2';
+            if (type === 'calligraphy_duel_declined') return '#ef5350';
+            if (type === 'calligraphy_duel_wait_notice') return '#26a69a';
+            if (type === 'calligraphy_duel_result') return '#f06292';
+            return '#f48fb1';
+        }
+
         function hasFullSubmissionForRound(roundNum, userId = currentUserId) {
             return allSubmissions.some(s => String(s.userId) === String(userId) && Number(s.round) === Number(roundNum) && s.beforeImageData && s.afterImageData);
         }
