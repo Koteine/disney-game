@@ -1872,7 +1872,12 @@ const JSON_URL = 'tasks.json';
                     const msLeft = Math.max(0, expiresAt - getServerNowMs());
                     const mm = String(Math.floor(msLeft / 60000)).padStart(2, '0');
                     const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
-                    if (statusLabel) statusLabel.textContent = `Вы бросили вызов! Ждём ответа соперника (${mm}:${ss})`;
+                    const statusTextNode = document.getElementById('duel-status-text');
+                    const statusTimerNode = document.getElementById('duel-status-timer');
+                    const statusOkBtn = document.getElementById('duel-status-ok');
+                    if (statusTextNode) statusTextNode.textContent = 'Вы бросили вызов! Ждём ответа соперника';
+                    if (statusTimerNode) statusTimerNode.textContent = `⏳ ${mm}:${ss} до авто-отмены`;
+                    if (statusOkBtn) statusOkBtn.style.display = 'none';
                     if (statusLabel) statusLabel.style.display = 'block';
                     if (rollBtn) rollBtn.disabled = true;
                     return true;
@@ -3390,13 +3395,17 @@ const JSON_URL = 'tasks.json';
 
         window.__duelContext = {
             get db() { return db; },
+            get firebase() { return firebase; },
             get currentUserId() { return currentUserId; },
+            get currentRoundNum() { return currentRoundNum; },
             get players() { return players; },
             get myIndex() { return myIndex; },
             get CALLIGRAPHY_SYMBOLS() { return CALLIGRAPHY_SYMBOLS; },
             get IMPULSE_COOLDOWN_MS() { return IMPULSE_COOLDOWN_MS; },
             get DUEL_INVITE_TTL_MS() { return DUEL_INVITE_TTL_MS; },
             get DUEL_PATH() { return DUEL_PATH; },
+            get DUEL_REWARD_ITEMS() { return DUEL_REWARD_ITEMS; },
+            get itemTypes() { return window.itemTypes || {}; },
             getServerNowMs,
             postNews,
             claimSequentialTickets: (...args) => window.claimSequentialTickets?.(...args),
