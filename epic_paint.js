@@ -125,6 +125,8 @@
                     color: context.color,
                     uid,
                     team: context.team,
+                    eventKey: currentGameEventKey,
+                    eventId: currentGameEvent?.id || EPIC_PAINT_EVENT_ID,
                     at: now
                 };
             });
@@ -134,6 +136,13 @@
             } else {
                 updates[`epic_paint/participants/${uid}/updatedAt`] = now;
             }
+            updates[`epic_paint/participants_by_event/${currentGameEventKey}/${uid}`] = {
+                uid,
+                color: context.color,
+                team: context.team,
+                eventId: currentGameEvent?.id || EPIC_PAINT_EVENT_ID,
+                updatedAt: now
+            };
             await db.ref().update(updates);
         }
 
@@ -297,6 +306,25 @@
             if (!currentGameEventKey) return;
             if (coverage < EPIC_PAINT_COVERAGE_TARGET) return;
 
+            await flushEpicPaintStrokes(true);
+            const strokesSnap = await db.ref('epic_paint/strokes').once('value');
+            const strokesForEvent = [];
+            strokesSnap.forEach((row) => {
+                const stroke = row.val() || {};
+                const strokeEventKey = String(stroke.eventKey || '').trim();
+                if (!strokeEventKey || strokeEventKey === currentGameEventKey) strokesForEvent.push(stroke);
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 1000;
+            canvas.height = 2000;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            strokesForEvent.forEach(stroke => drawEpicPaintStroke(ctx, stroke));
+            const syncedCoverage = calculateEpicPaintCoverage(canvas, { force: true });
+            if (syncedCoverage < EPIC_PAINT_COVERAGE_TARGET) return;
+
             const eventRef = db.ref(`game_events/${currentGameEventKey}`);
             const tx = await eventRef.transaction(ev => {
                 if (!ev || ev.id !== EPIC_PAINT_EVENT_ID || ev.status !== 'active') return ev;
@@ -336,7 +364,8 @@
             const eventKey = String(eventData?.key || currentGameEventKey || '').trim();
             if (!eventKey) return 0;
 
-            const [participantsSnap, strokesSnap, whitelistSnap] = await Promise.all([
+            const [participantsByEventSnap, participantsSnap, strokesSnap, whitelistSnap] = await Promise.all([
+                db.ref(`epic_paint/participants_by_event/${eventKey}`).once('value'),
                 db.ref('epic_paint/participants').once('value'),
                 db.ref('epic_paint/strokes').once('value'),
                 db.ref('whitelist').once('value')
@@ -345,11 +374,16 @@
             const whitelist = whitelistSnap.val() || {};
             const participantUidSet = new Set();
 
-            participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
-            strokesSnap.forEach(strokeSnap => {
-                const stroke = strokeSnap.val() || {};
-                if (stroke.uid !== undefined && stroke.uid !== null) participantUidSet.add(String(stroke.uid));
-            });
+            participantsByEventSnap.forEach(p => participantUidSet.add(String(p.key)));
+            if (!participantUidSet.size) {
+                participantsSnap.forEach(p => participantUidSet.add(String(p.key)));
+                strokesSnap.forEach(strokeSnap => {
+                    const stroke = strokeSnap.val() || {};
+                    const strokeEventKey = String(stroke.eventKey || '').trim();
+                    if (strokeEventKey && strokeEventKey !== eventKey) return;
+                    if (stroke.uid !== undefined && stroke.uid !== null) participantUidSet.add(String(stroke.uid));
+                });
+            }
 
             const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
             console.info('[epic_paint] reward finalize participants collected', { eventKey, participants: participantUids.length });
@@ -649,7 +683,7 @@
                         epicPaintFlushTimer = null;
                     }
                     epicPaintRealtimeContext = { team: 'red', color: '#ff007f', preparedForEventKey: null, touched: false };
-                    await db.ref('epic_paint').set({ strokes: null, participants: null, rewarded: null });
+                    await db.ref('epic_paint').set({ strokes: null, participants: null, participants_by_event: null, rewarded: null });
                 }
             }
         }
