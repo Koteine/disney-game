@@ -170,6 +170,7 @@ const JSON_URL = 'tasks.json';
         let epicPaintStrokesRef = null;
         let winnerHistoryRef = null;
         let drawScheduleRef = null;
+        const INVENTORY_ITEM_KEYS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
         let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0 };
         let myInkChallenge = null;
         let myWandBlessing = null;
@@ -905,8 +906,10 @@ const JSON_URL = 'tasks.json';
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
             inventoryRef.on('value', snap => {
-                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
+                const inventoryRaw = snap.val() || {};
+                myInventory = normalizeInventory(inventoryRaw);
                 renderInventory();
+                cleanupUnsupportedInventoryKeys(currentUserId, inventoryRaw).catch((err) => console.error('inventory cleanup failed', err));
             });
 
             if (seasonProfilesRef) seasonProfilesRef.off();
@@ -2293,6 +2296,7 @@ const JSON_URL = 'tasks.json';
         async function adminSetPlayerItem(targetUserId, itemKey, addMode) {
             if (Number(currentUserId) !== Number(ADMIN_ID)) return alert('Только администратор может управлять предметами.');
             if (!targetUserId || !itemKey) return;
+            if (!INVENTORY_ITEM_KEYS.includes(itemKey) || !itemTypes?.[itemKey]) return alert('Такого предмета не существует в игре.');
             const invRef = db.ref(`whitelist/${targetUserId}/inventory/${itemKey}`);
             if (addMode) {
                 await invRef.transaction(v => (Number(v) || 0) + 1);
@@ -2455,6 +2459,7 @@ const JSON_URL = 'tasks.json';
 
         async function addInventoryItemForUser(uid, itemType, count = 1) {
             if (!uid || !itemType || !count) return;
+            if (!INVENTORY_ITEM_KEYS.includes(itemType) || !itemTypes?.[itemType]) return;
             await db.ref(`whitelist/${uid}/inventory/${itemType}`).transaction(v => (Number(v) || 0) + count);
         }
 
@@ -5237,7 +5242,9 @@ const JSON_URL = 'tasks.json';
                 const karmaPoints = Math.max(0, Number(season.karma_points) || 0);
                 const karmaMeta = getKarmaVisualMeta(karmaPoints);
                 const inv = (window.cachedWhitelistData?.[selectedUser.userId]?.inventory && typeof window.cachedWhitelistData[selectedUser.userId].inventory === 'object') ? window.cachedWhitelistData[selectedUser.userId].inventory : {};
-                const inventoryRows = Object.keys(inv).filter(k => Number(inv[k] || 0) > 0).sort((a, b) => (window.itemTypes?.[a]?.name || a).localeCompare(window.itemTypes?.[b]?.name || b, 'ru'));
+                const inventoryRows = INVENTORY_ITEM_KEYS
+                    .filter(k => Number(inv[k] || 0) > 0 && window.itemTypes?.[k])
+                    .sort((a, b) => (window.itemTypes?.[a]?.name || a).localeCompare(window.itemTypes?.[b]?.name || b, 'ru'));
                 const inventoryHtml = inventoryRows.length ? inventoryRows.map(key => `<div>${window.itemTypes?.[key]?.emoji || '🎁'} ${window.itemTypes?.[key]?.name || key}: <b>${Number(inv[key])}</b></div>`).join('') : '<div style="color:#888;">Рюкзак пуст.</div>';
                 const ticketsHtml = filtered.length ? filtered.map(t => `<div style="padding:6px 0; border-bottom:1px dashed #eee;"><div><b>Билет №${t.ticketNum}</b></div><div style="font-size:11px; color:#777;">Раунд: ${t.round || '—'} · Клетка: ${t.cell || '—'}</div><div style="color:#555; font-size:12px; margin-top:3px;">${escapeHtml(t.taskLabel || t.sourceLabel || 'Описание задания отсутствует')}</div></div>`).join('') : '<div style="color:#888;">У игрока нет билетов.</div>';
 
@@ -6709,8 +6716,10 @@ const JSON_URL = 'tasks.json';
             if (inventoryRef) inventoryRef.off();
             inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
             inventoryRef.on('value', snap => {
-                myInventory = { goldenPollen: snap.val()?.goldenPollen || 0, inkSaboteur: snap.val()?.inkSaboteur || 0, magnifier: snap.val()?.magnifier || 0, cloak: snap.val()?.cloak || 0 };
+                const inventoryRaw = snap.val() || {};
+                myInventory = normalizeInventory(inventoryRaw);
                 renderInventory();
+                cleanupUnsupportedInventoryKeys(currentUserId, inventoryRaw).catch((err) => console.error('inventory cleanup failed', err));
             });
 
 
@@ -7743,3 +7752,21 @@ const JSON_URL = 'tasks.json';
         window.Telegram.WebApp.ready();
         tg.expand();
         init();
+        function normalizeInventory(rawInventory) {
+            const source = (rawInventory && typeof rawInventory === 'object') ? rawInventory : {};
+            return INVENTORY_ITEM_KEYS.reduce((acc, key) => {
+                acc[key] = Number(source[key] || 0);
+                return acc;
+            }, {});
+        }
+
+        async function cleanupUnsupportedInventoryKeys(uid, rawInventory) {
+            if (!uid || !rawInventory || typeof rawInventory !== 'object') return;
+            const unknownKeys = Object.keys(rawInventory).filter((key) => !INVENTORY_ITEM_KEYS.includes(key));
+            if (!unknownKeys.length) return;
+            const updates = {};
+            unknownKeys.forEach((key) => {
+                updates[key] = null;
+            });
+            await db.ref(`whitelist/${uid}/inventory`).update(updates);
+        }
