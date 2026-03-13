@@ -1788,7 +1788,9 @@ const JSON_URL = 'tasks.json';
             drawPanel?.classList.toggle('active', isDraw);
         }
 
+
         // Epic Paint / Wall Battle runtime moved to epic_paint.js (single source of truth).
+
 
         // Механики билетов (выдача, хранение, таблица) вынесены в Tickets.js.
 
