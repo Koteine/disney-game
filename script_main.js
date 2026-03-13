@@ -576,14 +576,14 @@ const JSON_URL = 'tasks.json';
                 tasks = await res.json();
                 await initializeTelegramSeasonUser();
                 if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
-                setupEpicPaintCanvas();
-                resizeEpicPaintCanvasForPhone();
-                window.addEventListener('resize', resizeEpicPaintCanvasForPhone);
-                window.addEventListener('orientationchange', resizeEpicPaintCanvasForPhone);
+                window.setupEpicPaintCanvas?.();
+                window.resizeEpicPaintCanvasForPhone?.();
+                window.addEventListener('resize', () => window.resizeEpicPaintCanvasForPhone?.());
+                window.addEventListener('orientationchange', () => window.resizeEpicPaintCanvasForPhone?.());
                 document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
                 checkAccess();
                 syncData();
-                syncGameEvents();
+                window.syncGameEvents?.();
                 syncWheelSystems();
                 window.initMushuEventSystem?.();
                 window.subscribeToCalligraphyDuelInvites?.();
@@ -2123,8 +2123,6 @@ const JSON_URL = 'tasks.json';
         async function grantEpicPaintRewards(eventData = null) {
             const eventKey = String(eventData?.key || currentGameEventKey || '').trim();
             if (!eventKey) return 0;
-            const rewardsTx = await db.ref(`game_events/${eventKey}/rewardsPosted`).transaction(v => v || { at: Date.now() });
-            if (!rewardsTx.committed) return 0;
 
             const [participantsSnap, strokesSnap, whitelistSnap] = await Promise.all([
                 db.ref('epic_paint/participants').once('value'),
@@ -2142,6 +2140,7 @@ const JSON_URL = 'tasks.json';
             });
 
             const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
+            console.info('[epic_paint] reward finalize participants collected', { eventKey, participants: participantUids.length });
             if (!participantUids.length) return 0;
 
             let rewardedCount = 0;
@@ -2153,11 +2152,20 @@ const JSON_URL = 'tasks.json';
                 const user = whitelist[uidKey] || whitelist[uid] || {};
                 const parsedOwner = Number(user?.charIndex);
                 const owner = Number.isInteger(parsedOwner) ? parsedOwner : null;
-                if (!Number.isInteger(owner) || !players[owner]) continue;
+                if (!Number.isInteger(owner)) {
+                    console.warn('[epic_paint] skipped reward: missing owner charIndex', { eventKey, uid: uidKey });
+                    await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).remove();
+                    continue;
+                }
 
                 const awarded = await claimSequentialTickets(1);
-                if (!Array.isArray(awarded) || !awarded[0]) continue;
+                if (!Array.isArray(awarded) || !awarded[0]) {
+                    console.warn('[epic_paint] skipped reward: ticket pool exhausted or unavailable', { eventKey, uid: uidKey });
+                    await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).remove();
+                    continue;
+                }
                 rewardedCount += 1;
+                console.info('[epic_paint] reward ticket granted', { eventKey, uid: uidKey, ticket: awarded[0] });
                 await db.ref('tickets_archive').push({
                     owner,
                     userId: uid,
@@ -2173,6 +2181,9 @@ const JSON_URL = 'tasks.json';
                     excluded: false
                 });
             }
+
+            await db.ref(`game_events/${eventKey}/rewardsPosted`).transaction(v => v || { at: Date.now(), rewardedCount });
+            console.info('[epic_paint] reward finalize completed', { eventKey, rewardedCount });
 
             const notifyText = '🎨 «Эпичный закрас» завершён! Полотно закрашено на 95%+. Награда: 1 билет каждому участнику, кто оставил хотя бы один штрих.';
             const notifyMap = {};
@@ -2261,7 +2272,7 @@ const JSON_URL = 'tasks.json';
             if (navEventBtn) navEventBtn.style.display = isActive ? 'flex' : 'none';
             if (eventTitle) eventTitle.innerText = isActive ? `${currentGameEvent.name || currentGameEvent.id}` : 'Событие не активно';
             updateEpicPaintTimerDisplay();
-            resizeEpicPaintCanvasForPhone();
+            window.resizeEpicPaintCanvasForPhone?.();
 
             if (isActive) {
                 startAlert.style.display = 'block';
@@ -2503,7 +2514,7 @@ const JSON_URL = 'tasks.json';
                         .catch((err) => console.error('epic paint success notification failed', err));
                 }
 
-                updateEventUiState();
+                window.updateEventUiState?.();
                 updateAdminEventStatus();
                 activateScheduledEventIfNeeded();
                 failExpiredEventIfNeeded();
@@ -2628,8 +2639,8 @@ const JSON_URL = 'tasks.json';
             window.timerInt = setInterval(async () => {
                 const duelLockActive = renderDice();
                 await checkInkDeadline();
-                await activateScheduledEventIfNeeded();
-                await failExpiredEventIfNeeded();
+                await window.activateScheduledEventIfNeeded?.();
+                await window.failExpiredEventIfNeeded?.();
                 await maybeActivateScheduledDraw();
                 await maybeFinalizeScheduledDraw();
                 if (!window.lastSubmissionDeadlineCheckAt || Date.now() - window.lastSubmissionDeadlineCheckAt > 60000) {
@@ -2664,7 +2675,7 @@ const JSON_URL = 'tasks.json';
                 if (Number(currentUserId) === Number(ADMIN_ID)) {
                     btn.disabled = true;
                     btn.innerText = "👀 Режим наблюдателя";
-                    updateEventUiState();
+                    window.updateEventUiState?.();
                     return;
                 }
 
@@ -2674,7 +2685,7 @@ const JSON_URL = 'tasks.json';
                     myRoundHasMove = true;
                     btn.disabled = true;
                     btn.innerText = "🚫 Ты выбыл(а) из игры";
-                    updateEventUiState();
+                    window.updateEventUiState?.();
                     return;
                 }
 
@@ -2684,7 +2695,7 @@ const JSON_URL = 'tasks.json';
                 if (duelLockActive) {
                     btn.disabled = true;
                 }
-                updateEventUiState();
+                window.updateEventUiState?.();
             }, 1000);
         }
 
@@ -5100,7 +5111,7 @@ const JSON_URL = 'tasks.json';
             });
 
             if (currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'completed') {
-                maybeShowEpicPaintSuccessNotification().catch((err) => console.error('epic paint success notification failed', err));
+                window.maybeShowEpicPaintSuccessNotification?.().catch((err) => console.error('epic paint success notification failed', err));
             }
 
             if (duelsRef) duelsRef.off();
@@ -6104,7 +6115,7 @@ const JSON_URL = 'tasks.json';
 
         window.Telegram.WebApp.ready();
         tg.expand();
-        init();
+        window.addEventListener('load', () => init());
         function normalizeInventory(rawInventory) {
             const source = (rawInventory && typeof rawInventory === 'object') ? rawInventory : {};
             return INVENTORY_ITEM_KEYS.reduce((acc, key) => {
