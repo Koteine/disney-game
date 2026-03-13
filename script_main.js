@@ -105,6 +105,16 @@ const JSON_URL = 'tasks.json';
             return 'Путешественник';
         }
 
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         async function initializeTelegramSeasonUser() {
             const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user || {};
             const userId = String(tgUser.id || currentUserPathId || currentUserId || '').trim();
@@ -814,7 +824,9 @@ const JSON_URL = 'tasks.json';
             db.ref('whitelist/' + currentUserId).on('value', s => {
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
-                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    const playerName = players[myIndex]?.n || 'Игрок';
+                    const playerColor = charColors[myIndex] || '#6a1b9a';
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                     updateWorksTabForRole(false);
                     setAuthorizedView(true);
                     if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
@@ -4225,7 +4237,9 @@ const JSON_URL = 'tasks.json';
                 const currentIsAdmin = Number(currentUserId) === Number(ADMIN_ID);
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
-                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${charColors[myIndex]}">${players[myIndex].n}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    const playerName = players[myIndex]?.n || 'Игрок';
+                    const playerColor = charColors[myIndex] || '#6a1b9a';
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                     updateWorksTabForRole(currentIsAdmin);
                     setAuthorizedView(true);
                     return;
