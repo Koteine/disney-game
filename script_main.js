@@ -1727,6 +1727,20 @@ const JSON_URL = 'tasks.json';
             }
         }
 
+        async function postCalligraphyDuelStartedNewsIfNeeded(duelKey, duelData = null) {
+            if (!duelKey) return;
+            const duelNow = duelData || (await db.ref(`${DUEL_PATH}/${duelKey}`).once('value')).val() || {};
+            if (duelNow.status !== 'active') return;
+            const startedFeedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelStartedNoticePosted`).transaction((posted) => {
+                if (posted) return;
+                return { at: getServerNowMs(), by: String(currentUserId || '') };
+            });
+            if (!startedFeedTx.committed) return;
+            const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
+            const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
+            await postNews(`${a} и ${b} сошлись в дуэли каллиграфов`);
+        }
+
         async function acceptCalligraphyDuel(duelKey) {
             if (!duelKey) return;
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
@@ -1752,15 +1766,7 @@ const JSON_URL = 'tasks.json';
             });
             const duelNow = (await ref.once('value')).val() || {};
             if (duelNow.status === 'active') {
-                const startedFeedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelStartedNoticePosted`).transaction((posted) => {
-                    if (posted) return;
-                    return { at: getServerNowMs(), by: String(currentUserId || '') };
-                });
-                if (startedFeedTx.committed) {
-                    const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
-                    const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
-                    await postNews(`${a} и ${b} сошлись в дуэли каллиграфов`);
-                }
+                await postCalligraphyDuelStartedNewsIfNeeded(duelKey, duelNow);
                 const now = getServerNowMs();
                 await db.ref().update({
                     [`player_season_status/${duelNow.challengerId}/last_impulse_time`]: now,
@@ -2696,12 +2702,20 @@ const JSON_URL = 'tasks.json';
             const flagPath = `game_events/${eventData.key}/summaryPosted`;
             const summaryTx = await db.ref(flagPath).transaction(v => v || { at: Date.now(), status: isSuccess ? 'completed' : 'failed' });
             if (!summaryTx.committed) return;
+            if (eventData.id !== EPIC_PAINT_EVENT_ID) {
+                const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
+                await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}).`);
+                return;
+            }
             const startAt = eventData.activatedAt || eventData.startAt || Date.now();
             const endAt = eventData.completedAt || eventData.failedAt || Date.now();
-            const durationMinutes = Math.max(1, Math.round((endAt - startAt) / 60000));
             const startText = new Date(startAt).toLocaleString('ru-RU');
+            const endText = new Date(endAt).toLocaleString('ru-RU');
             const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
-            await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}). Начало: ${startText}. Длительность: ${formatDurationMinutesRu(durationMinutes)}. ${rewardedPlayersCount} игроков получили свои призы.`);
+            const rewardsText = isSuccess
+                ? `Награды получили: ${Number(rewardedPlayersCount) || 0}.`
+                : 'Награды не выдавались.';
+            await postNews(`🎨 Прошло событие «Эпичный раскрас» (${statusText}). Начало: ${startText}. Завершение: ${endText}. ${rewardsText}`);
         }
 
         async function maybeFinalizeEpicPaintSuccess(coverage) {
@@ -2727,6 +2741,21 @@ const JSON_URL = 'tasks.json';
             const finalizedEvent = { ...(tx.snapshot.val() || {}), key: currentGameEventKey, completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt };
             const rewardedPlayersCount = await grantEpicPaintRewards(finalizedEvent);
             await postEpicEventSummary(finalizedEvent, true, rewardedPlayersCount);
+        }
+
+        async function maybeShowEpicPaintSuccessNotification(eventData = null) {
+            const src = eventData || currentGameEvent;
+            const eventKey = String(src?.key || currentGameEventKey || '');
+            if (!eventKey || !src) return;
+            if (src.id !== EPIC_PAINT_EVENT_ID || src.status !== 'completed') return;
+            const ackPath = `game_events/${eventKey}/successAcknowledged/${currentUserId}`;
+            const ackSnap = await db.ref(ackPath).once('value');
+            if (ackSnap.exists()) return;
+
+            const text = '🎨 «Эпичный раскрас» завершён успешно! Цель 95% достигнута. Ты получил(а) уведомление один раз.';
+            const ok = confirm(text);
+            if (!ok) return;
+            await db.ref(ackPath).set({ at: Date.now() });
         }
 
         async function grantEpicPaintRewards(eventData = null) {
@@ -3100,6 +3129,14 @@ const JSON_URL = 'tasks.json';
                 currentGameEventKey = active?.key || null;
                 if (!currentGameEvent || ![EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(currentGameEvent.id) || currentGameEvent.status !== 'active') {
                     epicPaintHasDismissedStart = false;
+                }
+
+                const latestCompletedEpic = queuedGameEvents
+                    .filter(ev => ev.id === EPIC_PAINT_EVENT_ID && ev.status === 'completed')
+                    .sort((a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0))[0];
+                if (latestCompletedEpic?.key) {
+                    maybeShowEpicPaintSuccessNotification(latestCompletedEpic)
+                        .catch((err) => console.error('epic paint success notification failed', err));
                 }
 
                 updateEventUiState();
@@ -4136,15 +4173,27 @@ const JSON_URL = 'tasks.json';
         }
 
         async function adminStartNewRound() {
-    // Получаем значения из полей
-    const d = parseInt(document.getElementById('r-days').value) || 0;
-    const h = parseInt(document.getElementById('r-hours').value) || 0;
-    const m = parseInt(document.getElementById('r-mins').value) || 0;
+	    const d = parseInt(document.getElementById('r-days').value) || 0;
+	    const h = parseInt(document.getElementById('r-hours').value) || 0;
+	    const m = parseInt(document.getElementById('r-mins').value) || 0;
+	    const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
 
-    // Переводим всё в миллисекунды
-    const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+	    if (durationMs <= 0) return alert("Укажите время раунда!");
 
-    if (durationMs <= 0) return alert("Укажите время раунда!");
+	    const startAtRaw = String(document.getElementById('round-start-at')?.value || '').trim();
+	    if (startAtRaw) {
+	        const parser = (typeof window.parseMoscowDateTimeLocalInput === 'function')
+	            ? window.parseMoscowDateTimeLocalInput
+	            : (value) => new Date(value).getTime();
+	        const parsedStartAt = Number(parser(startAtRaw));
+	        const now = Number(window.getAdminNow?.() || Date.now());
+	        if (Number.isFinite(parsedStartAt) && parsedStartAt > now) {
+	            if (typeof window.adminScheduleRound === 'function') {
+	                await window.adminScheduleRound();
+	                return;
+	            }
+	        }
+	    }
 
     await archiveAndClearBoard();
     let free = []; for(let i=0; i<50; i++) free.push(i);
@@ -4190,8 +4239,8 @@ const JSON_URL = 'tasks.json';
 
     await postNews(`Раунд #${newRoundNum} начался`);
 
-    alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
-}
+	    alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
+	}
 
         function pickRandom(arr) {
             if (!arr.length) return null;
@@ -6667,12 +6716,20 @@ const JSON_URL = 'tasks.json';
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
 
+            if (currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'completed') {
+                maybeShowEpicPaintSuccessNotification().catch((err) => console.error('epic paint success notification failed', err));
+            }
+
             if (duelsRef) duelsRef.off();
             duelsRef = db.ref(DUEL_PATH).limitToLast(40);
             duelsRef.on('value', snap => {
                 const items = [];
                 snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
                 activeDuels = items;
+                items.forEach((duel) => {
+                    if (!duel?.key || duel.status !== 'active') return;
+                    postCalligraphyDuelStartedNewsIfNeeded(duel.key, duel).catch((err) => console.error('duel started news failed', err));
+                });
             });
 
             if (challengeRef) challengeRef.off();
