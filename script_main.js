@@ -5387,6 +5387,20 @@ const JSON_URL = 'tasks.json';
         window.adminRenderKarmaSearchResults = adminRenderKarmaSearchResults;
         window.adminSelectKarmaUser = adminSelectKarmaUser;
         window.adminAdjustKarma = adminAdjustKarma;
+        window.toggleAdminEmergencyActions = toggleAdminEmergencyActions;
+        window.toggleEmergencySection = toggleEmergencySection;
+        window.adminGrantTicketsToPlayer = adminGrantTicketsToPlayer;
+        window.adminRevokeTicketsFromPlayer = adminRevokeTicketsFromPlayer;
+        window.adminForceRenamePlayer = adminForceRenamePlayer;
+        window.adminTeleportPlayerToStart = adminTeleportPlayerToStart;
+        window.adminRestartPlayerCurrentCell = adminRestartPlayerCurrentCell;
+        window.adminApplyItemAction = adminApplyItemAction;
+        window.adminReplaceAllNicknames = adminReplaceAllNicknames;
+        window.adminResetCurrentRound = adminResetCurrentRound;
+        window.adminResetGame = adminResetGame;
+        window.adminFullReset = adminFullReset;
+        window.toggleAdminPlayersList = toggleAdminPlayersList;
+        window.saveNewUserRandomly = saveNewUserRandomly;
         window.sendGalleryCompliment = sendGalleryCompliment;
 
         // END works.js
