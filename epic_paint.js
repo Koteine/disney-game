@@ -497,6 +497,19 @@
             return rewardedCount;
         }
 
+        async function ensureCompletedEventArtifacts(eventData) {
+            if (!eventData?.key) return;
+            if (eventData.id === EPIC_PAINT_EVENT_ID) {
+                const rewardedPlayersCount = await grantEpicPaintRewards(eventData);
+                await postEpicEventSummary(eventData, true, rewardedPlayersCount);
+                return;
+            }
+            if (eventData.id === WALL_BATTLE_EVENT_ID) {
+                const rewardedPlayersCount = await grantWallBattleRewards(eventData.winnerTeam || 'red');
+                await postEpicEventSummary(eventData, true, rewardedPlayersCount);
+            }
+        }
+
         function openEventSpace() {
             const navBtn = document.getElementById('nav-event-btn');
             if (navBtn) switchTab('tab-event', navBtn);
@@ -719,6 +732,19 @@
                 return { ...ev, status: 'failed', failedAt: nowMs, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' };
             });
             if (tx.committed) {
+                const txValue = tx.snapshot?.val() || {};
+                const txStatus = String(txValue.status || '');
+                if (txStatus === 'completed' && [EPIC_PAINT_EVENT_ID, WALL_BATTLE_EVENT_ID].includes(active.id)) {
+                    await ensureCompletedEventArtifacts({
+                        ...txValue,
+                        key: active.key,
+                        completedAt: Number(txValue.completedAt || nowMs),
+                        activatedAt: txValue.activatedAt || active.activatedAt || active.startAt
+                    });
+                    return;
+                }
+                if (txStatus !== 'failed') return;
+
                 if (active.id === MUSHU_EVENT_ID) {
                     const failedAt = nowMs;
                     await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' });
