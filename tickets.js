@@ -58,12 +58,41 @@ window.__initTicketsModule = function __initTicketsModule() {
             }
 
             function syncTicketData() {
-                db.ref('board').on('value', snap => {
+                db.ref('board').on('value', async snap => {
                     const data = snap.val() || {};
+                    const roundSnap = await db.ref('current_round').once('value');
+                    const currentRound = roundSnap.val() || {};
                     const grid = document.getElementById('grid');
                     if (grid) grid.innerHTML = "";
                     liveBoardTicketsData = [];
 
+                    if (window.snakeRound?.isSnakeRound?.(currentRound)) {
+                        const snakeState = currentUserId ? ((await db.ref(`whitelist/${currentUserId}/snakeState`).once('value')).val() || {}) : {};
+                        const masterTrapVisionEnabled = !!snakeState.masterTrapVisionEnabled;
+                        const dangerPositions = window.snakeRound?.getDangerPositions
+                            ? window.snakeRound.getDangerPositions(currentRound?.snakeConfig || {})
+                            : [];
+                        if (grid) {
+                            grid.classList.add('snake-grid');
+                            grid.innerHTML = window.snakeRound.buildSnakeBoardHtml(data, currentRound, charColors, players, {
+                                masterTrapVisionEnabled,
+                                dangerPositions
+                            });
+                            grid.querySelectorAll('[data-snake-pos]').forEach((btn) => {
+                                const pos = Number(btn.getAttribute('data-snake-pos'));
+                                const cellIdx = pos - 1;
+                                btn.onclick = () => showCell(cellIdx, data[cellIdx] || null);
+                            });
+                        }
+                        Object.entries(data).forEach(([idx, cell]) => {
+                            if (!cell) return;
+                            liveBoardTicketsData.push({ ...cell, cell: Number(idx) + 1, cellIdx: Number(idx), isArchived: false });
+                        });
+                        updateAllTicketsDataAndRender();
+                        return;
+                    }
+
+                    if (grid) grid.classList.remove('snake-grid');
                     for (let i = 0; i < 50; i++) {
                         const cell = data[i];
                         const d = document.createElement('div');
