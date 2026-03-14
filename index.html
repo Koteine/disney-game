@@ -59,6 +59,10 @@
                 <div id="duel-status-timer"></div>
                 <button id="duel-status-ok" class="admin-btn" style="display:none; margin:8px 0 0; width:auto; padding:8px 14px;">ОК</button>
             </div>
+            <div id="snake-status-block" class="snake-status-block" style="display:none;">
+                <div class="snake-status-title">🐍 Твой статус на поле</div>
+                <div id="snake-status-lines" class="snake-status-lines"></div>
+            </div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
             <div class="grid" id="grid"></div>
         </div>
@@ -166,9 +170,9 @@
                 <b>Загрузить новую работу</b>
                 <select id="work-task-select" class="admin-input" style="margin-top:8px;"></select>
                 <label id="work-before-label" style="font-size:12px; color:#777;">Фото «До» (не раскрашенная)</label>
-                <input type="file" id="work-image-before-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
+                <input type="file" id="work-image-before-input" accept="image/*" class="admin-input" style="padding:8px;">
                 <label id="work-after-label" style="font-size:12px; color:#777;">Фото «После» (раскрашенная)</label>
-                <input type="file" id="work-image-after-input" accept="image/*" capture="environment" class="admin-input" style="padding:8px;">
+                <input type="file" id="work-image-after-input" accept="image/*" class="admin-input" style="padding:8px;">
                 <button id="work-submit-btn" onclick="submitWork()" class="admin-btn" style="margin:0; width:100%;">📸 Загрузить работу</button>
                 <div id="work-upload-status" style="font-size:12px; margin-top:6px; color:#6a1b9a;"></div>
                 <div style="font-size:11px; color:#888; margin-top:6px;">Игроки видят только свои работы. Админ видит все работы и может менять статус.</div>
@@ -206,12 +210,21 @@
         <div style="flex:1;"><small>Часы</small><input type="number" id="r-hours" class="admin-input" value="0"></div>
         <div style="flex:1;"><small>Мин</small><input type="number" id="r-mins" class="admin-input" value="0"></div>
     </div>
+    <label style="font-size:12px; color:#777;">Режим игры</label>
+    <select id="round-field-mode" class="admin-input">
+        <option value="cells">Клетки</option>
+        <option value="snake">Змейка</option>
+    </select>
     <button onclick="adminStartNewRound()" class="admin-btn" style="background:#4CAF50; width:100%; margin:0; height:45px;">🚀 ЗАПУСТИТЬ РАУНД</button>
     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
     <b>Отложенный запуск раундов:</b>
     <label style="font-size:12px; color:#777;">Когда начнется раунд</label>
     <input type="datetime-local" id="round-start-at" class="admin-input">
     <div id="admin-round-status" style="font-size:12px; margin-top:8px; color:#555;">Запланированных раундов нет.</div>
+    </div>
+    <div id="admin-snake-overview" class="admin-section" style="display:none; margin-top:8px;">
+        <b>🐍 Обзор активной snake-карты</b>
+        <div id="admin-snake-overview-body" class="snake-admin-overview" style="margin-top:8px;"></div>
     </div>
                 </div>
                 </div>
@@ -399,6 +412,10 @@
     
     <script src="items.js"></script>
     <script src="tickets.js"></script>
+    <script src="snakeround.js"></script>
+    <script src="snake_admin_overview.js"></script>
+    <script src="snake_clash.js"></script>
+    <script src="snake_ui.js"></script>
     <script src="script_main.js"></script>
     <script src="duel.js"></script>
     <script src="epic_paint.js"></script>

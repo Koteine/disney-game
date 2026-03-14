@@ -83,7 +83,8 @@ if (typeof window.formatMoscowDateTime !== 'function') {
                   cancelledBy: item.cancelledBy || null,
                   startedAt: Number(item.startedAt || 0) || null,
                   completedAt: Number(item.completedAt || 0) || null,
-                  launchedRound: item.launchedRound ?? null
+                  launchedRound: item.launchedRound ?? null,
+                  fieldMode: item.fieldMode || 'cells'
                 };
               })
               .filter(Boolean)
@@ -123,10 +124,11 @@ if (typeof window.formatMoscowDateTime !== 'function') {
               ? scheduled.map((r, i) => {
                   const start = schedulerFormatMoscowDateTime(r.startAt || 0);
                   const mins = Math.max(1, Math.round((r.durationMs || 0) / 60000));
+                  const modeLabel = String(r.fieldMode || 'cells') === 'snake' ? 'Змейка' : 'Клетки';
                   const cancelBtn = schedulerIsAdminUser()
                     ? ` <button onclick="adminCancelScheduledRound('${r.key}')" style="border:1px solid #ef5350; color:#c62828; background:#fff5f5; border-radius:8px; padding:2px 6px; font-size:11px;">Отменить</button>`
                     : '';
-                  return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start}, длительность ${mins} мин.${cancelBtn}</div>`;
+                  return `<div style="margin-bottom:6px;">${i + 1}) Старт ${start}, длительность ${mins} мин., поле: <b>${modeLabel}</b>.${cancelBtn}</div>`;
                 }).join('')
               : 'Запланированных раундов нет.';
 
@@ -138,7 +140,8 @@ if (typeof window.formatMoscowDateTime !== 'function') {
                   const statusText = r.status === 'completed'
                     ? `запущен (Раунд №${r.launchedRound || '—'})`
                     : (r.status === 'cancelled' ? 'отменён' : 'в запуске');
-                  return `<div style="margin-bottom:4px; color:#6a1b9a;">${i + 1}) ${start} — ${statusText}</div>`;
+                  const modeLabel = String(r.fieldMode || 'cells') === 'snake' ? 'Змейка' : 'Клетки';
+                  return `<div style="margin-bottom:4px; color:#6a1b9a;">${i + 1}) ${start} — ${statusText}, поле: ${modeLabel}</div>`;
                 }).join('')
               : 'Нет.';
 
@@ -169,7 +172,7 @@ if (typeof window.formatMoscowDateTime !== 'function') {
             });
             if (!tx.committed) return;
 
-            const roundNum = await runRoundStart(due.durationMs || 0);
+            const roundNum = await runRoundStart(due.durationMs || 0, { fieldMode: due.fieldMode || 'cells' });
             await db.ref(`round_schedules/${due.key}`).update({
               status: 'completed',
               completedAt: Date.now(),
@@ -177,10 +180,10 @@ if (typeof window.formatMoscowDateTime !== 'function') {
             });
           }
 
-          async function adminStartRound(roundId, durationMs) {
+          async function adminStartRound(roundId, durationMs, options = {}) {
             const normalizedDurationMs = Number(durationMs) || 0;
             if (!normalizedDurationMs || normalizedDurationMs <= 0) return null;
-            const roundNum = await runRoundStart(normalizedDurationMs);
+            const roundNum = await runRoundStart(normalizedDurationMs, { fieldMode: options.fieldMode || 'cells' });
             if (!roundId) return roundNum;
             await db.ref(`round_schedules/${roundId}`).update({
               status: 'completed',
@@ -225,7 +228,7 @@ if (typeof window.formatMoscowDateTime !== 'function') {
 
     if (!tx.committed) return;
 
-    await adminStartRound(due.key, due.durationMs || 0);
+    await adminStartRound(due.key, due.durationMs || 0, { fieldMode: due.fieldMode || 'cells' });
 
     roundSchedules = (Array.isArray(roundSchedules) ? roundSchedules : []).map(item =>
       item.key === due.key
@@ -296,13 +299,15 @@ async function adminScheduleRound() {
     }
 
     const now = Date.now();
-    const payload = {
+    const fieldMode = String(document.getElementById('round-field-mode')?.value || 'cells');
+  const payload = {
       status: 'scheduled',
       startAt,
       durationMs,
       createdAt: now,
       activationNotBefore: now + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
-      createdBy: String(window.currentUserId || '') || null
+      createdBy: String(window.currentUserId || '') || null,
+      fieldMode
     };
 
     console.info('[scheduler] adminScheduleRound: before db write', payload);

@@ -42,8 +42,9 @@ const formatMoscowDateTime = (...args) => (
             const h = parseInt(document.getElementById('r-hours')?.value || '0', 10) || 0;
             const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
             const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
+            const fieldMode = String(document.getElementById('round-field-mode')?.value || 'cells');
             if (!confirm('Точно запустить раунд?')) return;
-            const roundNum = await runRoundStart(durationMs);
+            const roundNum = await runRoundStart(durationMs, { fieldMode });
             if (roundNum) alert(`Раунд №${roundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
           }
 
@@ -73,7 +74,8 @@ const formatMoscowDateTime = (...args) => (
     durationMs,
     createdAt: Date.now(),
     activationNotBefore: Date.now() + ROUND_SCHEDULE_ACTIVATION_GRACE_MS,
-    createdBy: currentUserId
+    createdBy: currentUserId,
+    fieldMode: String(document.getElementById('round-field-mode')?.value || 'cells')
   };
 
   const ref = db.ref('round_schedules').push();
@@ -445,7 +447,8 @@ const formatMoscowDateTime = (...args) => (
               startAt,
               durationMins,
               createdAt: Date.now(),
-              createdBy: currentUserId
+              createdBy: currentUserId,
+    fieldMode: String(document.getElementById('round-field-mode')?.value || 'cells')
             });
 
             alert('Событие добавлено в расписание.');

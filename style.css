@@ -594,3 +594,120 @@
         @keyframes galleryFxFloat { 0%{ transform:translate(-50%,10px); opacity:0;} 20%{opacity:1;} 100%{ transform:translate(-50%,-30px); opacity:0;} }
         @keyframes galleryPulse { 0%{ transform:translateX(-50%) scale(1);} 50%{ transform:translateX(-50%) scale(1.25);} 100%{ transform:translateX(-50%) scale(1);} }
 `;
+
+.grid.snake-grid {
+    grid-template-columns: repeat(10, minmax(30px, 1fr));
+    gap: 6px;
+    max-width: 620px;
+}
+.snake-cell {
+    width: 100%;
+    min-height: 48px;
+    border: 2px solid #ddd;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #fff, #f7f7ff);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    padding: 2px;
+}
+.snake-cell b { font-size: 11px; }
+.snake-cell small { font-size: 8px; color: #666; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+.snake-cell.snake-cell-danger {
+    position: relative;
+    box-shadow: 0 0 0 2px rgba(229, 57, 53, 0.18), inset 0 0 10px rgba(229, 57, 53, 0.12);
+}
+.snake-cell.snake-cell-danger::after {
+    content: '⚠';
+    position: absolute;
+    top: 3px;
+    right: 5px;
+    font-size: 10px;
+    color: rgba(198, 40, 40, 0.72);
+    pointer-events: none;
+}
+
+
+.snake-status-block {
+    margin: 8px 0;
+    border: 1px solid #d1c4e9;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #faf7ff, #f3ecff);
+    padding: 8px 10px;
+}
+.snake-status-title {
+    font-size: 12px;
+    font-weight: 800;
+    color: #6a1b9a;
+    margin-bottom: 6px;
+}
+.snake-status-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.snake-status-line {
+    font-size: 12px;
+    line-height: 1.25;
+    color: #4a3b63;
+}
+.snake-status-line strong {
+    color: #311b92;
+    font-weight: 700;
+}
+
+
+.snake-admin-overview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.snake-admin-card {
+    border: 1px solid #e1bee7;
+    border-radius: 10px;
+    background: #faf5ff;
+    padding: 8px;
+    font-size: 12px;
+    color: #4a148c;
+}
+.snake-admin-card h4 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: #6a1b9a;
+}
+.snake-admin-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.snake-puzzle-grid {
+    display: grid;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.snake-puzzle-tile {
+    height: 42px;
+    border: 1px solid #d1c4e9;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #ffffff, #f3e5f5);
+    color: #4a148c;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.snake-puzzle-tile.snake-puzzle-movable {
+    border-color: #8e24aa;
+    box-shadow: 0 0 0 1px rgba(142, 36, 170, 0.15);
+}
+
+.snake-puzzle-tile.snake-puzzle-blank {
+    background: #ede7f6;
+    border-style: dashed;
+    color: transparent;
+}

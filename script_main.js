@@ -166,6 +166,8 @@ const JSON_URL = 'tasks.json';
         const charColors = generateBrightColors(players.length);
 
         let tasks = [], myIndex = -1, currentRoundNum = 0, roundEndTime = 0, currentRoundStartedAt = 0, currentRoundDurationMs = 0, allTicketsData = [];
+        let currentRoundData = null;
+        let currentFieldMode = 'cells';
         let archivedTicketsData = [];
         let liveBoardTicketsData = [];
         let shownMagicLinks = {};
@@ -219,7 +221,9 @@ const JSON_URL = 'tasks.json';
         let lastMagicLinksRound = null;
         let duelsRef = null;
         let systemNotificationsRef = null;
+        let snakeClashesRef = null;
         let activeDuels = [];
+        let adminSnakeOverviewState = { fetchedAt: 0, fetching: false, round: 0, mode: '' };
 
 
         /************************************************************************************************************
@@ -738,260 +742,15 @@ const JSON_URL = 'tasks.json';
         }
 
 
-        function updateWorksTabForRole(isAdmin) {
-            const uploadCard = document.getElementById('works-upload-card');
-            const title = document.getElementById('works-tab-title');
-            const adminFilters = document.getElementById('works-admin-filters');
-            if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
-            if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
-            if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
-            if (!isAdmin) worksAdminSelectedUserId = '';
-            if (isAdmin) syncWorksAdminPlayers();
-        }
-
-        function normalizeNicknameForFilter(name) {
-            return String(name || '').trim().toLowerCase();
-        }
-
-        function getSubmissionPlayerNickname(item) {
-            if (Number.isInteger(item?.owner) && players[item.owner]?.n) return String(players[item.owner].n);
-            return '';
-        }
-
-        function syncWorksAdminPlayers() {
-            const select = document.getElementById('works-admin-player-select');
-            if (!select || !db) return;
-
-            if (worksAdminPlayersRef) worksAdminPlayersRef.off();
-            worksAdminPlayersRef = db.ref('whitelist');
-            worksAdminPlayersRef.on('value', snap => {
-                const playersForSelect = [];
-                snap.forEach(userSnap => {
-                    const userData = userSnap.val() || {};
-                    const charIndex = Number(userData.charIndex);
-                    const nickname = String(players[charIndex]?.n || '').trim();
-                    playersForSelect.push({
-                        userId: String(userSnap.key || '').trim(),
-                        nickname,
-                        charIndex
-                    });
-                });
-
-                playersForSelect.sort((a, b) => {
-                    const aName = a.nickname || `Игрок ${a.userId}`;
-                    const bName = b.nickname || `Игрок ${b.userId}`;
-                    const byName = aName.localeCompare(bName, 'ru', { sensitivity: 'base' });
-                    if (byName !== 0) return byName;
-                    return a.userId.localeCompare(b.userId, 'ru', { sensitivity: 'base' });
-                });
-
-                const hasSelected = worksAdminSelectedUserId
-                    && playersForSelect.some(p => p.userId === worksAdminSelectedUserId);
-                if (!hasSelected) worksAdminSelectedUserId = '';
-
-                select.innerHTML = [
-                    '<option value="">Выберите игрока</option>',
-                    ...playersForSelect.map(item => {
-                        const label = item.nickname || `Игрок ${item.userId}`;
-                        return `<option value="${item.userId}">${label} · ID ${item.userId}</option>`;
-                    })
-                ].join('');
-                select.value = worksAdminSelectedUserId;
-                renderSubmissions();
-            });
-        }
-
-        function setWorksAdminPlayer(rawUserId) {
-            worksAdminSelectedUserId = String(rawUserId || '').trim();
-            renderSubmissions();
-        }
-
-        function checkAccess() {
-            if (currentUserId === ADMIN_ID) {
-                document.getElementById('nav-admin-btn').style.display='flex';
-                document.getElementById('wheel-admin-btn').innerHTML = `<button onclick="adminPickWinnerNow()" class="admin-btn" style="background:#7b1fa2;">✨ Начать магию</button><button onclick="adminResetRaffleState()" class="admin-btn" style="background:#546e7a;">♻️ Сброс</button><button onclick="switchTab('tab-admin', document.getElementById('nav-admin-btn')); switchAdminInnerTab('draw');" class="admin-btn">⚙️ Настройки розыгрыша</button>`;
-                syncAdminList();
-                fillAdminNickOptions();
-                ensureDateTimeInputDefault('event-start-at');
-                ensureDateTimeInputDefault('draw-start-at');
-                ensureDateTimeInputDefault('round-start-at');
-                document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
-                updateWorksTabForRole(true);
-                setAuthorizedView(true);
-                if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
-                if (typeof renderGalleryTab === 'function') renderGalleryTab();
-            }
-            db.ref('whitelist/' + currentUserId).on('value', s => {
-                if (s.exists()) {
-                    myIndex = s.val().charIndex;
-                    const playerName = players[myIndex]?.n || 'Игрок';
-                    const playerColor = charColors[myIndex] || '#6a1b9a';
-                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
-                    updateWorksTabForRole(false);
-                    setAuthorizedView(true);
-                    if (typeof syncSeasonProfile === 'function') syncSeasonProfile();
-                    if (typeof renderGalleryTab === 'function') renderGalleryTab();
-                    return;
-                }
-
-                myIndex = -1;
-                if (currentUserId !== ADMIN_ID) {
-                    updateWorksTabForRole(false);
-                    document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
-                    setAuthorizedView(false);
-                }
-            });
-        }
-
-        function syncData() {
-            db.ref('current_round').on('value', snap => {
-                if (!snap.exists()) return;
-
-                currentRoundNum = snap.val().number;
-                roundEndTime = snap.val().endTime;
-                currentRoundStartedAt = Number(snap.val().startedAt || 0);
-                currentRoundDurationMs = Number(snap.val().durationMs || 0);
-                document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
-                updateTimerDisplay();
-
-                if (magicLinksRef) magicLinksRef.off();
-                shownMagicLinks = {};
-                pendingMagicLinkCleanupRound = currentRoundNum;
-                expireStaleMagicLinksForRound(currentRoundNum, 'app_enter').catch(err => console.error('expireStaleMagicLinksForRound failed:', err));
-                magicLinksRef = db.ref(`magic_links/${currentRoundNum}`);
-                magicLinksRef.on('value', linksSnap => {
-                    if (!linksSnap.exists()) return;
-
-                    linksSnap.forEach(linkSnap => {
-                        const link = linkSnap.val();
-                        if (!link || shownMagicLinks[linkSnap.key]) return;
-
-                        const related = Number(link.playerA?.userId) === Number(currentUserId) || Number(link.playerB?.userId) === Number(currentUserId);
-                        if (!related) return;
-
-                        if (link.status === 'paired') {
-                            shownMagicLinks[linkSnap.key] = true;
-                            if (Number(link.playerB?.userId) === Number(currentUserId)) {
-                                alert(`✨ Ты в Магической связи с ${link.playerA?.name || 'Неизвестный игрок'}! Вот ваш список кооперативных заданий в карточке клетки 🔮`);
-                            } else {
-                                const partner = link.playerB;
-                                alert(`✨ Магическая связь активна!
-Твой напарник: ${partner?.name || 'Неизвестный'}
-Выберите 1 из 4 совместных заданий в карточке клетки 🔮`);
-                            }
-                            return;
-                        }
-
-                        if (link.status === 'expired_single' && Number(link.playerA?.userId) === Number(currentUserId)) {
-                            shownMagicLinks[linkSnap.key] = true;
-                            alert('Очень жаль, но мы не нашли тебе напарника');
-                        }
-                    });
-                });
-            });
-
-            syncTicketData();
-
-            if (newsRef) newsRef.off();
-            newsRef = db.ref('news_feed').limitToLast(60);
-            newsRef.on('value', snap => {
-                const items = [];
-                snap.forEach(row => {
-                    const value = row.val() || {};
-                    items.push({ id: row.key, text: value.text || '', createdAt: Number(value.createdAt || 0) });
-                });
-                newsFeedItems = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                renderNewsFeed();
-            });
-
-            if (inventoryRef) inventoryRef.off();
-            inventoryRef = db.ref(`whitelist/${currentUserId}/inventory`);
-            inventoryRef.on('value', snap => {
-                const inventoryRaw = snap.val() || {};
-                myInventory = normalizeInventory(inventoryRaw);
-                renderInventory();
-                cleanupUnsupportedInventoryKeys(currentUserId, inventoryRaw).catch((err) => console.error('inventory cleanup failed', err));
-            });
-
-            if (seasonProfilesRef) seasonProfilesRef.off();
-            seasonProfilesRef = db.ref('player_season_status');
-            seasonProfilesRef.on('value', snap => {
-                seasonProfilesByUserId = snap.val() || {};
-            });
-
-            if (systemNotificationsRef) systemNotificationsRef.off();
-            systemNotificationsRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(30);
-            systemNotificationsRef.on('child_added', snap => {
-                const v = snap.val() || {};
-                if (!v.text) return;
-                if (v.type === 'calligraphy_duel_invite') return;
-                if (v.expiresAt && Number(v.expiresAt) < Date.now() && String(v.type || '') !== 'calligraphy_duel_wait_notice') {
-                    db.ref(`system_notifications/${currentUserId}/${snap.key}`).remove();
-                    return;
-                }
-                if (v.type === 'calligraphy_duel_wait_notice' || v.type === 'calligraphy_duel_timeout' || v.type === 'calligraphy_duel_declined') {
-                    window.showOutgoingDuelStatusNotification(snap.key, v);
-                    return;
-                }
-                showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
-            });
-
-            if (challengeRef) challengeRef.off();
-            challengeRef = db.ref(`whitelist/${currentUserId}/ink_challenge`);
-            challengeRef.on('value', snap => {
-                myInkChallenge = snap.val() || null;
-                updateInkDeadlineHint();
-                if (!myInkChallenge || myInkChallenge.round !== currentRoundNum || myInkChallenge.isResolved) return;
-                if (window.lastShownInkChallengeRound === currentRoundNum) return;
-                window.lastShownInkChallengeRound = currentRoundNum;
-                alert('Хах! Кому-то ты не угодил! Твою работу покрыли кляксами! Открой свою клетку, чтобы выбрать усложнение.');
-            });
-
-            if (wandBlessingRef) wandBlessingRef.off();
-            wandBlessingRef = db.ref(`whitelist/${currentUserId}/wand_blessing`);
-            wandBlessingRef.on('value', snap => {
-                myWandBlessing = snap.val() || null;
-                if (!myWandBlessing || myWandBlessing.round !== currentRoundNum || myWandBlessing.isResolved) return;
-                if (window.lastShownWandBlessingRound === currentRoundNum) return;
-                window.lastShownWandBlessingRound = currentRoundNum;
-                alert('Добрая фея выбрала тебя 🧚‍♀️. Твоё задание упрощается, выбирай.');
-            });
-
-            submissionsRef = db.ref('submissions');
-            submissionsRef.on('value', snap => {
-                const items = [];
-                snap.forEach(s => {
-                    const value = s.val() || {};
-                    items.push({ id: s.key, ...value });
-                });
-                allSubmissions = items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-                renderSubmissions();
-                fillSubmissionTaskOptions();
-            });
-        }
-
-        function getTaskLabelByCell(cell) {
-            if (!cell) return 'Неизвестное задание';
-            if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
-            if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
-            if (cell.isMagic && cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) return `🔮 Магическая связь: одиночное задание — ${tasks[cell.taskIdx]?.text || 'Обычное задание'}`;
-            if (cell.isMagic) return '🔮 Магическая связь: совместное задание';
-            if (cell.isMiniGame) return '🎮 Пятнашки 5×5: мини-игра без дополнительного задания';
-            if (cell.isWordSketch) return '🧩 Словесный скетч: мини-игра без дополнительного задания';
-            if (cell.isMagnet) return `👯 Тянет к тебе как магнитом: ${cell.magnetTaskLabel || 'повтори задание выбранного игрока'}`;
-            if (cell.isInkChallenge) return `🫧 Клякса-диверсант: ${cell.inkOptionLabel || 'усложнение выбирается в карточке клетки'}`;
-            if (cell.isWandBlessing) return `🎆 Волшебная палочка: ${cell.wandOptionLabel || 'выбери упрощение в карточке клетки'}`;
-            if (cell.isGold) return '👑 Золотая клетка: свободная тема';
-            const t = tasks[cell.taskIdx];
-            return t?.text || 'Обычное задание';
-        }
-
-        function getSubmissionStatusInfo(status) {
-            if (status === 'accepted') return { text: 'Принято', className: 'status-accepted' };
-            if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
-            return { text: 'На проверке', className: 'status-pending' };
-        }
-
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
         function getLatestSubmissionForCell(roundNum, cellIdx, userId = currentUserId) {
             const filtered = allSubmissions
@@ -1070,354 +829,13 @@ const JSON_URL = 'tasks.json';
             statusEl.style.color = '#2e7d32';
         }
 
-        function updateInkDeadlineHint() {
-            const el = document.getElementById('ink-deadline-hint');
-            if (!el) return;
-            if (!myInkChallenge || myInkChallenge.selectedOption !== 4 || myInkChallenge.isResolved) {
-                el.innerText = '';
-                return;
-            }
-            const ms = (myInkChallenge.optionDeadline || 0) - Date.now();
-            if (ms <= 0) {
-                el.innerText = '⏰ Дедлайн по кляксе истёк.';
-                return;
-            }
-            const h = Math.floor(ms / 3600000);
-            const m = Math.floor((ms % 3600000) / 60000);
-            el.innerText = `⏳ Клякса: до конца дедлайна ${h}ч ${m}м.`;
-        }
-
-        function fillSubmissionTaskOptions() {
-            const select = document.getElementById('work-task-select');
-            if (!select) return;
-
-            const myCells = allTicketsData.filter(t => {
-                const sameUserId = Number(t.userId) === Number(currentUserId);
-                const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
-                if (!sameUserId && !sameOwner) return false;
-                if (!Number.isInteger(t.cellIdx) || t.cellIdx < 0) return false;
-                if (t.excluded) return false;
-                if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
-                return true;
-            });
-            if (!myCells.length) {
-                select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
-                select.disabled = true;
-                refreshUploadStateForSelectedTask();
-                return;
-            }
-
-            const selectable = myCells.filter(cell => {
-                const latest = getLatestSubmissionForCell(cell.round, cell.cellIdx);
-                return !latest || latest.status !== 'pending';
-            });
-
-            updateInkDeadlineHint();
-            if (!selectable.length) {
-                select.disabled = true;
-                select.innerHTML = '<option value="">Все доступные клетки уже на проверке</option>';
-                refreshUploadStateForSelectedTask();
-                return;
-            }
-
-            select.disabled = false;
-            select.innerHTML = selectable.map(cell => {
-                const shortTask = getTaskLabelByCell(cell).slice(0, 90);
-                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
-            }).join('');
-            refreshUploadStateForSelectedTask();
-        }
-
-        function renderSubmissions() {
-            const list = document.getElementById('works-list');
-            if (!list) return;
-            const isAdmin = (currentUserId === ADMIN_ID);
-            const visible = allSubmissions.filter(item => isAdmin || item.userId === currentUserId);
-
-            if (!visible.length) {
-                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
-                return;
-            }
-
-            list.innerHTML = filtered.map(item => {
-                const status = getSubmissionStatusInfo(item.status);
-                const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
-                const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
-                const uploadedAtText = uploadedAt ? new Date(uploadedAt).toLocaleString('ru-RU') : '—';
-                const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${playerName}</b> · TG ID: ${item.userId || '—'}</div>` : '';
-                const reviewControls = isAdmin ? `
-                    <div style="display:flex; gap:6px; margin-top:8px;">
-                        <button onclick="setSubmissionStatus('${item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
-                        <button onclick="setSubmissionStatus('${item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
-                    </div>` : '';
-                const beforeBodyId = `sub-before-${item.id}`;
-                const afterBodyId = `sub-after-${item.id}`;
-
-                return `
-                    <div class="works-card">
-                        ${playerLine}
-                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
-                            <div><b>Раунд ${item.round || '—'}, клетка №${(item.cellIdx ?? -1) + 1}</b></div>
-                            <span class="status-chip ${status.className}">${status.text}</span>
-                        </div>
-                        <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
-                        <div style="font-size:12px; margin-top:4px; color:#555;">🕒 Загружено: ${uploadedAtText}</div>
-                        <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
-                        ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
-
-                        <div class="work-stage-block">
-                            <div class="collapse-head" onclick="toggleCollapse('${beforeBodyId}', this)">
-                                <span>🖼️ Фото «До»</span>
-                                <button type="button" class="collapse-toggle">Развернуть</button>
-                            </div>
-                            <div id="${beforeBodyId}" class="collapse-body">
-                                ${item.beforeImageData ? `<img src="${item.beforeImageData}" alt="Работа до" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «До» не загружено.</div>'}
-                            </div>
-                        </div>
-
-                        <div class="work-stage-block">
-                            <div class="collapse-head" onclick="toggleCollapse('${afterBodyId}', this)">
-                                <span>🎨 Фото «После»</span>
-                                <button type="button" class="collapse-toggle">Развернуть</button>
-                            </div>
-                            <div id="${afterBodyId}" class="collapse-body">
-                                ${(item.afterImageData || item.imageData) ? `<img src="${item.afterImageData || item.imageData}" alt="Работа после" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «После» не загружено.</div>'}
-                            </div>
-                        </div>
-                        ${reviewControls}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function toggleCollapse(bodyId, headerEl) {
-            const body = document.getElementById(bodyId);
-            if (!body) return;
-            const willExpand = !body.classList.contains('expanded');
-            body.classList.toggle('expanded', willExpand);
-            const btn = headerEl?.querySelector('.collapse-toggle');
-            if (btn) btn.innerText = willExpand ? 'Свернуть' : 'Развернуть';
-        }
-
-        function closePlayerNotification(notifId) {
-            const node = document.getElementById(notifId);
-            if (node) node.remove();
-        }
-
-        function showPlayerNotification({ id, text, borderColor = '#f48fb1' }) {
-            if (!id || !text) return;
-            const wrap = document.getElementById('player-notification-wrap');
-            if (!wrap) return;
-            if (document.getElementById(id)) return;
-            const card = document.createElement('div');
-            card.id = id;
-            card.className = 'player-notification';
-            card.style.borderColor = borderColor;
-            card.innerHTML = `<button class="player-notification-close" onclick="closePlayerNotification('${id}')">✕</button><div style="font-size:13px; line-height:1.4; color:#4a148c;">${text}</div>`;
-            wrap.appendChild(card);
-        }
-
-        function hasFullSubmissionForRound(roundNum, userId = currentUserId) {
-            return allSubmissions.some(s => s.userId === userId && s.round === roundNum && s.beforeImageData && s.afterImageData);
-        }
-
-        async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
-            const boardSnap = await db.ref('board').once('value');
-            const board = boardSnap.val() || {};
-            const updates = {};
-
-            Object.entries(board).forEach(([idx, cell]) => {
-                if (!cell || Number(cell.userId) !== Number(userId)) return;
-                updates[`board/${idx}/excluded`] = true;
-                updates[`board/${idx}/ticketBurned`] = true;
-            });
-
-            const archiveSnap = await db.ref('tickets_archive').once('value');
-            archiveSnap.forEach(item => {
-                const v = item.val() || {};
-                if (Number(v.userId) !== Number(userId)) return;
-                updates[`tickets_archive/${item.key}/excluded`] = true;
-                updates[`tickets_archive/${item.key}/ticketBurned`] = true;
-            });
-
-            updates[`whitelist/${userId}/isEliminated`] = true;
-            updates[`whitelist/${userId}/isParticipationBlocked`] = true;
-            updates[`whitelist/${userId}/eliminatedAt`] = Date.now();
-            updates[`whitelist/${userId}/eliminatedAtRound`] = currentRoundNum;
-            updates[`whitelist/${userId}/eliminationReason`] = reason;
-
-            await db.ref().update(updates);
-        }
-
-        async function checkSubmissionRoundDeadlines() {
-            if (!currentUserId || currentUserId === ADMIN_ID || myIndex === -1) return;
-            if (!currentRoundNum || !roundEndTime) return;
-
-            const boardSnap = await db.ref('board').once('value');
-            const board = boardSnap.val() || {};
-            const now = Date.now();
-            const msLeft = roundEndTime - now;
-            const isRoundActive = msLeft > 0;
-            const currentRoundWorks = allSubmissions.filter(s => Number(s.round) === Number(currentRoundNum));
-            const hasCurrentRoundWork = currentRoundWorks.some(s => String(s.userId) === String(currentUserId));
-            if (isRoundActive && !hasCurrentRoundWork) {
-                const remindKey = `workReminderShownRound${currentRoundNum}`;
-                if (!window[remindKey]) {
-                    window[remindKey] = true;
-                    showPlayerNotification({
-                        id: `work-reminder-${currentRoundNum}`,
-                        text: 'Твоя муза застряла в проке? 🎨 Твой холст скучает без мазков. Поторопись, иначе магические чернила испарятся, а твоё место на поле займет другой художник!'
-                    });
-                }
-            }
-
-            const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
-            const userState = userStateSnap.val() || {};
-            if (userState.isParticipationBlocked || userState.eliminationReason === 'no_submission') return;
-
-            const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
-            const debt = debtSnap.val();
-            if (debt?.active && Number(currentRoundNum) > Number(debt.dueRound || 0)) {
-                const updates = {};
-                [Number(debt.round), Number(debt.dueRound)].forEach(r => {
-                    Object.entries(board).forEach(([idx, c]) => {
-                        if (!c || Number(c.userId) !== Number(currentUserId) || Number(c.round) !== Number(r)) return;
-                        updates[`board/${idx}/excluded`] = true;
-                        updates[`board/${idx}/ticketBurned`] = true;
-                        updates[`board/${idx}/invisibleMode`] = false;
-                    });
-                });
-                updates[`whitelist/${currentUserId}/debt/active`] = false;
-                updates[`whitelist/${currentUserId}/debt/failed`] = true;
-                await db.ref().update(updates);
-                await postNews(`🔥 ${players[myIndex].n} не закрыл(а) долг по Плащу-невидимке — оба билета сгорели.`);
-                return;
-            }
-
-            const previousRound = currentRoundNum - 1;
-            if (previousRound < 1) return;
-            const hadPrevCell = Object.values(board).some(c => c && Number(c.userId) === Number(currentUserId) && c.round === previousRound);
-            if (!hadPrevCell || hasFullSubmissionForRound(previousRound)) return;
-
-            await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
-            showPlayerNotification({
-                id: `work-eliminated-${previousRound}`,
-                text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
-                borderColor: '#ef5350'
-            });
-            await postNews(`${players[myIndex].n} выбыл(а) из игры`);
-        }
-
-        function readImageAsDataURL(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-
-        async function compressImage(dataUrl, maxSide = 1200, quality = 0.82) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                    const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
-                    const canvas = document.createElement('canvas');
-                    canvas.width = Math.round(img.width * ratio);
-                    canvas.height = Math.round(img.height * ratio);
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL('image/jpeg', quality));
-                };
-                img.src = dataUrl;
-            });
-        }
-
-        async function submitWork() {
-            if (Number(currentUserId) === Number(ADMIN_ID)) return alert('Режим администратора: сдача работ недоступна.');
-            const select = document.getElementById('work-task-select');
-            const beforeInput = document.getElementById('work-image-before-input');
-            const afterInput = document.getElementById('work-image-after-input');
-            if (!select || select.disabled) return alert('Нет доступных заданий для сдачи.');
-            const chosenCellIdx = Number(select.value);
-            if (!Number.isInteger(chosenCellIdx) || chosenCellIdx < 0) return alert('Выбери задание.');
-            const beforeFile = beforeInput?.files?.[0];
-            const afterFile = afterInput?.files?.[0];
-            if (!beforeFile || !afterFile) return alert('Нужно добавить оба фото: «До» и «После».');
-
-            const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
-            const cell = boardCellSnap.val();
-            if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
-
-            const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
-            const debt = debtSnap.val();
-            if (debt?.active) {
-                const mustRounds = [Number(debt.round), Number(debt.dueRound)].filter(n => Number.isInteger(n) && n > 0);
-                const selectedRound = Number(cell.round);
-                if (!mustRounds.includes(selectedRound)) {
-                    return alert('При активном Плаще-невидимке можно сдавать только задания долга: за прошлый и текущий раунды.');
-                }
-            }
-            if (cell.excluded) return alert('По этому заданию ты уже сдался(ась), билетик не начисляется.');
-
-            const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
-            const challenge = challengeSnap.val();
-            if (cell.isWandBlessing) {
-                const wandSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
-                const wand = wandSnap.val();
-                if (!wand || !wand.selectedOption) return alert('Сначала выбери упрощённое задание от волшебной палочки.');
-            }
-
-            if (cell.isInkChallenge && challenge?.selectedOption === 4) {
-                if (!challenge.optionDeadline || Date.now() > challenge.optionDeadline) {
-                    return alert('⏰ Срок 24 часа истёк, билетик за это задание не начисляется.');
-                }
-            }
-
-            const beforeRaw = await readImageAsDataURL(beforeFile);
-            const afterRaw = await readImageAsDataURL(afterFile);
-            const beforeImageData = await compressImage(beforeRaw);
-            const afterImageData = await compressImage(afterRaw);
-
-            const payload = {
-                userId: currentUserId,
-                owner: myIndex,
-                cellIdx: chosenCellIdx,
-                round: cell.round,
-                ticket: cell.ticket,
-                taskLabel: getTaskLabelByCell(cell),
-                beforeImageData,
-                afterImageData,
-                status: 'pending',
-                createdAt: Date.now(),
-                updatedAt: Date.now()
-            };
-            await db.ref('submissions').push(payload);
-
-            if (cell.deferred || cell.invisibleMode) {
-                await db.ref(`board/${chosenCellIdx}`).update({ deferred: false });
-            }
-
-            if (cell.isInkChallenge && challenge?.selectedOption === 4 && !challenge.isResolved) {
-                await db.ref(`board/${chosenCellIdx}/ticket`).set(challenge.pendingTicket || '');
-                await db.ref(`whitelist/${currentUserId}/ink_challenge`).update({ isResolved: true, submittedInTime: true });
-            }
-
-            beforeInput.value = '';
-            afterInput.value = '';
-            alert('Работа загружена! Статус: На проверке.');
-        }
-
-        async function setSubmissionStatus(submissionId, status) {
-            if (currentUserId !== ADMIN_ID) return;
-            if (!['accepted', 'rejected'].includes(status)) return;
-            await db.ref(`submissions/${submissionId}`).update({
-                status,
-                reviewedBy: currentUserId,
-                updatedAt: Date.now()
-            });
-        }
-
+        
+        
+        
+        
+        
+        
+        
         async function chooseWandBlessingOption(cellIdx, optionNum) {
             if (![1,2,3].includes(optionNum)) return;
             const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
@@ -1775,31 +1193,8 @@ const JSON_URL = 'tasks.json';
             btn.innerText = isExpanded ? 'Свернуть' : 'Развернуть';
         }
 
-        function ensureDateTimeInputDefault(inputId, plusMs = 60000) {
-            const input = document.getElementById(inputId);
-            if (!input || input.value) return;
-            const dt = new Date(Date.now() + plusMs);
-            input.value = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-        }
-
-        function switchAdminInnerTab(tabName) {
-            const roundsBtn = document.getElementById('admin-inner-rounds-btn');
-            const eventsBtn = document.getElementById('admin-inner-events-btn');
-            const drawBtn = document.getElementById('admin-inner-draw-btn');
-            const roundsPanel = document.getElementById('admin-rounds-panel');
-            const eventsPanel = document.getElementById('admin-events-panel');
-            const drawPanel = document.getElementById('admin-draw-panel');
-            const isRounds = tabName === 'rounds';
-            const isEvents = tabName === 'events';
-            const isDraw = tabName === 'draw';
-            roundsBtn?.classList.toggle('active', isRounds);
-            eventsBtn?.classList.toggle('active', isEvents);
-            drawBtn?.classList.toggle('active', isDraw);
-            roundsPanel?.classList.toggle('active', isRounds);
-            eventsPanel?.classList.toggle('active', isEvents);
-            drawPanel?.classList.toggle('active', isDraw);
-        }
-
+        
+        
 
         // Epic Paint / Wall Battle runtime moved to epic_paint.js (single source of truth).
 
@@ -1889,6 +1284,44 @@ const JSON_URL = 'tasks.json';
                 return false;
             };
 
+
+
+            async function renderAdminSnakeOverview(force = false) {
+                if (!window.snakeAdminOverview || typeof window.snakeAdminOverview.render !== 'function') return;
+                adminSnakeOverviewState = await window.snakeAdminOverview.render({
+                    db,
+                    currentUserId,
+                    adminId: ADMIN_ID,
+                    players,
+                    activeTabId: document.querySelector('.tab-content.tab-active')?.id || '',
+                    cacheState: adminSnakeOverviewState,
+                    force
+                });
+            }
+
+            let snakeUiApi = null;
+
+            function ensureSnakeUiApi() {
+                if (snakeUiApi) return snakeUiApi;
+                if (!window.snakeUi || typeof window.snakeUi.create !== 'function') return null;
+                snakeUiApi = window.snakeUi.create({
+                    db,
+                    adminId: ADMIN_ID,
+                    getCurrentUserId: () => currentUserId,
+                    getCurrentFieldMode: () => currentFieldMode,
+                    getCurrentRoundNum: () => currentRoundNum
+                });
+                return snakeUiApi;
+            }
+
+            function hideSnakeStatusBlock() {
+                ensureSnakeUiApi()?.hideSnakeStatusBlock();
+            }
+
+            async function renderSnakeStatusBlock(userState) {
+                return ensureSnakeUiApi()?.renderSnakeStatusBlock(userState);
+            }
+
             window.timerInt = setInterval(async () => {
                 const duelLockActive = renderDice();
                 await checkInkDeadline();
@@ -1905,6 +1338,7 @@ const JSON_URL = 'tasks.json';
                     document.getElementById('round-timer').innerText = "РАУНД ЗАВЕРШЕН";
                     btn.disabled = true;
                     btn.innerText = "⏳ Раунд завершен";
+                    hideSnakeStatusBlock();
                     if (Number(currentRoundNum) > 0 && lastRoundEndNewsRound !== Number(currentRoundNum)) {
                         lastRoundEndNewsRound = Number(currentRoundNum);
                         await postNews(`Раунд #${currentRoundNum} завершён`);
@@ -1922,12 +1356,15 @@ const JSON_URL = 'tasks.json';
                 if (myIndex === -1) {
                     btn.disabled = true;
                     btn.innerText = "🔒 Нет доступа";
+                    hideSnakeStatusBlock();
                     return;
                 }
 
                 if (Number(currentUserId) === Number(ADMIN_ID)) {
                     btn.disabled = true;
                     btn.innerText = "👀 Режим наблюдателя";
+                    hideSnakeStatusBlock();
+                    await renderAdminSnakeOverview();
                     window.updateEventUiState?.();
                     return;
                 }
@@ -1938,6 +1375,9 @@ const JSON_URL = 'tasks.json';
                     myRoundHasMove = true;
                     btn.disabled = true;
                     btn.innerText = "🚫 Ты выбыл(а) из игры";
+                    hideSnakeStatusBlock();
+                    const adminOverview = document.getElementById('admin-snake-overview');
+                    if (adminOverview) adminOverview.style.display = 'none';
                     window.updateEventUiState?.();
                     return;
                 }
@@ -1945,9 +1385,25 @@ const JSON_URL = 'tasks.json';
                 myRoundHasMove = (userState.last_round === currentRoundNum);
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
+                if (String(currentFieldMode || 'cells') === 'snake') {
+                    const snakeState = userState.snakeState || {};
+                    if (snakeState.lockedBySphinx) {
+                        btn.disabled = true;
+                        btn.innerText = '🗿 Испытание Сфинкса: ожидается одобрение';
+                    }
+                    const sheddingActive = !!snakeState.sheddingActive && !snakeState.sheddingReleasedAt;
+                    const endsAt = Number(snakeState.sheddingEndsAt || snakeState.sheddingLockUntil || 0);
+                    if (sheddingActive && (!endsAt || endsAt > Date.now())) {
+                        const leftMs = Math.max(0, endsAt - Date.now());
+                        const leftMin = Math.ceil(leftMs / 60000);
+                        btn.disabled = true;
+                        btn.innerText = `🧬 Сброс кожи: ~${leftMin} мин`;
+                    }
+                }
                 if (duelLockActive) {
                     btn.disabled = true;
                 }
+                await renderSnakeStatusBlock(userState);
                 window.updateEventUiState?.();
             }, 1000);
         }
@@ -2037,6 +1493,128 @@ const JSON_URL = 'tasks.json';
             return { key: selected.key, playerA: selected.playerA || null, playerB: { userId: currentRollUserId, charIndex: currentRollCharIndex, name: partnerName } };
         }
 
+        let snakeClashApi = null;
+
+        function ensureSnakeClashApi() {
+            if (snakeClashApi) return snakeClashApi;
+            if (!window.snakeClash || typeof window.snakeClash.create !== 'function') return null;
+            snakeClashApi = window.snakeClash.create({
+                db,
+                tasks,
+                players,
+                updateKarma,
+                postNews,
+                getCurrentUserId: () => currentUserId
+            });
+            return snakeClashApi;
+        }
+
+        function getSnakeClashNotificationSeenKey(clashId) {
+            return ensureSnakeClashApi()?.getSnakeClashNotificationSeenKey(clashId) || '';
+        }
+
+        function getSnakeClashNotificationOnceKey(notification) {
+            return ensureSnakeClashApi()?.getSnakeClashNotificationOnceKey(notification) || '';
+        }
+
+        function wasSnakeClashNotificationSeen(clashIdOrOnceKey) {
+            return !!ensureSnakeClashApi()?.wasSnakeClashNotificationSeen(clashIdOrOnceKey);
+        }
+
+        function markSnakeClashNotificationSeen(clashIdOrOnceKey) {
+            ensureSnakeClashApi()?.markSnakeClashNotificationSeen(clashIdOrOnceKey);
+        }
+
+        async function settleSnakeClashMvp(clashPath, clashData) {
+            return ensureSnakeClashApi()?.settleSnakeClashMvp(clashPath, clashData);
+        }
+
+        async function maybeStartSnakeClashFromEncounter(encounterState) {
+            return ensureSnakeClashApi()?.maybeStartSnakeClashFromEncounter(encounterState);
+        }
+
+        function getSnakeRpsChoiceLabel(choice) {
+            return ensureSnakeClashApi()?.getSnakeRpsChoiceLabel(choice) || '—';
+        }
+
+        function getSnakeRpsRoundResult(choiceA, choiceB) {
+            return ensureSnakeClashApi()?.getSnakeRpsRoundResult(choiceA, choiceB) || { status: 'pending' };
+        }
+
+        function chooseSnakeClashGameType(roundId, cell, pairKey) {
+            return ensureSnakeClashApi()?.chooseSnakeClashGameType(roundId, cell, pairKey) || 'snake_rps';
+        }
+
+        function buildSnakePoisonInit(playersPair, karmaByUid = {}) {
+            return ensureSnakeClashApi()?.buildSnakePoisonInit(playersPair, karmaByUid) || { health: {}, karmaBonus: {}, turnIndex: 0, turnNo: 1, lastRolls: {}, log: [] };
+        }
+
+        function openSnakeRpsModal(clashPath, clash) {
+            ensureSnakeClashApi()?.openSnakeRpsModal(clashPath, clash);
+        }
+
+        async function maybeResolveSnakeRpsClash(clashPath) {
+            return ensureSnakeClashApi()?.maybeResolveSnakeRpsClash(clashPath);
+        }
+
+        async function submitSnakeRpsChoice(clashPath, choice) {
+            return ensureSnakeClashApi()?.submitSnakeRpsChoice(clashPath, choice);
+        }
+        window.submitSnakeRpsChoice = submitSnakeRpsChoice;
+
+        function openSnakePoisonDiceModal(clashPath, clash) {
+            ensureSnakeClashApi()?.openSnakePoisonDiceModal(clashPath, clash);
+        }
+
+        async function maybeResolveSnakePoisonDiceClash(clashPath) {
+            return ensureSnakeClashApi()?.maybeResolveSnakePoisonDiceClash(clashPath);
+        }
+
+        async function submitSnakePoisonDiceRoll(clashPath) {
+            return ensureSnakeClashApi()?.submitSnakePoisonDiceRoll(clashPath);
+        }
+        window.submitSnakePoisonDiceRoll = submitSnakePoisonDiceRoll;
+
+        function openSnakePuzzleModal(clashPath, clash) {
+            ensureSnakeClashApi()?.openSnakePuzzleModal(clashPath, clash);
+        }
+
+        async function maybeResolveSnakePuzzleClash(clashPath) {
+            return ensureSnakeClashApi()?.maybeResolveSnakePuzzleClash(clashPath);
+        }
+
+        async function submitSnakePuzzleMove(clashPath, tileValue) {
+            return ensureSnakeClashApi()?.submitSnakePuzzleMove(clashPath, tileValue);
+        }
+        window.submitSnakePuzzleMove = submitSnakePuzzleMove;
+
+        async function maybeCreateSnakeSynergyFromEncounter(encounterState) {
+            return ensureSnakeClashApi()?.maybeCreateSnakeSynergyFromEncounter(encounterState);
+        }
+
+        async function consumeForbiddenFruitSkipIfPending(userId) {
+            const uid = String(userId || '').trim();
+            if (!uid) return { consumed: false, reason: 'no_uid' };
+            const ref = db.ref(`whitelist/${uid}/snakeState`);
+            let consumed = false;
+            const tx = await ref.transaction((row) => {
+                if (!row || typeof row !== 'object') return row;
+                const pending = !!row.forbiddenFruitSkipPending || !!row.skipNextTurn;
+                if (!pending) return row;
+                consumed = true;
+                return {
+                    ...row,
+                    forbiddenFruitSkipPending: false,
+                    forbiddenFruitConsumedAt: Number(row.forbiddenFruitConsumedAt || Date.now()),
+                    forbiddenFruitActive: false,
+                    skipNextTurn: false
+                };
+            });
+            if (!tx.committed || !consumed) return { consumed: false, reason: 'no_pending_skip' };
+            return { consumed: true };
+        }
+
+
         async function roll() {
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
@@ -2044,6 +1622,316 @@ const JSON_URL = 'tasks.json';
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
             if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
+
+            const currentRoundSnap = await db.ref('current_round').once('value');
+            const currentRound = currentRoundSnap.val() || {};
+            if (window.snakeRound?.isSnakeRound?.(currentRound)) {
+                await tryResolveSheddingLockByTimer(currentUserId, userState.snakeState || null);
+                const snakeState = await window.snakeRound.getUserSnakeState(db, currentUserId);
+                if (snakeState.awaitingApproval) return alert('Сначала дождись одобрения текущей работы админом.');
+                if (snakeState.lockedBySphinx) return alert('Испытание Сфинкса ещё не завершено.');
+                if (snakeState.sheddingActive && !snakeState.sheddingReleasedAt) {
+                    const endsAt = Number(snakeState.sheddingEndsAt || snakeState.sheddingLockUntil || 0);
+                    const leftMs = Math.max(0, endsAt - Date.now());
+                    const leftMin = Math.ceil(leftMs / 60000);
+                    const karmaNow = Number((await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value')).val() || 0);
+                    if (karmaNow >= 5) {
+                        const payNow = confirm(`🧬 Сброс кожи активен. До авто-снятия ~${leftMin} мин. Потратить 5 кармы и снять эффект сейчас?`);
+                        if (payNow) {
+                            const paid = await tryResolveSheddingLockByKarma(currentUserId);
+                            if (paid.released) {
+                                alert('Сброс кожи снят за 5 кармы. Теперь можно бросать кубик.');
+                            } else if (paid.reason === 'not_enough_karma') {
+                                alert('Недостаточно кармы, чтобы снять «Сброс кожи» досрочно.');
+                            }
+                        }
+                    }
+
+                    const refreshSnakeState = await window.snakeRound.getUserSnakeState(db, currentUserId);
+                    if (refreshSnakeState.sheddingActive && !refreshSnakeState.sheddingReleasedAt) {
+                        const refreshEnds = Number(refreshSnakeState.sheddingEndsAt || refreshSnakeState.sheddingLockUntil || 0);
+                        const refreshLeft = Math.max(0, refreshEnds - Date.now());
+                        const refreshMin = Math.ceil(refreshLeft / 60000);
+                        return alert(`Сброс кожи активен. До авто-снятия осталось ~${refreshMin} мин.`);
+                    }
+                }
+
+                const fruitSkipState = await consumeForbiddenFruitSkipIfPending(currentUserId);
+                if (fruitSkipState.consumed) {
+                    return alert('🍎 Ход пропущен: сработал эффект «Запретного плода». Следующий бросок снова доступен.');
+                }
+
+                let playerKarma = Number((await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value')).val() || 0);
+                let dice = 1 + Math.floor(Math.random() * 6);
+                let usedReroll = false;
+                if (playerKarma >= 15) {
+                    const doReroll = confirm(`Выпало ${dice}. Потратить 15 кармы на «Второе дыхание» и перебросить кубик?`);
+                    if (doReroll) {
+                        await updateKarma(currentUserId, -15);
+                        playerKarma = Math.max(0, playerKarma - 15);
+                        dice = 1 + Math.floor(Math.random() * 6);
+                        usedReroll = true;
+                        alert(`Второе дыхание сработало! Новый результат: ${dice}.`);
+                    }
+                }
+                const position = Number(snakeState.position || 1);
+                const baseNextPos = window.snakeRound.evaluateMove(position, dice, !!snakeState.invertNextRoll);
+                let effect = window.snakeRound.resolveCellEffect(baseNextPos, currentRound.snakeConfig || {});
+                let nextPos = Number(effect.to || baseNextPos);
+
+                const rankName = window.karmaSystem?.getKarmaRank ? window.karmaSystem.getKarmaRank(playerKarma) : '';
+                const isCreatorRank = String(rankName).includes('Творец Миров');
+                const negativeTrapTypes = new Set(['snake', 'maelstrom', 'kaa', 'sphinx', 'shedding']);
+
+                if (String(effect.type) === 'kaa' && isCreatorRank) {
+                    effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, text: '🛡️ Твой ранг «Творец Миров» защитил от гипноза Каа.' };
+                    nextPos = baseNextPos;
+                    alert('Твой ранг «Творец Миров» защитил от гипноза Каа!');
+                } else if (negativeTrapTypes.has(String(effect.type || '')) && playerKarma >= 30) {
+                    const useAmulet = confirm(`Попадание на ловушку (${effect.text || effect.type}). Потратить 30 кармы на Защитный амулет и игнорировать эффект?`);
+                    if (useAmulet) {
+                        await updateKarma(currentUserId, -30);
+                        playerKarma = Math.max(0, playerKarma - 30);
+                        effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, lockSphinx: false, lockUntil: null, text: '🛡️ Защитный амулет нейтрализовал ловушку.' };
+                        nextPos = baseNextPos;
+                        alert('Защитный амулет сработал: негативный эффект отменён.');
+                    }
+                }
+
+                const boardSnapSnake = await db.ref('board').once('value');
+                const boardSnake = boardSnapSnake.val() || {};
+                const prevEntry = Object.entries(boardSnake).find(([_, c]) => c && Number(c.userId) === Number(currentUserId) && Number(c.round) === Number(currentRound.number) && String(c.mode || '') === 'snake');
+                const updates = {};
+                if (prevEntry) updates[`board/${prevEntry[0]}`] = null;
+
+                const nowTs = Date.now();
+                const roundId = Number(currentRound.number || 0);
+                const uid = String(currentUserId || '').trim();
+                const previousCellPos = Number(snakeState.position || 0);
+                const presencePath = `snake_presence/${roundId}/${nextPos}`;
+                const presenceSnap = await db.ref(presencePath).once('value');
+                const presenceList = window.snakeRound?.parseCellPresence
+                    ? window.snakeRound.parseCellPresence(presenceSnap.val())
+                    : [];
+                const othersOnCell = presenceList.filter((row) => String(row.userId) !== uid);
+
+                if (previousCellPos > 0 && previousCellPos !== nextPos) {
+                    updates[`snake_presence/${roundId}/${previousCellPos}/${uid}`] = null;
+                }
+
+                const existingSelf = presenceList.find((row) => String(row.userId) === uid);
+                updates[`snake_presence/${roundId}/${nextPos}/${uid}`] = {
+                    userId: uid,
+                    owner: myIndex,
+                    enteredAt: Number(existingSelf?.enteredAt || nowTs),
+                    lastSeenAt: nowTs
+                };
+
+                const used = Array.isArray(userState.used_tasks) ? userState.used_tasks : [];
+                const avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
+                const taskIdx = avail.length ? avail[Math.floor(Math.random() * avail.length)] : Math.floor(Math.random() * Math.max(1, tasks.length));
+                updates[`board/${nextPos - 1}`] = {
+                    owner: myIndex,
+                    userId: currentUserId,
+                    taskIdx,
+                    ticket: '',
+                    round: currentRound.number,
+                    mode: 'snake',
+                    pathPos: nextPos,
+                    effect: effect.type || 'normal',
+                    effectText: effect.text || '',
+                    createdAt: Date.now(),
+                    excluded: false
+                };
+
+                const nextSnakeState = {
+                    position: nextPos,
+                    activeCell: nextPos,
+                    activeTask: {
+                        cell: nextPos,
+                        taskIdx,
+                        round: currentRound.number,
+                        type: String(effect.type || '') === 'sphinx' ? 'snake_sphinx' : 'snake_standard',
+                        isSphinxTrial: String(effect.type || '') === 'sphinx',
+                        taskLabel: String(effect.type || '') === 'sphinx'
+                            ? '🗿 Испытание Сфинкса: сложное супер-задание (бросок кубика заблокирован до одобрения)'
+                            : ''
+                    },
+                    awaitingApproval: true,
+                    invertNextRoll: !!effect.invertNextRoll,
+                    lockedBySphinx: !!effect.lockSphinx,
+                    sheddingLockUntil: effect.lockUntil || null,
+                    sheddingActive: String(effect.type || '') === 'shedding',
+                    sheddingStartedAt: String(effect.type || '') === 'shedding' ? Date.now() : null,
+                    sheddingEndsAt: String(effect.type || '') === 'shedding' ? Number(effect.lockUntil || 0) : null,
+                    sheddingReleasedAt: String(effect.type || '') === 'shedding' ? 0 : null,
+                    sheddingResolvedBy: String(effect.type || '') === 'shedding' ? '' : null,
+                    movedAt: Date.now(),
+                    lastCellEnteredAt: Date.now(),
+                    skipNextTurn: false,
+                    forbiddenFruitActive: false,
+                    forbiddenFruitAccepted: false,
+                    forbiddenFruitGrantedAt: 0,
+                    forbiddenFruitSkipPending: false,
+                    forbiddenFruitConsumedAt: Number(snakeState.forbiddenFruitConsumedAt || 0),
+                    rollMeta: {
+                        usedReroll,
+                        baseDice: usedReroll ? null : dice,
+                        finalDice: dice,
+                        spentOnReroll: usedReroll ? 15 : 0
+                    },
+                    masterTrapVisionEnabled: playerKarma >= 90,
+                    masterTrapVisionSource: playerKarma >= 90 ? {
+                        generatedAt: Date.now(),
+                        negatives: {
+                            snakes: (currentRound?.snakeConfig?.snakes || []).map((x) => Number(x.from)),
+                            maelstrom: (currentRound?.snakeConfig?.maelstrom || []).map((x) => Number(x)),
+                            sphinx: (currentRound?.snakeConfig?.sphinx || []).map((x) => Number(x)),
+                            kaa: (currentRound?.snakeConfig?.kaa || []).map((x) => Number(x)),
+                            shedding: (currentRound?.snakeConfig?.shedding || []).map((x) => Number(x))
+                        }
+                    } : null
+                };
+
+                for (const other of othersOnCell) {
+                    const otherUserId = String(other.userId || '').trim();
+                    if (!otherUserId) continue;
+                    const pairKey = window.snakeRound?.buildPairKey
+                        ? window.snakeRound.buildPairKey(uid, otherUserId)
+                        : [uid, otherUserId].sort((a, b) => a.localeCompare(b, 'ru')).join('__');
+                    const historyPath = `snake_duel_history/${roundId}/${nextPos}/${pairKey}`;
+                    const historySnap = await db.ref(historyPath).once('value');
+                    const rights = window.snakeRound?.evaluateEncounterRights
+                        ? window.snakeRound.evaluateEncounterRights({
+                            currentUserId: uid,
+                            currentEnteredAt: nowTs,
+                            otherUserId,
+                            otherEnteredAt: Number(other.enteredAt || 0),
+                            duelHistoryRow: historySnap.val() || null,
+                            nowTs
+                        })
+                        : {
+                            pairKey,
+                            canStartClash: true,
+                            blockedReason: '',
+                            completedOnCell: false,
+                            currentImmune: false,
+                            otherImmune: false,
+                            safetyWindowMs: 3600000
+                        };
+
+                    const encounterState = {
+                        pairKey,
+                        players: [uid, otherUserId].sort((a, b) => a.localeCompare(b, 'ru')),
+                        metAt: nowTs,
+                        metBy: uid,
+                        round: roundId,
+                        cell: nextPos,
+                        canStartClash: !!rights.canStartClash,
+                        blockedReason: String(rights.blockedReason || ''),
+                        completedOnCell: !!rights.completedOnCell,
+                        safetyWindowMs: Number(rights.safetyWindowMs || 0),
+                        hostCellEntryAt: Number(other.enteredAt || 0),
+                        hostSafetyImmune: !!rights.otherImmune,
+                        challengerSafetyImmune: !!rights.currentImmune,
+                        updatedAt: nowTs
+                    };
+                    updates[`snake_encounters/${roundId}/${nextPos}/${pairKey}`] = encounterState;
+
+                    if (!historySnap.exists()) {
+                        updates[historyPath] = {
+                            pairKey,
+                            players: encounterState.players,
+                            round: roundId,
+                            cell: nextPos,
+                            status: 'pending',
+                            createdAt: nowTs,
+                            updatedAt: nowTs,
+                            lastEncounterAt: nowTs
+                        };
+                    } else {
+                        updates[`${historyPath}/updatedAt`] = nowTs;
+                        updates[`${historyPath}/lastEncounterAt`] = nowTs;
+                    }
+
+                    if (!encounterState.canStartClash) {
+                        const blockReason = String(encounterState.blockedReason || '');
+                        let blockText = '';
+                        if (blockReason === 'already_completed_on_this_cell') {
+                            blockText = '⚖️ На этой клетке у вас с этим игроком стычка уже была завершена ранее, повтор недоступен.';
+                        } else if (blockReason === 'other_player_safety_immunity') {
+                            blockText = '🛡️ Стычка не началась: у второго игрока действует защитный час после входа в клетку.';
+                        } else if (blockReason === 'friendly_synergy') {
+                            blockText = '🤝 Вместо стычки активировалась синергия на этой клетке.';
+                        }
+                        if (blockText) {
+                            updates[`system_notifications/${uid}/snake_encounter_blocked_${roundId}_${nextPos}_${pairKey}`] = {
+                                text: blockText,
+                                type: 'snake_encounter_blocked',
+                                clashId: `${roundId}_${nextPos}_${pairKey}`,
+                                onceKey: `encounter_blocked_${roundId}_${nextPos}_${pairKey}`,
+                                createdAt: nowTs,
+                                expiresAt: nowTs + (2 * 60 * 60 * 1000)
+                            };
+                        }
+                    }
+
+                    if (encounterState.canStartClash) {
+                        maybeCreateSnakeSynergyFromEncounter(encounterState)
+                            .then((result) => {
+                                if (result?.created) return;
+                                return maybeStartSnakeClashFromEncounter(encounterState);
+                            })
+                            .catch((err) => {
+                                console.error('snake encounter flow failed', err);
+                            });
+                    }
+                }
+
+                if (String(effect.type) === 'forbiddenFruit') {
+                    const accepted = confirm('🍎 Запретный плод: получить +20 кармы сейчас и пропустить следующий ход?');
+                    nextSnakeState.forbiddenFruitActive = true;
+                    nextSnakeState.forbiddenFruitAccepted = !!accepted;
+                    if (accepted) {
+                        await updateKarma(currentUserId, 20);
+                        playerKarma += 20;
+                        const grantedAt = Date.now();
+                        nextSnakeState.forbiddenFruitGrantedAt = grantedAt;
+                        nextSnakeState.forbiddenFruitSkipPending = true;
+                        nextSnakeState.skipNextTurn = true;
+                        nextSnakeState.forbiddenFruitConsumedAt = 0;
+                    } else {
+                        nextSnakeState.forbiddenFruitGrantedAt = 0;
+                        nextSnakeState.forbiddenFruitSkipPending = false;
+                        nextSnakeState.skipNextTurn = false;
+                        nextSnakeState.forbiddenFruitConsumedAt = Date.now();
+                    }
+                }
+                if (Number(effect.karmaDelta || 0) > 0) {
+                    await updateKarma(currentUserId, Number(effect.karmaDelta));
+                    playerKarma += Number(effect.karmaDelta);
+                }
+
+                updates[`whitelist/${currentUserId}/snakeState`] = nextSnakeState;
+                updates[`whitelist/${currentUserId}/used_tasks`] = [...used.filter((n) => n !== taskIdx), taskIdx];
+                updates[`whitelist/${currentUserId}/last_round`] = currentRound.number;
+                if (String(effect.type || '') === 'sphinx') {
+                    const sphinxNotifyKey = `snake_sphinx_trial_${currentRound.number}_${nextPos}`;
+                    updates[`system_notifications/${currentUserId}/${sphinxNotifyKey}`] = {
+                        text: '🗿 Испытание Сфинкса началось: кубик замер. Загрузи и дождись одобрения супер-задания, чтобы продолжить путь.',
+                        type: 'snake_sphinx_trial_start',
+                        onceKey: sphinxNotifyKey,
+                        createdAt: Date.now(),
+                        expiresAt: Date.now() + (24 * 60 * 60 * 1000)
+                    };
+                }
+                await db.ref().update(updates);
+
+                await postNews(`🐍 ${players[myIndex].n} бросил(а) ${dice} и теперь на клетке №${nextPos}. ${effect.text || ''}`);
+                const actualCell = (await db.ref(`board/${nextPos - 1}`).once('value')).val();
+                showCell(nextPos - 1, actualCell);
+                return;
+            }
 
             const boardSnap = await db.ref('board').once('value'), board = boardSnap.val() || {};
             const roundSnap = await db.ref('current_round').once('value'), rData = roundSnap.val();
@@ -2374,59 +2262,20 @@ const JSON_URL = 'tasks.json';
         }
 
         async function getTicketsFromFirebaseDrawPool() {
-            const [ticketsSnap, boardSnap, archiveSnap] = await Promise.all([
-                db.ref('tickets').once('value'),
-                db.ref('board').once('value'),
-                db.ref('tickets_archive').once('value')
-            ]);
-
-            const byNum = new Map();
-            const upsertTicket = (num, raw = {}) => {
-                const ticketNum = Number(num);
-                if (!Number.isInteger(ticketNum) || ticketNum < 1) return;
-                const ownerIndex = Number(raw.owner);
-                const fallbackName = raw.nickname || raw.playerName || raw.ownerName || raw.name || raw.userName || raw.userId || 'Игрок';
-                byNum.set(ticketNum, {
-                    num: String(ticketNum),
-                    owner: Number.isFinite(ownerIndex) ? ownerIndex : -1,
-                    userId: String(raw.userId || ''),
-                    name: players[ownerIndex]?.n || fallbackName
-                });
-            };
-
-            const collectFromTicketString = (ticketText, raw = {}) => {
-                String(ticketText || '')
-                    .split(' и ')
-                    .map((chunk) => chunk.trim())
-                    .filter(Boolean)
-                    .forEach((num) => upsertTicket(num, raw));
-            };
-
-            const allTickets = ticketsSnap.val() || {};
-            Object.keys(allTickets).forEach((ticketNum) => upsertTicket(ticketNum, allTickets[ticketNum] || {}));
-
-            const board = boardSnap.val() || {};
-            Object.values(board).forEach((row) => {
-                if (!row) return;
-                collectFromTicketString(row.ticket, row);
-            });
-
-            archiveSnap.forEach((rowSnap) => {
-                const row = rowSnap.val() || {};
-                collectFromTicketString(row.ticket, row);
-            });
-
-            const allNums = [...byNum.keys()].sort((a, b) => a - b);
-            if (!allNums.length) return [];
-
-            const maxTicketNum = allNums[allNums.length - 1];
-            for (let num = 1; num <= maxTicketNum; num += 1) {
-                if (!byNum.has(num)) {
-                    byNum.set(num, { num: String(num), owner: -1, userId: '', name: 'Билет в игре' });
-                }
-            }
-
-            return [...byNum.values()].sort((a, b) => Number(a.num) - Number(b.num));
+            const rows = window.expandTicketsRows ? window.expandTicketsRows(allTicketsData) : [];
+            return rows
+                .filter(t => !t.excluded && !t.ticketBurned && !t.isRevoked)
+                .map(t => {
+                    const ownerIndex = Number(t.owner);
+                    const fallbackName = t.nickname || t.playerName || t.ownerName || t.name || t.userName || t.userId || 'Игрок';
+                    return {
+                        num: String(t.ticketNum),
+                        owner: Number.isFinite(ownerIndex) ? ownerIndex : -1,
+                        userId: String(t.userId || ''),
+                        name: players[ownerIndex]?.n || fallbackName
+                    };
+                })
+                .sort((a, b) => Number(a.num) - Number(b.num));
         }
 
         function createMagicCardMarkup(ticket, isWinner) {
@@ -4099,7 +3948,7 @@ const JSON_URL = 'tasks.json';
             drawPanel?.classList.toggle('active', isDraw);
           }
 
-          async function runRoundStart(durationMs) {
+          async function runRoundStart(durationMs, options = {}) {
             if (!durationMs || durationMs <= 0) return alert('Укажите время раунда!');
             await archiveAndClearBoard();
             let free = [];
@@ -4123,6 +3972,9 @@ const JSON_URL = 'tasks.json';
               if (free.length) traps.push(free.splice(Math.floor(Math.random() * free.length), 1)[0]);
             }
 
+            const fieldMode = String(options?.fieldMode || 'cells');
+            const snakeConfig = (fieldMode === 'snake' && window.snakeRound?.buildSnakeConfig) ? window.snakeRound.buildSnakeConfig() : null;
+
             const s = await db.ref('current_round/number').once('value');
             const newRoundNum = (s.val() || 0) + 1;
 
@@ -4136,10 +3988,12 @@ const JSON_URL = 'tasks.json';
               miniGameCell,
               wordSketchCell,
               magnetCell,
-              itemCells
+              itemCells,
+              fieldMode,
+              snakeConfig
             });
 
-            await postNews(`Раунд #${newRoundNum} начался`);
+            await postNews(`Раунд #${newRoundNum} начался (${fieldMode === 'snake' ? 'режим Змейка' : 'режим Клетки'})`);
             return newRoundNum;
           }
 
@@ -4284,10 +4138,12 @@ const JSON_URL = 'tasks.json';
             db.ref('current_round').on('value', snap => {
                 if (!snap.exists()) return;
 
-                currentRoundNum = snap.val().number;
-                roundEndTime = snap.val().endTime;
-                currentRoundStartedAt = Number(snap.val().startedAt || 0);
-                currentRoundDurationMs = Number(snap.val().durationMs || 0);
+                currentRoundData = snap.val() || {};
+                currentRoundNum = currentRoundData.number;
+                roundEndTime = currentRoundData.endTime;
+                currentRoundStartedAt = Number(currentRoundData.startedAt || 0);
+                currentRoundDurationMs = Number(currentRoundData.durationMs || 0);
+                currentFieldMode = String(currentRoundData.fieldMode || 'cells');
                 document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
                 updateTimerDisplay();
 
@@ -4380,12 +4236,41 @@ const JSON_URL = 'tasks.json';
                     window.showOutgoingDuelStatusNotification(snap.key, v);
                     return;
                 }
+                if (v.type === 'snake_clash_start' || v.type === 'snake_clash_result_win' || v.type === 'snake_clash_result_loss' || v.type === 'snake_synergy_start' || v.type === 'snake_synergy_bonus') {
+                    const onceKey = getSnakeClashNotificationOnceKey(v);
+                    if (onceKey && wasSnakeClashNotificationSeen(onceKey)) return;
+                    if (onceKey) markSnakeClashNotificationSeen(onceKey);
+                }
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
             });
 
             if (currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'completed') {
                 window.maybeShowEpicPaintSuccessNotification?.().catch((err) => console.error('epic paint success notification failed', err));
             }
+
+            if (snakeClashesRef) snakeClashesRef.off();
+            snakeClashesRef = db.ref(`snake_clashes/${currentRoundNum || 0}`);
+            snakeClashesRef.on('value', snap => {
+                const clashes = snap.val() || {};
+                Object.entries(clashes).forEach(([cell, byPair]) => {
+                    const pairMap = byPair && typeof byPair === 'object' ? byPair : {};
+                    Object.entries(pairMap).forEach(([pairKey, clash]) => {
+                        const row = clash || {};
+                        const playersPair = Array.isArray(row.players) ? row.players.map((v) => String(v || '').trim()) : [];
+                        if (!playersPair.includes(String(currentUserId || '').trim())) return;
+                        const clashPath = `snake_clashes/${currentRoundNum || 0}/${cell}/${pairKey}`;
+                        if (String(row.status || '') === 'active' && String(row.gameType || '') === 'snake_rps') {
+                            openSnakeRpsModal(clashPath, row);
+                        }
+                        if (String(row.status || '') === 'active' && String(row.gameType || '') === 'snake_poison_dice') {
+                            openSnakePoisonDiceModal(clashPath, row);
+                        }
+                        if (String(row.status || '') === 'active' && String(row.gameType || '') === 'snake_puzzle_5x5') {
+                            openSnakePuzzleModal(clashPath, row);
+                        }
+                    });
+                });
+            });
 
             if (duelsRef) duelsRef.off();
             duelsRef = db.ref(DUEL_PATH).limitToLast(40);
@@ -4477,6 +4362,9 @@ const JSON_URL = 'tasks.json';
 
         function getTaskLabelByCell(cell) {
             if (!cell) return 'Неизвестное задание';
+            if (String(cell.mode || '') === 'snake' && String(cell.effect || '') === 'sphinx') {
+                return '🗿 Испытание Сфинкса: сложное супер-задание (бросок кубика заблокирован до одобрения)';
+            }
             if (cell.isEventReward && cell.eventId === EPIC_PAINT_EVENT_ID) return '🎨 Награда за событие «Эпичный закрас»';
             if (cell.isTrap) return `💣 Ловушка: ${cell.trapText || 'особое усложненное задание'}`;
             if (cell.isMagic && cell.isMagicSolo && Number.isInteger(cell.taskIdx) && cell.taskIdx >= 0) return `🔮 Магическая связь: одиночное задание — ${tasks[cell.taskIdx]?.text || 'Обычное задание'}`;
@@ -4559,13 +4447,60 @@ const JSON_URL = 'tasks.json';
                 return sameUserId || sameOwner;
             });
             const filtered = visible;
+            const pendingForReview = isAdmin
+                ? allSubmissions
+                    .filter(item => String(item.status || 'pending') === 'pending')
+                    .sort((a, b) => (a.round || 0) - (b.round || 0) || (a.cellIdx || 0) - (b.cellIdx || 0))
+                : [];
 
             if (!filtered.length) {
+                if (isAdmin && pendingForReview.length) {
+                    const pendingBodyId = 'works-pending-body';
+                    list.innerHTML = `
+                        <div class="works-card" style="margin-bottom:10px; border:1px dashed #fbc02d;">
+                            <div class="collapse-head" onclick="toggleCollapse('${pendingBodyId}', this)">
+                                <span>⏳ Требуют одобрения: ${pendingForReview.length}</span>
+                                <button type="button" class="collapse-toggle">Развернуть</button>
+                            </div>
+                            <div id="${pendingBodyId}" class="collapse-body">
+                                ${pendingForReview.map(item => {
+                                    const pendingPlayer = getSubmissionPlayerNickname(item) || 'Без никнейма';
+                                    return `<div style="font-size:12px; color:#444; margin-top:8px; padding-top:8px; border-top:1px solid #eee;">👤 <b style="color:${charColors[item.owner] || '#333'}">${pendingPlayer}</b> · Раунд ${item.round || '—'} · Клетка №${(item.cellIdx ?? -1) + 1}</div>`;
+                                }).join('')}
+                            </div>
+                        </div>
+                        <div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ для выбранного игрока.</div>`;
+                    return;
+                }
                 list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
                 return;
             }
 
-            list.innerHTML = filtered.map(item => {
+            const pendingBodyId = 'works-pending-body';
+            const pendingBlockHtml = isAdmin ? `
+                <div class="works-card" style="margin-bottom:10px; border:1px dashed #fbc02d;">
+                    <div class="collapse-head" onclick="toggleCollapse('${pendingBodyId}', this)">
+                        <span>⏳ Требуют одобрения: ${pendingForReview.length}</span>
+                        <button type="button" class="collapse-toggle">Развернуть</button>
+                    </div>
+                    <div id="${pendingBodyId}" class="collapse-body">
+                        ${pendingForReview.length ? pendingForReview.map(item => {
+                            const pendingPlayer = getSubmissionPlayerNickname(item) || 'Без никнейма';
+                            const pendingTask = item.taskLabel || 'Описание задания отсутствует';
+                            return `
+                                <div style="margin-top:8px; padding:8px; border-radius:8px; background:#fff8e1;">
+                                    <div style="font-size:12px; color:#444; line-height:1.4;">👤 <b style="color:${charColors[item.owner] || '#333'}">${pendingPlayer}</b> · Раунд ${item.round || '—'} · Клетка №${(item.cellIdx ?? -1) + 1}</div>
+                                    <div style="font-size:12px; color:#555; margin-top:4px;">${pendingTask}</div>
+                                    <div style="display:flex; gap:6px; margin-top:8px;">
+                                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принять</button>
+                                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Отклонить</button>
+                                    </div>
+                                </div>`;
+                        }).join('') : '<div style="font-size:12px; color:#777; margin-top:8px;">Нет работ со статусом «На проверке».</div>'}
+                    </div>
+                </div>` : '';
+
+            list.innerHTML = pendingBlockHtml + filtered.map(item => {
                 const status = getSubmissionStatusInfo(item.status);
                 const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
                 const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
@@ -4788,15 +4723,36 @@ const JSON_URL = 'tasks.json';
             const previousRound = currentRoundNum - 1;
             if (previousRound < 1) return;
             const hadPrevCell = Object.values(board).some(c => c && Number(c.userId) === Number(currentUserId) && c.round === previousRound);
-            if (!hadPrevCell || hasFullSubmissionForRound(previousRound)) return;
+            if (!hadPrevCell) return;
 
-            await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
+            if (hasAcceptedSubmissionForRound(previousRound)) return;
+
+            const roundCells = Object.entries(board).filter(([_, c]) => c && Number(c.userId) === Number(currentUserId) && Number(c.round) === Number(previousRound));
+            const updates = {};
+            roundCells.forEach(([idx]) => {
+                updates[`board/${idx}/excluded`] = true;
+                updates[`board/${idx}/ticketBurned`] = true;
+            });
+            if (Object.keys(updates).length) {
+                await db.ref().update(updates);
+            }
+
+            if (!hasFullSubmissionForRound(previousRound)) {
+                await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
+                showPlayerNotification({
+                    id: `work-eliminated-${previousRound}`,
+                    text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
+                    borderColor: '#ef5350'
+                });
+                await postNews(`${players[myIndex].n} выбыл(а) из игры`);
+                return;
+            }
+
             showPlayerNotification({
-                id: `work-eliminated-${previousRound}`,
-                text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
+                id: `work-rejected-${previousRound}`,
+                text: 'Работа за прошлый раунд не была принята. Билет по этому раунду исключён из участия.',
                 borderColor: '#ef5350'
             });
-            await postNews(`${players[myIndex].n} выбыл(а) из игры`);
         }
 
         function readImageAsDataURL(file) {
@@ -4892,6 +4848,19 @@ const JSON_URL = 'tasks.json';
                 createdAt: Date.now(),
                 updatedAt: Date.now()
             };
+
+            if (String(cell.mode || '') === 'snake') {
+                const snakeStateSnap = await db.ref(`whitelist/${currentUserId}/snakeState`).once('value');
+                const snakeState = snakeStateSnap.val() || {};
+                const activeTask = snakeState.activeTask || {};
+                if (Number(activeTask.cell || 0) === Number(chosenCellIdx) + 1) {
+                    payload.snakeTaskType = String(activeTask.type || 'snake_standard');
+                    payload.snakeTaskCell = Number(activeTask.cell || 0);
+                    payload.snakeTaskRound = Number(activeTask.round || cell.round || 0);
+                    payload.isSphinxTrial = !!activeTask.isSphinxTrial;
+                    if (activeTask.taskLabel) payload.taskLabel = String(activeTask.taskLabel);
+                }
+            }
             await db.ref('submissions').push(payload);
 
             if (cell.deferred || cell.invisibleMode) {
@@ -4931,6 +4900,95 @@ const JSON_URL = 'tasks.json';
                 const rowSnap = await db.ref(refPath).once('value');
                 const row = rowSnap.val() || {};
                 const uid = String(row.userId || '');
+                const roundSnap = await db.ref('current_round').once('value');
+                const roundData = roundSnap.val() || {};
+                if (uid && window.snakeRound?.isSnakeRound?.(roundData)) {
+                    const activeTaskSnap = await db.ref(`whitelist/${uid}/snakeState/activeTask`).once('value');
+                    const activeTask = activeTaskSnap.val() || {};
+                    const rowCell = Number(row.cellIdx) + 1;
+                    const activeCell = Number(activeTask.cell || 0);
+                    const isActiveCellMatch = activeCell > 0 && rowCell === activeCell;
+                    const activeTaskType = String(activeTask.type || 'snake_standard');
+                    const rowTaskType = String(row.snakeTaskType || 'snake_standard');
+                    const isSphinxTask = !!activeTask.isSphinxTrial || activeTaskType === 'snake_sphinx';
+                    const isTaskTypeMatch = rowTaskType === activeTaskType;
+                    if (isActiveCellMatch && isTaskTypeMatch) {
+                        const ticketCounterSnap = await db.ref('ticket_counter').once('value');
+                        const nextTicket = (Number(ticketCounterSnap.val()) || 0) + 1;
+                        const ticketPayload = {
+                            num: nextTicket,
+                            ticketNum: nextTicket,
+                            ticket: String(nextTicket),
+                            userId: uid,
+                            owner: Number(row.owner),
+                            round: Number(row.round || roundData.number || 0),
+                            cell: Number(activeTask.cell || 0),
+                            taskIdx: Number(activeTask.taskIdx ?? -1),
+                            taskLabel: String(row.taskLabel || ''),
+                            mode: 'snake',
+                            createdAt: Date.now()
+                        };
+                        const updates = {};
+                        updates.ticket_counter = nextTicket;
+                        updates[`tickets/${nextTicket}`] = ticketPayload;
+                        updates[`users/${uid}/tickets/${nextTicket}`] = ticketPayload;
+                        updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
+                        updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
+                        updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
+                        updates[`system_notifications/${uid}/${Date.now()}_snake_ticket`] = {
+                            text: `Твоя работа принята! Твой номер в розыгрыше: #${nextTicket}`,
+                            type: 'snake_ticket',
+                            createdAt: Date.now(),
+                            expiresAt: Date.now() + (7 * 24 * 3600 * 1000)
+                        };
+                        if (isSphinxTask) {
+                            const clearTs = Date.now();
+                            updates[`system_notifications/${uid}/snake_sphinx_trial_done_${clearTs}`] = {
+                                text: '🗿 Испытание Сфинкса пройдено. Путь снова открыт.',
+                                type: 'snake_sphinx_trial_done',
+                                onceKey: `snake_sphinx_trial_done_${Number(activeTask.round || 0)}_${activeCell}`,
+                                createdAt: clearTs,
+                                expiresAt: clearTs + (24 * 60 * 60 * 1000)
+                            };
+                        }
+                        await db.ref().update(updates);
+                        await updateKarma(uid, 5);
+
+                        const synergyCell = Number(activeTask.cell || 0);
+                        const synergyRound = Number(row.round || roundData.number || 0);
+                        const synergySnap = await db.ref(`snake_synergy/${synergyRound}/${synergyCell}`).once('value');
+                        for (const pairNode of Object.entries(synergySnap.val() || {})) {
+                            const [pairKey, synergyRow] = pairNode;
+                            const playersPair = Array.isArray(synergyRow?.players) ? synergyRow.players.map((v) => String(v || '').trim()) : [];
+                            if (!playersPair.includes(uid)) continue;
+                            if (String(synergyRow?.status || '') !== 'active') continue;
+                            if (synergyRow?.appliedTo && synergyRow.appliedTo[uid]) continue;
+
+                            await updateKarma(uid, 5);
+                            const opponentId = playersPair.find((x) => String(x) !== uid) || '';
+                            const clashId = `${synergyRound}_${synergyCell}_${pairKey}`;
+                            const appliedMap = { ...(synergyRow.appliedTo || {}), [uid]: true };
+                            const done = playersPair.every((id) => !!appliedMap[String(id)]);
+                            const synergyUpdates = {};
+                            synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/appliedTo`] = appliedMap;
+                            synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/updatedAt`] = Date.now();
+                            if (done) {
+                                synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/status`] = 'completed';
+                                synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/completedAt`] = Date.now();
+                            }
+                            synergyUpdates[`system_notifications/${uid}/snake_synergy_bonus_${clashId}_${uid}`] = {
+                                text: 'Синергия сработала! Ты получил(а) +5 кармы.',
+                                type: 'snake_synergy_bonus',
+                                clashId,
+                                onceKey: `synergy_bonus_${clashId}_${uid}`,
+                                partnerId: opponentId,
+                                createdAt: Date.now(),
+                                expiresAt: Date.now() + (2 * 60 * 60 * 1000)
+                            };
+                            await db.ref().update(synergyUpdates);
+                        }
+                    }
+                }
                 if (uid) {
                     const debtSnap = await db.ref(`whitelist/${uid}/debt`).once('value');
                     const debt = debtSnap.val();
@@ -4962,6 +5020,7 @@ const JSON_URL = 'tasks.json';
         let seasonProfileRef = null;
         let seasonKarmaRef = null;
         let seasonProfileData = { karma_points: 0, nickname: '', avatar_url: '' };
+        let masterTrapVisionSyncState = null;
 
         const KARMA_LEVEL_STEP = 100;
         const MAX_RANK_KARMA = 100;
@@ -5050,11 +5109,32 @@ const JSON_URL = 'tasks.json';
             if (karmaRank) karmaRank.textContent = visual.icon ? `${visual.title} ${visual.icon}` : visual.title;
         }
 
+        async function syncMasterTrapVisionState(userId, karmaPoints) {
+            const uid = String(userId || '').trim();
+            if (!uid || uid === String(ADMIN_ID)) return;
+            const enabled = Number(karmaPoints || 0) >= 90;
+            if (masterTrapVisionSyncState === enabled) return;
+            masterTrapVisionSyncState = enabled;
+            try {
+                await db.ref(`whitelist/${uid}/snakeState`).update({
+                    masterTrapVisionEnabled: enabled,
+                    masterTrapVisionSource: enabled ? {
+                        generatedAt: Date.now(),
+                        reason: 'karma_threshold_sync'
+                    } : null
+                });
+            } catch (err) {
+                console.warn('syncMasterTrapVisionState failed', err);
+                masterTrapVisionSyncState = null;
+            }
+        }
+
         async function syncSeasonProfile() {
             const userId = String(currentUserPathId || currentUserId || '').trim();
             if (!userId) return;
             if (String(userId) === String(ADMIN_ID)) {
                 seasonProfileData = { karma_points: 0, nickname: 'Администратор', avatar_url: '' };
+                masterTrapVisionSyncState = null;
                 updateProfileUI();
                 return;
             }
@@ -5087,6 +5167,7 @@ const JSON_URL = 'tasks.json';
                     profileRef.update({ nickname: fallbackNickname, updatedAt: Date.now() });
                     seasonProfileData.nickname = fallbackNickname;
                 }
+                syncMasterTrapVisionState(userId, seasonProfileData.karma_points).catch((err) => console.warn('syncMasterTrapVisionState failed', err));
                 updateProfileUI();
             });
         }
@@ -5189,28 +5270,58 @@ const JSON_URL = 'tasks.json';
             galleryRotationTimer = setInterval(updateCountdown, 1000);
         }
 
-        async function getGalleryComplimentStats(exhibitId) {
+        function sanitizeGalleryKeyPart(value) {
+            return String(value || '').trim().replace(/[.#$\[\]/\:]/g, '_');
+        }
+
+        function getGalleryWorkReactionBinding(work) {
+            const ownerUserId = resolveSubmissionOwnerUserId(work);
+            const sourcePrefix = sanitizeGalleryKeyPart(work?.sourcePrefix || 'submissions');
+            const dbPath = sanitizeGalleryKeyPart(work?.dbPath || work?.id || 'unknown');
+            const stableWorkId = `${sourcePrefix}__${dbPath}`;
+            const legacyPrefix = `${ownerUserId || 'unknown'}_${String(work?.id || '').trim()}_`;
+            return { stableWorkId, legacyPrefix, ownerUserId };
+        }
+
+        async function getGalleryComplimentStats(exhibitId, legacyPrefix = '') {
             const counts = { clap: 0, heart: 0, sun: 0 };
             const id = String(exhibitId || '').trim();
             if (!id) return counts;
+
+            const addCounts = (rawMap) => {
+                Object.values(rawMap || {}).forEach((entry) => {
+                    const type = String(entry?.type || '').trim();
+                    if (Object.prototype.hasOwnProperty.call(counts, type)) counts[type] += 1;
+                });
+            };
+
             const snap = await db.ref(`gallery_compliments/${id}`).once('value');
-            const raw = snap.val() || {};
-            Object.values(raw).forEach((entry) => {
-                const type = String(entry?.type || '').trim();
-                if (Object.prototype.hasOwnProperty.call(counts, type)) counts[type] += 1;
-            });
+            addCounts(snap.val() || {});
+
+            const legacy = String(legacyPrefix || '').trim();
+            if (legacy) {
+                const allSnap = await db.ref('gallery_compliments').once('value');
+                const all = allSnap.val() || {};
+                Object.entries(all).forEach(([key, votes]) => {
+                    if (String(key || '') === id) return;
+                    if (!String(key || '').startsWith(legacy)) return;
+                    addCounts(votes || {});
+                });
+            }
+
             return counts;
         }
 
-        async function updateGalleryFeedbackLine(exhibitId) {
+        async function updateGalleryFeedbackLine(exhibitId, legacyPrefix = '') {
             const feedbackEl = document.getElementById('gallery-feedback-line');
             if (!feedbackEl) return;
             const expectedExhibitId = String(feedbackEl.dataset.exhibitId || '').trim();
             const requestedExhibitId = String(exhibitId || '').trim();
             if (!requestedExhibitId || expectedExhibitId !== requestedExhibitId) return;
-            const stats = await getGalleryComplimentStats(requestedExhibitId);
+            const effectiveLegacyPrefix = String(legacyPrefix || feedbackEl.dataset.legacyPrefix || '').trim();
+            const stats = await getGalleryComplimentStats(requestedExhibitId, effectiveLegacyPrefix);
             if (String(feedbackEl.dataset.exhibitId || '').trim() !== requestedExhibitId) return;
-            feedbackEl.textContent = `Отклик игроков: ${stats.clap} 👏 · ${stats.heart} ❤️ · ${stats.sun} ☀️. Так держать!`;
+            feedbackEl.textContent = `Отклик за всю историю: ${stats.clap} 👏 · ${stats.heart} ❤️ · ${stats.sun} ☀️.`;
         }
 
         function playGalleryChime() {
@@ -5333,14 +5444,13 @@ const JSON_URL = 'tasks.json';
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Твое место в истории пустует... Будь первым, чью работу увидят все!</p><button class="admin-btn" onclick="switchTab('tab-works', document.querySelector('.nav-item[onclick*=\"tab-works\"]'))" style="margin:0; width:100%;">Перейти к заданиям</button></div>`;
                 return;
             }
-            const ownerUserId = resolveSubmissionOwnerUserId(picked);
-            const exhibitId = `${ownerUserId || 'unknown'}_${picked.id}_${getGallerySlot()}`;
+            const { stableWorkId: exhibitId, legacyPrefix, ownerUserId } = getGalleryWorkReactionBinding(picked);
             const img = picked.afterImageData || picked.imageData;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
                     <img src="${img}" class="gallery-image" alt="Выставленная работа">
-                    <div id="gallery-feedback-line" data-exhibit-id="${exhibitId}" style="font-size:12px; margin-top:6px;">Отклик игроков: 0 👏 · 0 ❤️ · 0 ☀️. Так держать!</div>
+                    <div id="gallery-feedback-line" data-exhibit-id="${exhibitId}" data-legacy-prefix="${legacyPrefix}" style="font-size:12px; margin-top:6px;">Отклик за всю историю: 0 👏 · 0 ❤️ · 0 ☀️.</div>
                     <div class="gallery-compliments" style="margin-top:8px;">
                         <div class="compliment-option">
                             <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
@@ -5356,7 +5466,7 @@ const JSON_URL = 'tasks.json';
                         </div>
                     </div>
                 </div>`;
-            updateGalleryFeedbackLine(exhibitId);
+            updateGalleryFeedbackLine(exhibitId, legacyPrefix);
         }
 
         function adminRenderKarmaSearchResults() {

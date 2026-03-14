@@ -106,10 +106,27 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
         }
 
         async function acceptCalligraphyDuel(duelKey) {
-            if (!duelKey) return;
+            if (!duelKey) return { ok: false, reason: 'no_duel_key' };
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
-            await ref.transaction(row => {
+            let expiredByTimeout = false;
+            let timeoutNoticeTarget = '';
+            let timeoutNotifiedAt = 0;
+
+            const tx = await ref.transaction((row) => {
                 if (!row || row.status !== 'pending') return row;
+                const now = getServerNowMs();
+                if (Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= now) {
+                    expiredByTimeout = true;
+                    timeoutNoticeTarget = String(row.challengerId || '');
+                    timeoutNotifiedAt = Number(row.timeoutNotifiedAt || 0);
+                    return {
+                        ...row,
+                        status: 'expired',
+                        expiredAt: Number(row.expiredAt || now),
+                        timeoutNotifiedAt: Number(row.timeoutNotifiedAt || now)
+                    };
+                }
+
                 row.players = row.players || {};
                 const me = String(currentUserId);
                 if (!row.players[me]) row.players[me] = {};
@@ -118,7 +135,6 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 const challengerAccepted = !!row.players[String(row.challengerId)]?.accepted;
                 const opponentAccepted = !!row.players[String(row.opponentId)]?.accepted;
                 if (challengerAccepted && opponentAccepted) {
-                    const now = getServerNowMs();
                     row.status = 'active';
                     row.startedAt = now;
                     row.countdownFrom = 5;
@@ -128,7 +144,22 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 }
                 return row;
             });
+
             const duelNow = (await ref.once('value')).val() || {};
+            if (expiredByTimeout || duelNow.status === 'expired') {
+                if (timeoutNoticeTarget && !timeoutNotifiedAt) {
+                    await db.ref(`system_notifications/${timeoutNoticeTarget}`).push({
+                        type: 'calligraphy_duel_timeout',
+                        text: 'Соперник не принял дуэль. Можно кинуть дуэль другому игроку',
+                        createdAt: Date.now(),
+                        duelKey,
+                        acknowledged: false
+                    });
+                }
+                return { ok: false, reason: 'expired' };
+            }
+
+            if (!tx.committed) return { ok: false, reason: 'not_committed' };
             if (duelNow.status === 'active') {
                 await postCalligraphyDuelStartedNewsIfNeeded(duelKey, duelNow);
                 const now = getServerNowMs();
@@ -138,7 +169,9 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                     [`${DUEL_PATH}/${duelKey}/cooldownStartedAt`]: now
                 });
             }
+            return { ok: true, reason: duelNow.status === 'active' ? 'accepted_active' : 'accepted_pending' };
         }
+
 
         function setupDuelCanvasHandlers() {
             const canvas = document.getElementById('duel-canvas');
@@ -424,10 +457,12 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 return {
                     ...row,
                     status: 'expired',
-                    expiredAt: getServerNowMs()
+                    expiredAt: getServerNowMs(),
+                    timeoutNotifiedAt: Number(row.timeoutNotifiedAt || getServerNowMs())
                 };
             });
-            if (!tx.committed || !challengerId) return;
+            const rowAfter = tx.snapshot.val() || {};
+            if (!tx.committed || !challengerId || Number(rowAfter.timeoutNotifiedAt || 0) !== Number(rowAfter.expiredAt || 0)) return;
             await db.ref(`system_notifications/${challengerId}`).push({
                 type: 'calligraphy_duel_timeout',
                 text: 'Соперник не принял дуэль. Можно кинуть дуэль другому игроку',
@@ -555,7 +590,10 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 });
                 try {
                     if (action === 'accept') {
-                        await acceptCalligraphyDuel(payload.duelKey);
+                        const result = await acceptCalligraphyDuel(payload.duelKey);
+                        if (!result?.ok && result?.reason === 'expired') {
+                            alert('Вызов уже истёк — принять его больше нельзя.');
+                        }
                     } else {
                         await declineCalligraphyDuel(payload.duelKey);
                     }
