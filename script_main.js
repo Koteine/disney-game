@@ -209,7 +209,6 @@ const JSON_URL = 'tasks.json';
         let wheelSystemInterval = null;
         let winnerHistoryItems = [];
         let newsFeedItems = [];
-        let lastRoundEndNewsRound = 0;
         let currentDrawSchedule = null;
         let magicDrawAnimationState = null;
         let activeMagicDrawId = null;
@@ -1060,6 +1059,28 @@ const JSON_URL = 'tasks.json';
             if (!msg) return;
             await db.ref('news_feed').push({ text: msg, createdAt: Date.now() });
         }
+
+        async function postNewsOnce(oncePath, text, meta = {}) {
+            const path = String(oncePath || '').trim();
+            if (!path) return;
+            const tx = await db.ref(path).transaction((row) => {
+                if (row) return row;
+                return { at: Date.now(), ...meta };
+            });
+            if (!tx.committed) return;
+            await postNews(text);
+        }
+
+        async function postRoundEndNewsIfNeeded(roundNum) {
+            const normalizedRound = Number(roundNum || 0);
+            if (!Number.isFinite(normalizedRound) || normalizedRound <= 0) return;
+            const flagTx = await db.ref('current_round/endNewsPosted').transaction((row) => {
+                if (row && Number(row.round) === normalizedRound) return row;
+                return { round: normalizedRound, at: Date.now() };
+            });
+            if (!flagTx.committed) return;
+            await postNews(`Раунд #${normalizedRound} завершён`);
+        }
         window.postNews = postNews;
 
         function getKarmaVisualByPoints(points) {
@@ -1339,10 +1360,7 @@ const JSON_URL = 'tasks.json';
                     btn.disabled = true;
                     btn.innerText = "⏳ Раунд завершен";
                     hideSnakeStatusBlock();
-                    if (Number(currentRoundNum) > 0 && lastRoundEndNewsRound !== Number(currentRoundNum)) {
-                        lastRoundEndNewsRound = Number(currentRoundNum);
-                        await postNews(`Раунд #${currentRoundNum} завершён`);
-                    }
+                    await postRoundEndNewsIfNeeded(currentRoundNum);
                     await handleMiniGameRoundFailure();
                     return;
                 }
@@ -4716,7 +4734,12 @@ const JSON_URL = 'tasks.json';
                 updates[`whitelist/${currentUserId}/debt/active`] = false;
                 updates[`whitelist/${currentUserId}/debt/failed`] = true;
                 await db.ref().update(updates);
-                await postNews(`🔥 ${players[myIndex].n} не закрыл(а) долг по Плащу-невидимке — оба билета сгорели.`);
+                const debtRound = Number(debt.dueRound || debt.round || currentRoundNum || 0);
+                await postNewsOnce(
+                    `whitelist/${currentUserId}/news_once/debt_failed_round_${Math.max(0, debtRound)}`,
+                    `🔥 ${players[myIndex].n} не закрыл(а) долг по Плащу-невидимке — оба билета сгорели.`,
+                    { type: 'debt_failed', round: Math.max(0, debtRound) }
+                );
                 return;
             }
 
@@ -4744,7 +4767,11 @@ const JSON_URL = 'tasks.json';
                     text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
                     borderColor: '#ef5350'
                 });
-                await postNews(`${players[myIndex].n} выбыл(а) из игры`);
+                await postNewsOnce(
+                    `whitelist/${currentUserId}/news_once/eliminated_no_submission_round_${previousRound}`,
+                    `${players[myIndex].n} выбыл(а) из игры`,
+                    { type: 'eliminated_no_submission', round: previousRound }
+                );
                 return;
             }
 
