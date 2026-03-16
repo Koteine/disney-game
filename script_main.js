@@ -1847,6 +1847,19 @@ const JSON_URL = 'tasks.json';
 
 
         async function roll() {
+            const rollTrace = (label, payload) => {
+                if (payload === undefined) {
+                    console.info(`[ROLL] ${label}`);
+                    return;
+                }
+                console.info(`[ROLL] ${label}`, payload);
+            };
+
+            rollTrace('click received', {
+                userId: currentUserId,
+                inFlight: snakeRollInFlight,
+                myIndex
+            });
             if (snakeRollInFlight) return;
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
@@ -1863,7 +1876,13 @@ const JSON_URL = 'tasks.json';
             const currentRoundSnap = await db.ref('current_round').once('value');
             const currentRound = currentRoundSnap.val() || {};
             const activeFieldMode = resolveRoundFieldMode(currentRound);
+            rollTrace(`mode resolved = ${activeFieldMode}`);
             if (activeFieldMode === 'snake') {
+                rollTrace('entering snake branch');
+                rollTrace(`snake inFlight before = ${snakeRollInFlight}`);
+                if (!window.snakeRound || typeof window.snakeRound.getUserSnakeState !== 'function') {
+                    throw new Error('snakeRound API is unavailable in roll()');
+                }
                 await tryResolveSheddingLockByTimer(currentUserId, userState.snakeState || null);
                 let snakeState = await window.snakeRound.getUserSnakeState(db, currentUserId);
                 if (snakeState.awaitingApproval) return alert('Сначала дождись одобрения текущей работы админом.');
@@ -1931,9 +1950,12 @@ const JSON_URL = 'tasks.json';
                     }
                 }
                 const position = Number(snakeState.position || 1);
+                rollTrace(`snake current position = ${position}`);
                 const baseNextPos = window.snakeRound.evaluateMove(position, dice, !!snakeState.invertNextRoll);
+                rollTrace(`dice rolled = ${dice}`);
                 let effect = window.snakeRound.resolveCellEffect(baseNextPos, currentRound.snakeConfig || {});
                 let nextPos = Number(effect.to || baseNextPos);
+                rollTrace(`next position = ${nextPos}`);
 
                 const rankName = window.karmaSystem?.getKarmaRank ? window.karmaSystem.getKarmaRank(playerKarma) : '';
                 const isCreatorRank = String(rankName).includes('Творец Миров');
@@ -2184,8 +2206,15 @@ const JSON_URL = 'tasks.json';
                     playerKarma += Number(effect.karmaDelta);
                 }
 
+                rollTrace('about to persist snake state');
                 updates[`whitelist/${currentUserId}/snakeState`] = nextSnakeState;
                 updates[`whitelist/${currentUserId}/last_round`] = currentRound.number;
+                rollTrace('about to create assignment', {
+                    assignmentId,
+                    roundId,
+                    cell: nextPos,
+                    taskIdx
+                });
                 updates[`rounds/${roundId}/snake/assignments/${uid}/${assignmentId}`] = {
                     assignmentId,
                     userId: uid,
@@ -2223,10 +2252,12 @@ const JSON_URL = 'tasks.json';
                     };
                 }
                 await db.ref().update(updates);
+                rollTrace('snake persist success');
 
                 await postNews(`🐍 ${players[myIndex].n} бросил(а) ${dice} и теперь на клетке №${nextPos}. ${effect.text || ''}`);
                 const actualCell = (await db.ref(`board/${nextPos - 1}`).once('value')).val();
                 showCell(nextPos - 1, actualCell);
+                rollTrace('snake flow complete');
                 return;
             }
 
@@ -2358,10 +2389,12 @@ const JSON_URL = 'tasks.json';
                 await sendWandBlessingImmediately();
             }
             } catch (err) {
+                console.error('[ROLL][ERROR]', err);
+                alert(`Ошибка броска: ${err?.message || err}`);
                 if (activeSnakeRollRequestId) {
                     await releaseSnakeRollSlot(currentUserId, activeSnakeRollRequestId, false);
                 }
-                throw err;
+                return;
             } finally {
                 snakeRollInFlight = false;
             }
@@ -5937,6 +5970,7 @@ const JSON_URL = 'tasks.json';
         window.adminSelectKarmaUser = adminSelectKarmaUser;
         window.adminAdjustKarma = adminAdjustKarma;
 	        window.sendGalleryCompliment = sendGalleryCompliment;
+        window.roll = roll;
 
         // END works.js
 
