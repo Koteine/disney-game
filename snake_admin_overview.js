@@ -1,4 +1,40 @@
 (function () {
+  const SNAKE_OVERVIEW_COLLAPSED_KEY = 'admin_snake_overview_collapsed_v1';
+
+  function getSnakeOverviewCollapsed() {
+    try {
+      const raw = window.localStorage?.getItem(SNAKE_OVERVIEW_COLLAPSED_KEY);
+      if (raw === null) return true;
+      return raw !== '0';
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function setSnakeOverviewCollapsed(collapsed) {
+    try {
+      window.localStorage?.setItem(SNAKE_OVERVIEW_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch (_) {}
+  }
+
+  function syncSnakeOverviewUi(collapsed) {
+    const content = document.getElementById('admin-snake-overview-content');
+    const toggleBtn = document.getElementById('admin-snake-overview-toggle-btn');
+    if (content) content.style.display = collapsed ? 'none' : 'block';
+    if (toggleBtn) toggleBtn.innerText = collapsed ? 'Развернуть' : 'Свернуть';
+  }
+
+  function ensureSnakeOverviewToggleBound() {
+    const toggleBtn = document.getElementById('admin-snake-overview-toggle-btn');
+    if (!toggleBtn || toggleBtn.dataset.bound === '1') return;
+    toggleBtn.dataset.bound = '1';
+    toggleBtn.onclick = () => {
+      const next = !getSnakeOverviewCollapsed();
+      setSnakeOverviewCollapsed(next);
+      syncSnakeOverviewUi(next);
+    };
+  }
+
   function formatSnakeConfigLine(label, values, isPairs = false) {
     if (!Array.isArray(values) || !values.length) return `<div><b>${label}:</b> —</div>`;
     const text = isPairs
@@ -50,11 +86,15 @@
     const body = document.getElementById('admin-snake-overview-body');
     if (!wrap || !body || !db) return cacheState;
 
+    ensureSnakeOverviewToggleBound();
+    syncSnakeOverviewUi(getSnakeOverviewCollapsed());
+
     const nextState = { ...(cacheState || {}) };
 
     if (Number(currentUserId) !== Number(adminId)) {
       wrap.style.display = 'none';
       body.innerHTML = '';
+      syncSnakeOverviewUi(true);
       return { fetchedAt: Date.now(), fetching: false, round: 0, mode: '' };
     }
 

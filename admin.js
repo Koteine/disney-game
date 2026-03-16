@@ -43,10 +43,25 @@ const formatMoscowDateTime = (...args) => (
             const m = parseInt(document.getElementById('r-mins')?.value || '0', 10) || 0;
             const durationMs = (d * 86400000) + (h * 3600000) + (m * 60000);
             const fieldMode = String(document.getElementById('round-field-mode')?.value || 'cells');
+
+            const startRaw = String(document.getElementById('round-start-at')?.value || '').trim();
+            if (startRaw) {
+              const startAt = Number(parseMoscowDateTimeLocalInput(startRaw));
+              const nowTs = Number(window.getAdminNow?.() || Date.now());
+              if (Number.isFinite(startAt) && startAt > nowTs) {
+                if (typeof window.adminScheduleRound === 'function') {
+                  await window.adminScheduleRound();
+                  return;
+                }
+              }
+            }
+
             if (!confirm('Точно запустить раунд?')) return;
             const roundNum = await runRoundStart(durationMs, { fieldMode });
-            if (roundNum) alert(`Раунд №${roundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
+            if (roundNum) alert(`Раунд №${roundNum} успешно запущен!
+Длительность: ${d}д ${h}ч ${m}м`);
           }
+
 
   async function adminScheduleRound() {
   if (typeof window.schedulerAdminScheduleRound === 'function' && window.schedulerAdminScheduleRound !== adminScheduleRound) {
