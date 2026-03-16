@@ -959,6 +959,8 @@ async function maybeCreateSnakeSynergyFromEncounter(encounterState) {
       openSnakePuzzleModal,
       maybeResolveSnakePuzzleClash,
       submitSnakePuzzleMove,
+      tryResolveSheddingLockByTimer,
+      tryResolveSheddingLockByKarma,
       maybeCreateSnakeSynergyFromEncounter
     };
   }

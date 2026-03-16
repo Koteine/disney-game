@@ -1629,6 +1629,15 @@ const JSON_URL = 'tasks.json';
             return ensureSnakeClashApi()?.maybeCreateSnakeSynergyFromEncounter(encounterState);
         }
 
+        async function tryResolveSheddingLockByTimer(userId, snakeState) {
+            return ensureSnakeClashApi()?.tryResolveSheddingLockByTimer(userId, snakeState) || false;
+        }
+
+        async function tryResolveSheddingLockByKarma(userId) {
+            const result = await ensureSnakeClashApi()?.tryResolveSheddingLockByKarma(userId);
+            return result || { released: false, reason: 'api_unavailable' };
+        }
+
         let snakeRollInFlight = false;
         let snakeDuelInviteInFlight = false;
 
