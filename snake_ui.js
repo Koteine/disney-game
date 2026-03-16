@@ -185,12 +185,15 @@
       const forbiddenFruitAwaitingSubmission = !!snakeState.forbiddenFruitAwaitingSubmission;
       const forbiddenFruitGrantedAt = Number(snakeState.forbiddenFruitGrantedAt || 0);
       const forbiddenFruitWaitUntil = Number(snakeState.forbiddenFruitWaitUntil || 0);
+      const forbiddenFruitCycleLeft = Math.max(0, Number(snakeState.forbiddenFruitBlockUntilCycle || 0) - Number(window.getCurrentPowerWindowCycleIndex?.(now) || 0));
       if (forbiddenFruitAccepted && forbiddenFruitAwaitingSubmission) {
-        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 +20 кармы получено. Сдай текущую работу, чтобы запустить 48 часов ожидания.'));
+        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 +20 кармы получено. После одобрения начнется блок на 2 полных цикла окон.'));
+      } else if (forbiddenFruitCycleLeft > 0) {
+        statusRows.push(formatSnakeStatusLine('Запретный плод', `🍎 Ожидание по окнам: осталось циклов ${forbiddenFruitCycleLeft}`));
       } else if (forbiddenFruitWaitUntil > now) {
         statusRows.push(formatSnakeStatusLine('Запретный плод', `🍎 Ожидание после сдачи работы: ещё ~${formatSnakeMinutesLeft(forbiddenFruitWaitUntil - now)} мин`));
       } else if (forbiddenFruitAccepted && forbiddenFruitGrantedAt > 0) {
-        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 Эффект завершён: 48 часов ожидания прошли.'));
+        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 Эффект завершён: блокировка по циклам окон снята.'));
       }
 
       const enteredAt = Number(snakeState.lastCellEnteredAt || snakeState.movedAt || 0);
@@ -204,6 +207,14 @@
 
       if (snakeState.masterTrapVisionEnabled) {
         statusRows.push(formatSnakeStatusLine('Особый статус', 'Режим Мастера: видны опасные клетки'));
+      }
+
+      const jungleImm = !!snakeState.jungleImmunityPending;
+      const negChain = Math.max(0, Number(snakeState.consecutiveNegativeEffects || 0));
+      if (jungleImm) {
+        statusRows.push(formatSnakeStatusLine('Иммунитет джунглей', '🌿 Активен: следующий негативный эффект будет поглощён'));
+      } else if (negChain > 0) {
+        statusRows.push(formatSnakeStatusLine('Цепочка негатива', `${negChain}/2`));
       }
 
       if (currentUserId && currentRoundNum > 0 && position > 0) {

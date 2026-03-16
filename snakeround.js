@@ -188,6 +188,7 @@
       ? options.dangerPositions
       : getDangerPositions(config);
     const highlightedDangerSet = options?.masterTrapVisionEnabled ? new Set(visionDangerPositions.map((x) => Number(x))) : null;
+    const trapShadows = (options?.trapShadows && typeof options.trapShadows === 'object') ? options.trapShadows : {};
 
     const rows = 10;
     const cols = 10;
@@ -204,9 +205,10 @@
       const occ = occupants[0];
       const color = (typeof occ?.owner === 'number' && charColors[occ.owner]) ? charColors[occ.owner] : '#ddd';
       const ownerName = (typeof occ?.owner === 'number' && players[occ.owner]?.n) ? players[occ.owner].n : '';
-      const marker = specialMarks[value] || '•';
+      const marker = specialMarks[value] || (trapShadows[value] ? '◌' : '•');
       const dangerClass = highlightedDangerSet?.has(Number(value)) ? ' snake-cell-danger' : '';
-      return `<button class="snake-cell${dangerClass}" data-snake-pos="${value}" style="border-color:${color};"><b>${value}</b><span>${marker}</span>${ownerName ? `<small>${ownerName}</small>` : '<small>→</small>'}</button>`;
+      const trapShadowStyle = trapShadows[value] ? 'opacity:.75; box-shadow: inset 0 0 0 1px rgba(123,31,162,.35);' : '';
+      return `<button class="snake-cell${dangerClass}" data-snake-pos="${value}" style="border-color:${color};${trapShadowStyle}"><b>${value}</b><span>${marker}</span>${ownerName ? `<small>${ownerName}</small>` : '<small>→</small>'}</button>`;
     }).join('');
   }
 

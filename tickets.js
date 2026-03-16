@@ -105,11 +105,27 @@ window.__initTicketsModule = function __initTicketsModule() {
                         const dangerPositions = window.snakeRound?.getDangerPositions
                             ? window.snakeRound.getDangerPositions(currentRound?.snakeConfig || {})
                             : [];
+                        const snakeRoundNum = Number(currentRound?.number || 0);
+                        const trapSnap = snakeRoundNum > 0 ? await db.ref(`snake_traps/${snakeRoundNum}`).once('value') : null;
+                        const trapRows = trapSnap?.val() || {};
+                        const trapShadows = {};
+                        Object.entries(trapRows).forEach(([cellPos, trap]) => {
+                            if (!trap || !trap.armed) return;
+                            if (Number(trap.expiresAt || 0) <= Date.now()) return;
+                            const pos = Number(cellPos || 0);
+                            if (!pos) return;
+                            if (String(trap.ownerId || '') === String(currentUserId || '')) {
+                                trapShadows[pos] = true;
+                                return;
+                            }
+                            if (masterTrapVisionEnabled) trapShadows[pos] = true;
+                        });
                         if (grid) {
                             grid.classList.add('snake-grid');
                             grid.innerHTML = window.snakeRound.buildSnakeBoardHtml(data, currentRound, charColors, players, {
                                 masterTrapVisionEnabled,
-                                dangerPositions
+                                dangerPositions,
+                                trapShadows
                             });
                             grid.querySelectorAll('[data-snake-pos]').forEach((btn) => {
                                 const pos = Number(btn.getAttribute('data-snake-pos'));

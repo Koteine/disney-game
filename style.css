@@ -693,6 +693,18 @@
 }
 
 
+
+.snake-shop-controls { margin: 8px auto 4px; width:95%; display:flex; flex-direction:column; gap:6px; }
+.snake-shop-btn { margin:0; width:100%; background:#2e7d32; }
+.snake-shop-btn + .snake-shop-btn { background:#6a1b9a; }
+.snake-shop-status { font-size:11px; color:#555; text-align:left; }
+.snake-backpack-preview { font-size:11px; color:#4a148c; text-align:left; min-height:16px; }
+.snake-pending-indicator { align-self:flex-start; background:#ede7f6; border:1px solid #d1c4e9; color:#4a148c; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
+.snake-shop-grid { display:grid; grid-template-columns:1fr; gap:8px; margin-top:8px; }
+.snake-shop-card { border:1px solid #e1bee7; border-radius:10px; padding:8px; background:#fff; }
+.snake-shop-card-title { font-weight:700; color:#6a1b9a; }
+.snake-shop-card-desc { font-size:12px; color:#555; margin:4px 0; }
+.snake-shop-card-meta { font-size:11px; color:#777; margin-bottom:6px; }
 .snake-status-block {
     margin: 8px 0;
     border: 1px solid #d1c4e9;
