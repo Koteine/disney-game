@@ -1313,6 +1313,7 @@ const JSON_URL = 'tasks.json';
                     db,
                     currentUserId,
                     adminId: ADMIN_ID,
+                    charColors,
                     players,
                     activeTabId: document.querySelector('.tab-content.tab-active')?.id || '',
                     cacheState: adminSnakeOverviewState,
@@ -1400,11 +1401,17 @@ const JSON_URL = 'tasks.json';
                     return;
                 }
 
-                myRoundHasMove = (userState.last_round === currentRoundNum);
+                const isSnakeMode = String(currentFieldMode || 'cells') === 'snake';
+                myRoundHasMove = isSnakeMode ? false : (userState.last_round === currentRoundNum);
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
-                if (String(currentFieldMode || 'cells') === 'snake') {
+                if (isSnakeMode) {
                     const snakeState = userState.snakeState || {};
+                    const hasMandatoryStepBlock = !!snakeState.awaitingApproval;
+                    if (hasMandatoryStepBlock) {
+                        btn.disabled = true;
+                        btn.innerText = '⏳ Сначала дождись одобрения текущей работы';
+                    }
                     if (snakeState.lockedBySphinx) {
                         btn.disabled = true;
                         btn.innerText = '🗿 Испытание Сфинкса: ожидается одобрение';
@@ -1420,6 +1427,10 @@ const JSON_URL = 'tasks.json';
                 }
                 if (duelLockActive) {
                     btn.disabled = true;
+                }
+                if (isSnakeMode && snakeRollInFlight) {
+                    btn.disabled = true;
+                    btn.innerText = '🎲 Бросок обрабатывается...';
                 }
                 await renderSnakeStatusBlock(userState);
                 window.updateEventUiState?.();
@@ -1610,6 +1621,200 @@ const JSON_URL = 'tasks.json';
             return ensureSnakeClashApi()?.maybeCreateSnakeSynergyFromEncounter(encounterState);
         }
 
+        let snakeRollInFlight = false;
+        let snakeDuelInviteInFlight = false;
+
+        function hasActiveOrPendingDuelBetween(userA, userB) {
+            const a = String(userA || '').trim();
+            const b = String(userB || '').trim();
+            if (!a || !b) return false;
+            return (activeDuels || []).some((duel) => {
+                if (!duel || typeof duel !== 'object') return false;
+                const challengerId = String(duel.challengerId || '').trim();
+                const opponentId = String(duel.opponentId || '').trim();
+                const duelStatus = String(duel.status || '').trim();
+                if (!['pending', 'active'].includes(duelStatus)) return false;
+                const pairMatch = (challengerId === a && opponentId === b) || (challengerId === b && opponentId === a);
+                return pairMatch;
+            });
+        }
+
+        function isSnakeDuelPairOnSameActiveCell(currentRow, targetRow, cellPos, roundNum) {
+            const currentState = currentRow?.snakeState || {};
+            const targetState = targetRow?.snakeState || {};
+            const currentPos = Number(currentState.position || 0);
+            const targetPos = Number(targetState.position || 0);
+            if (currentPos <= 0 || targetPos <= 0) return false;
+            if (currentPos !== targetPos || currentPos !== Number(cellPos || 0)) return false;
+
+            const currentTaskRound = Number(currentState.activeTask?.round || roundNum || 0);
+            const targetTaskRound = Number(targetState.activeTask?.round || roundNum || 0);
+            if (currentTaskRound > 0 && Number(roundNum || 0) > 0 && currentTaskRound !== Number(roundNum || 0)) return false;
+            if (targetTaskRound > 0 && Number(roundNum || 0) > 0 && targetTaskRound !== Number(roundNum || 0)) return false;
+
+            return true;
+        }
+
+        async function challengeSnakeCellPlayer(targetUserId, cellPos) {
+            const targetUid = String(targetUserId || '').trim();
+            const currentUid = String(currentUserId || '').trim();
+            const pos = Number(cellPos || 0);
+            if (!targetUid || !currentUid || !pos) return;
+            if (targetUid === currentUid) return;
+            if (snakeDuelInviteInFlight) return;
+            if (Number(currentUid) === Number(ADMIN_ID)) return;
+
+            snakeDuelInviteInFlight = true;
+            try {
+                if (hasActiveOrPendingDuelBetween(currentUid, targetUid)) {
+                    return alert('У вас уже есть активная/ожидающая дуэль.');
+                }
+
+                const [roundSnap, currentUserSnap, targetUserSnap] = await Promise.all([
+                    db.ref('current_round').once('value'),
+                    db.ref(`whitelist/${currentUid}`).once('value'),
+                    db.ref(`whitelist/${targetUid}`).once('value')
+                ]);
+                const roundData = roundSnap.val() || {};
+                if (!window.snakeRound?.isSnakeRound?.(roundData)) {
+                    return alert('Вызов из клетки доступен только в режиме «Змейка».');
+                }
+
+                const currentRow = currentUserSnap.val() || {};
+                const targetRow = targetUserSnap.val() || {};
+                const activeRoundNum = Number(roundData.number || 0);
+                const isSameCell = isSnakeDuelPairOnSameActiveCell(currentRow, targetRow, pos, activeRoundNum);
+                if (!isSameCell) {
+                    return alert('Вызов доступен только игрокам на одной и той же клетке текущего snake-раунда.');
+                }
+
+                if (hasActiveOrPendingDuelBetween(currentUid, targetUid)) {
+                    return alert('У вас уже есть активная/ожидающая дуэль.');
+                }
+
+                const targetName = players[Number(targetRow.charIndex)]?.n || targetRow.nickname || `ID ${targetUid}`;
+                await window.sendCellImpulseToOwner?.(pos - 1, targetUid, encodeURIComponent(targetName));
+            } finally {
+                snakeDuelInviteInFlight = false;
+            }
+        }
+
+        window.challengeSnakeCellPlayer = challengeSnakeCellPlayer;
+
+        function normalizeSnakeUsedTaskIds(rawUsedTaskIds) {
+            if (!rawUsedTaskIds || typeof rawUsedTaskIds !== 'object') return {};
+            return Object.entries(rawUsedTaskIds).reduce((acc, [taskId, used]) => {
+                if (!used) return acc;
+                const normalizedTaskId = Number(taskId);
+                if (!Number.isInteger(normalizedTaskId) || normalizedTaskId < 0) return acc;
+                acc[normalizedTaskId] = true;
+                return acc;
+            }, {});
+        }
+
+        function pickSnakeTaskForPlayer(snakeState, roundNum) {
+            const previousRound = Number(snakeState?.taskPoolRound || 0);
+            const activeRound = Number(roundNum || 0);
+            const shouldResetPool = previousRound !== activeRound;
+            const usedTaskIds = shouldResetPool ? {} : normalizeSnakeUsedTaskIds(snakeState?.usedTaskIds);
+            const allTaskIds = tasks.map((_, i) => i);
+            const uniquePool = allTaskIds.filter((idx) => !usedTaskIds[idx]);
+            const selectionPool = uniquePool.length ? uniquePool : allTaskIds;
+            const taskIdx = selectionPool.length ? selectionPool[Math.floor(Math.random() * selectionPool.length)] : 0;
+            return {
+                taskIdx,
+                usedTaskIds: uniquePool.length ? { ...usedTaskIds, [taskIdx]: true } : { [taskIdx]: true },
+                taskPoolRound: activeRound,
+                exhaustedUniquePool: !uniquePool.length
+            };
+        }
+
+        function buildSnakeRollRequestId(userId) {
+            const uid = String(userId || '').trim();
+            const rand = Math.random().toString(36).slice(2, 10);
+            return `${uid || 'u'}_${Date.now()}_${rand}`;
+        }
+
+        async function reserveSnakeRollSlot({ userId, roundNum, rollRequestId }) {
+            const uid = String(userId || '').trim();
+            const requestId = String(rollRequestId || '').trim();
+            const expectedRound = Number(roundNum || 0);
+            if (!uid || !requestId || expectedRound <= 0) {
+                return { ok: false, reason: 'invalid_request' };
+            }
+            const ref = db.ref(`whitelist/${uid}/snakeState`);
+            let txReason = '';
+            const tx = await ref.transaction((row) => {
+                const state = (row && typeof row === 'object') ? row : {};
+                const existingLock = (state.turnLock && typeof state.turnLock === 'object') ? state.turnLock : {};
+                if (String(state.lastProcessedRequestId || '') === requestId) {
+                    txReason = 'already_processed';
+                    return state;
+                }
+                if (existingLock.inFlight) {
+                    txReason = 'lock_in_flight';
+                    return;
+                }
+                if (state.awaitingApproval) {
+                    txReason = 'awaiting_approval';
+                    return;
+                }
+                if (state.lockedBySphinx) {
+                    txReason = 'sphinx_locked';
+                    return;
+                }
+                if (state.sheddingActive && !state.sheddingReleasedAt) {
+                    const endsAt = Number(state.sheddingEndsAt || state.sheddingLockUntil || 0);
+                    if (!endsAt || endsAt > Date.now()) {
+                        txReason = 'shedding_locked';
+                        return;
+                    }
+                }
+                return {
+                    ...state,
+                    turnLock: {
+                        inFlight: true,
+                        requestId,
+                        round: expectedRound,
+                        lockedAt: Date.now()
+                    },
+                    lastRollRequestId: requestId
+                };
+            });
+
+            if (!tx.committed) {
+                return { ok: false, reason: txReason || 'not_committed' };
+            }
+            return {
+                ok: true,
+                snakeState: tx.snapshot?.val?.() || {},
+                lockRequestId: requestId
+            };
+        }
+
+        async function releaseSnakeRollSlot(userId, rollRequestId, completed = false) {
+            const uid = String(userId || '').trim();
+            const requestId = String(rollRequestId || '').trim();
+            if (!uid || !requestId) return;
+            const ref = db.ref(`whitelist/${uid}/snakeState`);
+            await ref.transaction((row) => {
+                const state = (row && typeof row === 'object') ? row : {};
+                const lock = (state.turnLock && typeof state.turnLock === 'object') ? state.turnLock : {};
+                if (String(lock.requestId || '') !== requestId) return state;
+                return {
+                    ...state,
+                    turnLock: {
+                        inFlight: false,
+                        requestId,
+                        round: Number(lock.round || 0),
+                        lockedAt: Number(lock.lockedAt || 0),
+                        completedAt: completed ? Date.now() : 0
+                    },
+                    lastProcessedRequestId: completed ? requestId : String(state.lastProcessedRequestId || '')
+                };
+            });
+        }
+
         async function consumeForbiddenFruitSkipIfPending(userId) {
             const uid = String(userId || '').trim();
             if (!uid) return { consumed: false, reason: 'no_uid' };
@@ -1634,9 +1839,15 @@ const JSON_URL = 'tasks.json';
 
 
         async function roll() {
+            if (snakeRollInFlight) return;
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
             }
+            snakeRollInFlight = true;
+            let activeSnakeRollRequestId = '';
+            const diceBtn = document.getElementById('dice-btn');
+            if (diceBtn) diceBtn.disabled = true;
+            try {
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
             if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
@@ -1645,7 +1856,7 @@ const JSON_URL = 'tasks.json';
             const currentRound = currentRoundSnap.val() || {};
             if (window.snakeRound?.isSnakeRound?.(currentRound)) {
                 await tryResolveSheddingLockByTimer(currentUserId, userState.snakeState || null);
-                const snakeState = await window.snakeRound.getUserSnakeState(db, currentUserId);
+                let snakeState = await window.snakeRound.getUserSnakeState(db, currentUserId);
                 if (snakeState.awaitingApproval) return alert('Сначала дождись одобрения текущей работы админом.');
                 if (snakeState.lockedBySphinx) return alert('Испытание Сфинкса ещё не завершено.');
                 if (snakeState.sheddingActive && !snakeState.sheddingReleasedAt) {
@@ -1672,12 +1883,30 @@ const JSON_URL = 'tasks.json';
                         const refreshMin = Math.ceil(refreshLeft / 60000);
                         return alert(`Сброс кожи активен. До авто-снятия осталось ~${refreshMin} мин.`);
                     }
+                    snakeState = refreshSnakeState;
                 }
 
                 const fruitSkipState = await consumeForbiddenFruitSkipIfPending(currentUserId);
                 if (fruitSkipState.consumed) {
                     return alert('🍎 Ход пропущен: сработал эффект «Запретного плода». Следующий бросок снова доступен.');
                 }
+
+                const rollRequestId = buildSnakeRollRequestId(currentUserId);
+                activeSnakeRollRequestId = rollRequestId;
+                const reserve = await reserveSnakeRollSlot({
+                    userId: currentUserId,
+                    roundNum: Number(currentRound.number || 0),
+                    rollRequestId
+                });
+                if (!reserve.ok) {
+                    if (reserve.reason === 'awaiting_approval') return alert('Сначала дождись одобрения текущей работы админом.');
+                    if (reserve.reason === 'sphinx_locked') return alert('Испытание Сфинкса ещё не завершено.');
+                    if (reserve.reason === 'shedding_locked') return alert('Сброс кожи пока активен.');
+                    if (reserve.reason === 'lock_in_flight') return alert('Подожди, предыдущий бросок ещё обрабатывается.');
+                    if (reserve.reason === 'already_processed') return;
+                    return alert('Не удалось начать ход. Попробуй ещё раз.');
+                }
+                snakeState = reserve.snakeState || snakeState;
 
                 let playerKarma = Number((await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value')).val() || 0);
                 let dice = 1 + Math.floor(Math.random() * 6);
@@ -1735,6 +1964,7 @@ const JSON_URL = 'tasks.json';
 
                 if (previousCellPos > 0 && previousCellPos !== nextPos) {
                     updates[`snake_presence/${roundId}/${previousCellPos}/${uid}`] = null;
+                    updates[`rounds/${roundId}/snake/occupancy/${previousCellPos}/${uid}`] = null;
                 }
 
                 const existingSelf = presenceList.find((row) => String(row.userId) === uid);
@@ -1744,10 +1974,11 @@ const JSON_URL = 'tasks.json';
                     enteredAt: Number(existingSelf?.enteredAt || nowTs),
                     lastSeenAt: nowTs
                 };
+                updates[`rounds/${roundId}/snake/occupancy/${nextPos}/${uid}`] = true;
 
-                const used = Array.isArray(userState.used_tasks) ? userState.used_tasks : [];
-                const avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
-                const taskIdx = avail.length ? avail[Math.floor(Math.random() * avail.length)] : Math.floor(Math.random() * Math.max(1, tasks.length));
+                const taskPick = pickSnakeTaskForPlayer(snakeState, currentRound.number);
+                const taskIdx = Number(taskPick.taskIdx || 0);
+                const assignmentId = `${roundId}_${uid}_${nextPos}_${taskIdx}_${nowTs}`;
                 updates[`board/${nextPos - 1}`] = {
                     owner: myIndex,
                     userId: currentUserId,
@@ -1768,6 +1999,7 @@ const JSON_URL = 'tasks.json';
                     activeTask: {
                         cell: nextPos,
                         taskIdx,
+                        assignmentId,
                         round: currentRound.number,
                         type: String(effect.type || '') === 'sphinx' ? 'snake_sphinx' : 'snake_standard',
                         isSphinxTrial: String(effect.type || '') === 'sphinx',
@@ -1775,6 +2007,10 @@ const JSON_URL = 'tasks.json';
                             ? '🗿 Испытание Сфинкса: сложное супер-задание (бросок кубика заблокирован до одобрения)'
                             : ''
                     },
+                    currentAssignmentId: `${currentRound.number}_${nextPos}_${taskIdx}`,
+                    usedTaskIds: taskPick.usedTaskIds,
+                    taskPoolRound: Number(taskPick.taskPoolRound || currentRound.number),
+                    uniqueTaskPoolExhausted: !!taskPick.exhaustedUniquePool,
                     awaitingApproval: true,
                     invertNextRoll: !!effect.invertNextRoll,
                     lockedBySphinx: !!effect.lockSphinx,
@@ -1792,6 +2028,15 @@ const JSON_URL = 'tasks.json';
                     forbiddenFruitGrantedAt: 0,
                     forbiddenFruitSkipPending: false,
                     forbiddenFruitConsumedAt: Number(snakeState.forbiddenFruitConsumedAt || 0),
+                    lastRollRequestId: rollRequestId,
+                    lastProcessedRequestId: rollRequestId,
+                    turnLock: {
+                        inFlight: false,
+                        requestId: rollRequestId,
+                        round: roundId,
+                        lockedAt: nowTs,
+                        completedAt: nowTs
+                    },
                     rollMeta: {
                         usedReroll,
                         baseDice: usedReroll ? null : dice,
@@ -1931,8 +2176,33 @@ const JSON_URL = 'tasks.json';
                 }
 
                 updates[`whitelist/${currentUserId}/snakeState`] = nextSnakeState;
-                updates[`whitelist/${currentUserId}/used_tasks`] = [...used.filter((n) => n !== taskIdx), taskIdx];
                 updates[`whitelist/${currentUserId}/last_round`] = currentRound.number;
+                updates[`rounds/${roundId}/snake/assignments/${uid}/${assignmentId}`] = {
+                    assignmentId,
+                    userId: uid,
+                    round: roundId,
+                    cell: nextPos,
+                    taskId: taskIdx,
+                    taskIdx,
+                    rollRequestId,
+                    status: 'assigned',
+                    rewardGranted: false,
+                    createdAt: nowTs
+                };
+                updates[`rounds/${roundId}/snake/moves/${uid}/${rollRequestId}`] = {
+                    rollRequestId,
+                    userId: uid,
+                    round: roundId,
+                    from: position,
+                    to: nextPos,
+                    dice,
+                    usedReroll,
+                    effectType: String(effect.type || 'normal'),
+                    effectText: String(effect.text || ''),
+                    assignmentId,
+                    taskId: taskIdx,
+                    createdAt: nowTs
+                };
                 if (String(effect.type || '') === 'sphinx') {
                     const sphinxNotifyKey = `snake_sphinx_trial_${currentRound.number}_${nextPos}`;
                     updates[`system_notifications/${currentUserId}/${sphinxNotifyKey}`] = {
@@ -2078,7 +2348,84 @@ const JSON_URL = 'tasks.json';
                 await postNews(`${players[myIndex].n} активировал(а) «Волшебная палочка»`);
                 await sendWandBlessingImmediately();
             }
+            } catch (err) {
+                if (activeSnakeRollRequestId) {
+                    await releaseSnakeRollSlot(currentUserId, activeSnakeRollRequestId, false);
+                }
+                throw err;
+            } finally {
+                snakeRollInFlight = false;
+            }
         }
+
+        async function showSnakeCellInfo(cellPos) {
+            const pos = Number(cellPos || 0);
+            if (!Number.isInteger(pos) || pos < 1 || pos > 100) return;
+            const roundSnap = await db.ref('current_round').once('value');
+            const roundData = roundSnap.val() || {};
+            const roundNum = Number(roundData.number || 0);
+            const cellPresenceSnap = await db.ref(`snake_presence/${roundNum}/${pos}`).once('value');
+            const presenceRows = window.snakeRound?.parseCellPresence
+                ? window.snakeRound.parseCellPresence(cellPresenceSnap.val())
+                : [];
+            const [usersSnap, seasonSnap] = await Promise.all([
+                db.ref('whitelist').once('value'),
+                db.ref(`player_season_status/${currentUserId}`).once('value')
+            ]);
+            const users = usersSnap.val() || {};
+            const mySeason = seasonSnap.val() || {};
+            const nowTs = Date.now();
+            const cooldownMs = Number(window.__duelContext?.IMPULSE_COOLDOWN_MS || 0);
+            const cooldownLeftMs = Math.max(0, Number(mySeason.last_impulse_time || 0) + cooldownMs - nowTs);
+            const isCooldownActive = cooldownLeftMs > 0;
+            const isAdminObserver = Number(currentUserId) === Number(ADMIN_ID);
+
+            const members = presenceRows.map((row) => {
+                const uid = String(row.userId || '').trim();
+                if (!uid) return null;
+                const userRow = users[uid] || {};
+                const playerName = players[Number(userRow.charIndex)]?.n || userRow.nickname || `ID ${uid}`;
+                const isSelf = String(uid) === String(currentUserId);
+                const canByCellRule = !isSelf && !isAdminObserver && isSnakeDuelPairOnSameActiveCell(users[currentUserId] || {}, userRow, pos, roundNum);
+                const hasDuelBlock = hasActiveOrPendingDuelBetween(currentUserId, uid);
+                const canChallenge = canByCellRule && !hasDuelBlock && !isCooldownActive;
+                return {
+                    uid,
+                    playerName,
+                    isSelf,
+                    canChallenge,
+                    blockedHint: hasDuelBlock
+                        ? 'уже есть активная/ожидающая дуэль'
+                        : (isCooldownActive ? 'действует cooldown' : '')
+                };
+            }).filter(Boolean);
+
+            const membersHtml = members.length
+                ? members.map((member) => {
+                    const duelBtn = member.canChallenge
+                        ? `<button class="admin-btn" style="margin:0; padding:2px 8px; min-width:38px;" onclick="challengeSnakeCellPlayer('${member.uid}', ${pos})">⚔️</button>`
+                        : (member.isSelf ? '' : `<span style="font-size:11px; color:#888;">${member.blockedHint || ''}</span>`);
+                    return `<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px;"><span>${member.playerName}</span>${duelBtn}</div>`;
+                }).join('')
+                : '—';
+
+            const cooldownHint = isCooldownActive
+                ? `<div style="margin-top:8px; font-size:12px; color:#777;">⚠️ Дуэльный cooldown активен ещё ~${Math.ceil(cooldownLeftMs / 60000)} мин.</div>`
+                : '';
+
+            document.getElementById('mTitle').innerText = `🐍 Клетка №${pos}`;
+            document.getElementById('mText').innerHTML = `
+                <div style="text-align:left; line-height:1.5;">
+                    <div><b>Игроков на клетке:</b> ${presenceRows.length}</div>
+                    <div style="margin-top:8px;"><b>Список:</b><br>${membersHtml}</div>
+                    ${cooldownHint}
+                </div>
+            `;
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+        }
+
+        window.showSnakeCellInfo = showSnakeCellInfo;
 
         function showCell(i, cell) {
             if (!cell) return;
@@ -4884,6 +5231,8 @@ const JSON_URL = 'tasks.json';
                     payload.snakeTaskType = String(activeTask.type || 'snake_standard');
                     payload.snakeTaskCell = Number(activeTask.cell || 0);
                     payload.snakeTaskRound = Number(activeTask.round || cell.round || 0);
+                    payload.snakeAssignmentId = String(activeTask.assignmentId || snakeState.currentAssignmentId || '').trim();
+                    payload.snakeRollRequestId = String(snakeState.lastProcessedRequestId || '').trim();
                     payload.isSphinxTrial = !!activeTask.isSphinxTrial;
                     if (activeTask.taskLabel) payload.taskLabel = String(activeTask.taskLabel);
                 }
@@ -4930,8 +5279,9 @@ const JSON_URL = 'tasks.json';
                 const roundSnap = await db.ref('current_round').once('value');
                 const roundData = roundSnap.val() || {};
                 if (uid && window.snakeRound?.isSnakeRound?.(roundData)) {
-                    const activeTaskSnap = await db.ref(`whitelist/${uid}/snakeState/activeTask`).once('value');
-                    const activeTask = activeTaskSnap.val() || {};
+                    const snakeStateSnap = await db.ref(`whitelist/${uid}/snakeState`).once('value');
+                    const snakeState = snakeStateSnap.val() || {};
+                    const activeTask = snakeState.activeTask || {};
                     const rowCell = Number(row.cellIdx) + 1;
                     const activeCell = Number(activeTask.cell || 0);
                     const isActiveCellMatch = activeCell > 0 && rowCell === activeCell;
@@ -4939,7 +5289,42 @@ const JSON_URL = 'tasks.json';
                     const rowTaskType = String(row.snakeTaskType || 'snake_standard');
                     const isSphinxTask = !!activeTask.isSphinxTrial || activeTaskType === 'snake_sphinx';
                     const isTaskTypeMatch = rowTaskType === activeTaskType;
-                    if (isActiveCellMatch && isTaskTypeMatch) {
+                    const assignmentId = String(
+                        row.snakeAssignmentId
+                        || activeTask.assignmentId
+                        || snakeState.currentAssignmentId
+                        || `legacy_${Number(activeTask.round || row.round || roundData.number || 0)}_${activeCell}_${Number(activeTask.taskIdx ?? -1)}`
+                    ).trim();
+                    const assignmentRound = Number(row.snakeTaskRound || activeTask.round || row.round || roundData.number || 0);
+                    const assignmentPath = assignmentId ? `rounds/${assignmentRound}/snake/assignments/${uid}/${assignmentId}` : '';
+                    if (isActiveCellMatch && isTaskTypeMatch && assignmentId && assignmentPath) {
+                        let rewardGrantedNow = false;
+                        const rewardTx = await db.ref(assignmentPath).transaction((assignmentRow) => {
+                            const current = (assignmentRow && typeof assignmentRow === 'object') ? assignmentRow : {
+                                assignmentId,
+                                userId: uid,
+                                round: assignmentRound,
+                                cell: activeCell,
+                                taskId: Number(activeTask.taskIdx ?? -1),
+                                taskIdx: Number(activeTask.taskIdx ?? -1),
+                                status: 'assigned',
+                                createdAt: Date.now()
+                            };
+                            if (current.rewardGranted) return;
+                            rewardGrantedNow = true;
+                            return {
+                                ...current,
+                                rewardGranted: true,
+                                rewardGrantedAt: Date.now(),
+                                status: 'reward_granted',
+                                lastSubmissionId: String(submissionId || ''),
+                                reviewedBy: String(currentUserId || '')
+                            };
+                        });
+                        if (!rewardTx.committed || !rewardGrantedNow) {
+                            return;
+                        }
+
                         const ticketCounterSnap = await db.ref('ticket_counter').once('value');
                         const nextTicket = (Number(ticketCounterSnap.val()) || 0) + 1;
                         const ticketPayload = {
@@ -4948,11 +5333,12 @@ const JSON_URL = 'tasks.json';
                             ticket: String(nextTicket),
                             userId: uid,
                             owner: Number(row.owner),
-                            round: Number(row.round || roundData.number || 0),
+                            round: Number(row.round || assignmentRound || roundData.number || 0),
                             cell: Number(activeTask.cell || 0),
                             taskIdx: Number(activeTask.taskIdx ?? -1),
                             taskLabel: String(row.taskLabel || ''),
                             mode: 'snake',
+                            assignmentId,
                             createdAt: Date.now()
                         };
                         const updates = {};
@@ -4962,6 +5348,9 @@ const JSON_URL = 'tasks.json';
                         updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
                         updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
                         updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
+                        updates[`${assignmentPath}/ticketNum`] = nextTicket;
+                        updates[`${assignmentPath}/status`] = 'approved';
+                        updates[`${assignmentPath}/approvedAt`] = Date.now();
                         updates[`system_notifications/${uid}/${Date.now()}_snake_ticket`] = {
                             text: `Твоя работа принята! Твой номер в розыгрыше: #${nextTicket}`,
                             type: 'snake_ticket',
