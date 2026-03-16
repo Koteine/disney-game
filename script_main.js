@@ -1616,6 +1616,25 @@ const JSON_URL = 'tasks.json';
             ensureSnakeClashApi()?.openSnakePuzzleModal(clashPath, clash);
         }
 
+        async function tryOpenSnakeClashFromId(clashId) {
+            const raw = String(clashId || '').trim();
+            if (!raw) return false;
+            const parts = raw.split('_');
+            if (parts.length < 3) return false;
+            const roundId = Number(parts[0] || 0);
+            const cell = Number(parts[1] || 0);
+            const pairKey = parts.slice(2).join('_');
+            if (!roundId || !cell || !pairKey) return false;
+            const clashPath = `snake_clashes/${roundId}/${cell}/${pairKey}`;
+            const snap = await db.ref(clashPath).once('value');
+            const clash = snap.val() || {};
+            if (String(clash.status || '') !== 'active') return false;
+            if (String(clash.gameType || '') === 'snake_rps') openSnakeRpsModal(clashPath, clash);
+            if (String(clash.gameType || '') === 'snake_poison_dice') openSnakePoisonDiceModal(clashPath, clash);
+            if (String(clash.gameType || '') === 'snake_puzzle_5x5') openSnakePuzzleModal(clashPath, clash);
+            return true;
+        }
+
         async function maybeResolveSnakePuzzleClash(clashPath) {
             return ensureSnakeClashApi()?.maybeResolveSnakePuzzleClash(clashPath);
         }
@@ -2419,12 +2438,14 @@ const JSON_URL = 'tasks.json';
             const presenceRows = window.snakeRound?.parseCellPresence
                 ? window.snakeRound.parseCellPresence(cellPresenceSnap.val())
                 : [];
-            const [usersSnap, seasonSnap] = await Promise.all([
+            const [usersSnap, seasonSnap, mySnakeStateSnap] = await Promise.all([
                 db.ref('whitelist').once('value'),
-                db.ref(`player_season_status/${currentUserId}`).once('value')
+                db.ref(`player_season_status/${currentUserId}`).once('value'),
+                db.ref(`whitelist/${currentUserId}/snakeState`).once('value')
             ]);
             const users = usersSnap.val() || {};
             const mySeason = seasonSnap.val() || {};
+            const mySnakeState = mySnakeStateSnap.val() || {};
             const nowTs = Date.now();
             const cooldownMs = Number(window.__duelContext?.IMPULSE_COOLDOWN_MS || 0);
             const cooldownLeftMs = Math.max(0, Number(mySeason.last_impulse_time || 0) + cooldownMs - nowTs);
@@ -2464,12 +2485,46 @@ const JSON_URL = 'tasks.json';
                 ? `<div style="margin-top:8px; font-size:12px; color:#777;">⚠️ Дуэльный cooldown активен ещё ~${Math.ceil(cooldownLeftMs / 60000)} мин.</div>`
                 : '';
 
+            const myUid = String(currentUserId || '').trim();
+            const activeTask = (mySnakeState && typeof mySnakeState === 'object') ? (mySnakeState.activeTask || {}) : {};
+            const activeTaskCell = Number(activeTask.cell || 0);
+            const activeTaskIdx = Number(activeTask.taskIdx ?? -1);
+            const activeAssignmentId = String(activeTask.assignmentId || mySnakeState.currentAssignmentId || '').trim();
+            const assignmentRound = Number(activeTask.round || roundNum || 0);
+            const isOwnCurrentCell = !isAdminObserver
+                && String(currentFieldMode || '') === 'snake'
+                && Number(mySnakeState.position || 0) === pos;
+
+            let ownTaskHintHtml = '';
+            if (isOwnCurrentCell) {
+                if (!myUid || activeTaskCell !== pos || !activeAssignmentId) {
+                    ownTaskHintHtml = '<div style="margin-top:10px; padding:10px; border-radius:10px; background:#f8f5ff; color:#5e35b1; font-size:13px;">На этой клетке у вас нет активного задания.</div>';
+                } else {
+                    const assignmentPath = `rounds/${assignmentRound}/snake/assignments/${myUid}/${activeAssignmentId}`;
+                    const assignmentSnap = await db.ref(assignmentPath).once('value');
+                    const assignment = assignmentSnap.val() || null;
+                    const assignmentCell = Number(assignment?.cell || 0);
+                    const assignmentStatus = String(assignment?.status || 'assigned');
+                    const isSphinxTask = !!activeTask.isSphinxTrial || String(activeTask.type || '') === 'snake_sphinx';
+                    const baseTask = Number.isInteger(activeTaskIdx) && activeTaskIdx >= 0 ? tasks[activeTaskIdx] : null;
+                    if (!assignment || assignmentCell !== pos || assignmentStatus !== 'assigned') {
+                        ownTaskHintHtml = '<div style="margin-top:10px; padding:10px; border-radius:10px; background:#f8f5ff; color:#5e35b1; font-size:13px;">На этой клетке у вас нет активного задания.</div>';
+                    } else if (isSphinxTask) {
+                        ownTaskHintHtml = `<div style="margin-top:10px; padding:10px; border-radius:10px; background:#f3e5f5; border:1px solid #d1c4e9; color:#4a148c; font-size:13px;"><b>Ваше активное задание:</b><div style="margin-top:6px;">${String(activeTask.taskLabel || '🗿 Испытание Сфинкса активно. Выполните задание и отправьте работу на модерацию.').trim()}</div></div>`;
+                    } else {
+                        const taskImageHtml = baseTask?.img ? `<img src="${baseTask.img}" style="width:100%; border-radius:8px; margin-top:8px;">` : '';
+                        ownTaskHintHtml = `<div style="margin-top:10px; padding:10px; border-radius:10px; background:#f3e5f5; border:1px solid #d1c4e9; color:#4a148c; font-size:13px;"><b>Ваше активное задание:</b><div style="margin-top:6px;">${String(baseTask?.text || 'Задание активно.').trim()}</div>${taskImageHtml}</div>`;
+                    }
+                }
+            }
+
             document.getElementById('mTitle').innerText = `🐍 Клетка №${pos}`;
             document.getElementById('mText').innerHTML = `
                 <div style="text-align:left; line-height:1.5;">
                     <div><b>Игроков на клетке:</b> ${presenceRows.length}</div>
                     <div style="margin-top:8px;"><b>Список:</b><br>${membersHtml}</div>
                     ${cooldownHint}
+                    ${ownTaskHintHtml}
                 </div>
             `;
             document.getElementById('modal').style.display = 'block';
@@ -4658,6 +4713,11 @@ const JSON_URL = 'tasks.json';
                     if (onceKey) markSnakeClashNotificationSeen(onceKey);
                 }
                 showPlayerNotification({ id: `sys-${snap.key}`, text: v.text, borderColor: '#ffd54f' });
+                if (String(v.type || '') === 'snake_clash_start' && v.clashId) {
+                    tryOpenSnakeClashFromId(v.clashId).catch((err) => {
+                        console.error('failed to open snake clash by notification', err);
+                    });
+                }
             });
 
             if (currentGameEvent?.id === EPIC_PAINT_EVENT_ID && currentGameEvent?.status === 'completed') {
