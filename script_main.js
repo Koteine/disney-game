@@ -1268,6 +1268,30 @@ const JSON_URL = 'tasks.json';
                 });
         }
 
+        function resolveRoundFieldMode(roundData) {
+            const explicitMode = String(roundData?.fieldMode || roundData?.mode || '').trim();
+            if (explicitMode === 'snake' || explicitMode === 'cells') return explicitMode;
+            if (window.snakeRound?.isSnakeRound?.(roundData || {})) return 'snake';
+            return 'cells';
+        }
+
+        function getSnakeRollDisabledReason({ userState, duelLockActive, isRoundActive }) {
+            if (!isRoundActive) return { disabled: true, text: '⏳ Раунд завершен', reason: 'round_inactive' };
+            const snakeState = userState?.snakeState || {};
+            if (snakeState.awaitingApproval) return { disabled: true, text: '⏳ Сначала дождись одобрения текущей работы', reason: 'awaiting_approval' };
+            if (snakeState.lockedBySphinx) return { disabled: true, text: '🗿 Испытание Сфинкса: ожидается одобрение', reason: 'sphinx_lock' };
+            const sheddingActive = !!snakeState.sheddingActive && !snakeState.sheddingReleasedAt;
+            const endsAt = Number(snakeState.sheddingEndsAt || snakeState.sheddingLockUntil || 0);
+            if (sheddingActive && (!endsAt || endsAt > Date.now())) {
+                const leftMs = Math.max(0, endsAt - Date.now());
+                const leftMin = Math.ceil(leftMs / 60000);
+                return { disabled: true, text: `🧬 Сброс кожи: ~${leftMin} мин`, reason: 'shedding_lock' };
+            }
+            if (duelLockActive) return { disabled: true, text: '🎯 Сначала завершите дуэль', reason: 'duel_lock' };
+            if (snakeRollInFlight) return { disabled: true, text: '🎲 Бросок обрабатывается...', reason: 'roll_in_flight' };
+            return { disabled: false, text: '🎲 Бросить кубик', reason: '' };
+        }
+
         function updateTimerDisplay() {
             if (window.timerInt) clearInterval(window.timerInt);
             const btn = document.getElementById('dice-btn');
@@ -1401,36 +1425,20 @@ const JSON_URL = 'tasks.json';
                     return;
                 }
 
-                const isSnakeMode = String(currentFieldMode || 'cells') === 'snake';
+                const isSnakeMode = resolveRoundFieldMode(currentRoundData) === 'snake';
                 myRoundHasMove = isSnakeMode ? false : (userState.last_round === currentRoundNum);
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
                 if (isSnakeMode) {
-                    const snakeState = userState.snakeState || {};
-                    const hasMandatoryStepBlock = !!snakeState.awaitingApproval;
-                    if (hasMandatoryStepBlock) {
-                        btn.disabled = true;
-                        btn.innerText = '⏳ Сначала дождись одобрения текущей работы';
-                    }
-                    if (snakeState.lockedBySphinx) {
-                        btn.disabled = true;
-                        btn.innerText = '🗿 Испытание Сфинкса: ожидается одобрение';
-                    }
-                    const sheddingActive = !!snakeState.sheddingActive && !snakeState.sheddingReleasedAt;
-                    const endsAt = Number(snakeState.sheddingEndsAt || snakeState.sheddingLockUntil || 0);
-                    if (sheddingActive && (!endsAt || endsAt > Date.now())) {
-                        const leftMs = Math.max(0, endsAt - Date.now());
-                        const leftMin = Math.ceil(leftMs / 60000);
-                        btn.disabled = true;
-                        btn.innerText = `🧬 Сброс кожи: ~${leftMin} мин`;
-                    }
-                }
-                if (duelLockActive) {
+                    const snakeRollState = getSnakeRollDisabledReason({
+                        userState,
+                        duelLockActive,
+                        isRoundActive: diff > 0
+                    });
+                    btn.disabled = snakeRollState.disabled;
+                    btn.innerText = snakeRollState.text;
+                } else if (duelLockActive) {
                     btn.disabled = true;
-                }
-                if (isSnakeMode && snakeRollInFlight) {
-                    btn.disabled = true;
-                    btn.innerText = '🎲 Бросок обрабатывается...';
                 }
                 await renderSnakeStatusBlock(userState);
                 window.updateEventUiState?.();
@@ -4508,7 +4516,7 @@ const JSON_URL = 'tasks.json';
                 roundEndTime = currentRoundData.endTime;
                 currentRoundStartedAt = Number(currentRoundData.startedAt || 0);
                 currentRoundDurationMs = Number(currentRoundData.durationMs || 0);
-                currentFieldMode = String(currentRoundData.fieldMode || 'cells');
+                currentFieldMode = resolveRoundFieldMode(currentRoundData);
                 document.getElementById('round-info').innerText = "Раунд №" + currentRoundNum;
                 updateTimerDisplay();
 
