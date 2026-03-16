@@ -51,6 +51,36 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
                     emoji: '🎭',
                     name: 'Плащ-невидимка',
                     description: 'Позволяет отложить текущее задание до следующего раунда.'
+                },
+                greatPythonScale: {
+                    emoji: '🛡️',
+                    name: 'Чешуя Великого Полоза',
+                    description: 'Пассивно нейтрализует негативный эффект в «Змейке» и сгорает.'
+                },
+                fateBone: {
+                    emoji: '🎯',
+                    name: 'Кость Судьбы',
+                    description: 'Позволяет выбрать число 1..6 вместо обычного броска в «Змейке».'
+                },
+                windBreath: {
+                    emoji: '💨',
+                    name: 'Дыхание Ветра',
+                    description: 'Даёт двойной бросок и ход на сумму в «Змейке».'
+                },
+                rottenRadish: {
+                    emoji: '🥕',
+                    name: 'Гнилая редиска',
+                    description: 'Ставит одноразовую ловушку пропуска хода в радиусе 10 клеток.'
+                },
+                doubleBurdenScroll: {
+                    emoji: '📜',
+                    name: 'Свиток «Двойное Бремя»',
+                    description: 'Ставит ловушку второго задания в радиусе 10 клеток.'
+                },
+                thiefArcane: {
+                    emoji: '🗡️',
+                    name: 'Воровской Аркан',
+                    description: 'Рискованный рывок: мини-игра на кражу 1 билета у snake-соперника.'
                 }
             };
 
@@ -106,7 +136,13 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
                     goldenPollen: Number(current.goldenPollen || 0),
                     inkSaboteur: Number(current.inkSaboteur || 0),
                     magnifier: Number(current.magnifier || 0),
-                    cloak: Number(current.cloak || 0)
+                    cloak: Number(current.cloak || 0),
+                    greatPythonScale: Number(current.greatPythonScale || 0),
+                    fateBone: Number(current.fateBone || 0),
+                    windBreath: Number(current.windBreath || 0),
+                    rottenRadish: Number(current.rottenRadish || 0),
+                    doubleBurdenScroll: Number(current.doubleBurdenScroll || 0),
+                    thiefArcane: Number(current.thiefArcane || 0)
                 };
                 next[itemKey] = Math.max(0, next[itemKey] + addAmount);
                 await ref.set(next);
@@ -124,7 +160,13 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
                         goldenPollen: Number(current?.goldenPollen || 0),
                         inkSaboteur: Number(current?.inkSaboteur || 0),
                         magnifier: Number(current?.magnifier || 0),
-                        cloak: Number(current?.cloak || 0)
+                        cloak: Number(current?.cloak || 0),
+                        greatPythonScale: Number(current?.greatPythonScale || 0),
+                        fateBone: Number(current?.fateBone || 0),
+                        windBreath: Number(current?.windBreath || 0),
+                        rottenRadish: Number(current?.rottenRadish || 0),
+                        doubleBurdenScroll: Number(current?.doubleBurdenScroll || 0),
+                        thiefArcane: Number(current?.thiefArcane || 0)
                     };
                     if (next[itemKey] < minusAmount) return;
                     next[itemKey] -= minusAmount;

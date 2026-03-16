@@ -64,6 +64,13 @@
                 <div id="snake-status-lines" class="snake-status-lines"></div>
             </div>
             <button id="dice-btn" onclick="roll()" disabled>🎲 Бросить кубик</button>
+            <div id="snake-shop-controls" class="snake-shop-controls" style="display:none;">
+                <button class="admin-btn snake-shop-btn" onclick="openSnakeShopModal()">🐍 Лавка «Шепот Клыка»</button>
+                <button class="admin-btn snake-shop-btn" onclick="openSnakeBackpackModal()">🎒 Рюкзак змейки</button>
+                <div id="snake-pending-indicator" class="snake-pending-indicator" style="display:none;">📩 0</div>
+                <div id="snake-shop-status" class="snake-shop-status">Лавка недоступна.</div>
+                <div id="snake-backpack-preview" class="snake-backpack-preview">Пусто</div>
+            </div>
             <div class="grid" id="grid"></div>
         </div>
 
@@ -107,11 +114,21 @@
         <b>🎫 Мои билеты</b>
         <div id="profile-ticket-balance" style="margin-top:6px; font-size:14px;">0</div>
     </div>
-	    <h1 id="profile-tickets-title" style="font-size:18px;">🎫 История билетов</h1>
+	    <div class="news-header" style="margin:4px 0 8px;">
+	        <h1 id="profile-tickets-title" style="font-size:18px; margin:0;">🎫 История билетов</h1>
+	        <button id="profile-ticket-history-toggle-btn" class="news-toggle-btn" type="button" onclick="toggleProfileTicketHistory()">Свернуть</button>
+	    </div>
+	    <div class="news-header" style="margin:0 0 8px;">
+	        <div style="font-size:16px; font-weight:700;">🕵️ Лог происшествий</div>
+	        <button id="profile-incident-toggle-btn" class="news-toggle-btn" type="button" onclick="toggleIncidentLogPanel()">Развернуть</button>
+	    </div>
+	    <div id="profile-incident-log" class="news-list" style="max-height:0; margin-bottom:8px;"></div>
+	    <div id="profile-ticket-history-panel">
     <div id="admin-tickets-subtabs" class="admin-inner-tabs" style="display:none; margin:8px;">
         <button id="admin-tickets-all-btn" class="admin-inner-tab-btn active" onclick="switchAdminTicketsSubtab('all')">Все билеты в игре</button>
         <button id="admin-tickets-player-btn" class="admin-inner-tab-btn" onclick="switchAdminTicketsSubtab('player')">Билеты игрока</button>
-    </div>
+		</div>
+	    </div>
     <div id="admin-tickets-all-panel" class="admin-inner-panel active" style="display:block;">
         <div style="overflow-x: auto;">
             <table>

@@ -435,6 +435,7 @@ function openSnakeRpsModal(clashPath, clash) {
 
     modalEl.style.display = 'block';
     overlayEl.style.display = 'block';
+    window.setSnakeCriticalUiLock?.('snake_clash');
 }
 
 async function maybeResolveSnakeRpsClash(clashPath) {
@@ -560,6 +561,7 @@ function openSnakePoisonDiceModal(clashPath, clash) {
     `;
     modalEl.style.display = 'block';
     overlayEl.style.display = 'block';
+    window.setSnakeCriticalUiLock?.('snake_clash');
 }
 
 async function maybeResolveSnakePoisonDiceClash(clashPath) {
@@ -735,6 +737,7 @@ function openSnakePuzzleModal(clashPath, clash) {
 
     modalEl.style.display = 'block';
     overlayEl.style.display = 'block';
+    window.setSnakeCriticalUiLock?.('snake_clash');
 }
 
 async function maybeResolveSnakePuzzleClash(clashPath) {

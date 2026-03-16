@@ -2,42 +2,88 @@
     let duelInvitesRef = null;
     let activeDuelRef = null;
     let activeDuelKey = null;
-    let duelLocalPoints = [];
-    let duelDrawingState = { drawing: false, enabled: false, ended: false };
-    let duelTimerInterval = null;
-    let duelCountdownInterval = null;
-    let duelWaitNoticeInterval = null;
     let duelResultShownByKey = {};
     let duelRowListeners = {};
+    let duelWaitNoticeInterval = null;
+    let shownInviteKeys = {};
 
     const ctx = () => window.__duelContext || {};
 
     with (ctx()) {
-async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded) {
+        const TOTEM_MODES = ['jungle_rhythm', 'poison_cipher', 'shedding'];
+        const TOTEM_REWARD_ITEMS = ['totemShard', 'jungleMask', 'pythonEye'];
+
+        function pickTotemMode() {
+            return TOTEM_MODES[Math.floor(Math.random() * TOTEM_MODES.length)];
+        }
+
+        function buildTotemChallenge() {
+            const mode = pickTotemMode();
+            const seed = Math.random().toString(36).slice(2, 10);
+            const totems = ['head', 'tail', 'eye'];
+            const len = 6 + Math.floor(Math.random() * 3);
+            const pattern = Array.from({ length: len }, () => totems[Math.floor(Math.random() * totems.length)]);
+            const base = {
+                mode,
+                seed,
+                pattern,
+                createdAt: getServerNowMs(),
+                timeLimitMs: 20000
+            };
+            if (mode === 'jungle_rhythm') {
+                base.rhythm = pattern.map(() => 350 + Math.floor(Math.random() * 350));
+            } else if (mode === 'poison_cipher') {
+                const symbols = '123456789ABCDEFGHIJKLMN'.split('');
+                base.symbols = pattern.map(() => symbols[Math.floor(Math.random() * symbols.length)]);
+                base.order = [...base.symbols].sort((a, b) => a.localeCompare(b, 'ru'));
+                base.attackerShowMs = 2200;
+                base.defenderShowMs = 1700;
+            } else {
+                base.swipes = pattern.map(() => ['up', 'down', 'left', 'right'][Math.floor(Math.random() * 4)]);
+            }
+            return base;
+        }
+
+        function totemName(id) {
+            if (id === 'head') return 'Голова Змеи';
+            if (id === 'tail') return 'Хвост Кобры';
+            return 'Глаз Питона';
+        }
+
+        function normalizeSwipe(dx, dy) {
+            if (Math.abs(dx) < 25 && Math.abs(dy) < 25) return '';
+            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
+            return dy > 0 ? 'down' : 'up';
+        }
+
+        async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded, __queued = false) {
+            if (!__queued && window.enqueueSnakeAction) {
+                return window.enqueueSnakeAction('totems_send_challenge', () => sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded, true));
+            }
             if (!cellOwnerUserId) return;
-            if (Number(cellOwnerUserId) === Number(currentUserId)) return alert('Себе импульс не отправляется 🙂');
+            if (Number(cellOwnerUserId) === Number(currentUserId)) return alert('Себе вызов не отправляется 🙂');
             const seasonRef = db.ref(`player_season_status/${currentUserId}`);
             const seasonSnap = await seasonRef.once('value');
             const season = seasonSnap.val() || {};
-            const now = Date.now();
+            const now = getServerNowMs();
             const lastImpulse = Number(season.last_impulse_time) || 0;
             const diff = now - lastImpulse;
-            if (diff < IMPULSE_COOLDOWN_MS) {
-                const remain = IMPULSE_COOLDOWN_MS - diff;
+            const cooldownMs = 24 * 60 * 60 * 1000;
+            if (diff < cooldownMs) {
+                const remain = cooldownMs - diff;
                 const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');
                 const mm = String(Math.floor((remain % 3600000) / 60000)).padStart(2, '0');
-                return alert(`Твоя кисть еще сохнет. Жди ${hh}:${mm}`);
+                return alert(`Новый вызов доступен через ${hh}:${mm}`);
             }
 
-            const symbol = CALLIGRAPHY_SYMBOLS[Math.floor(Math.random() * CALLIGRAPHY_SYMBOLS.length)];
             const duelKey = db.ref(DUEL_PATH).push().key;
             const ownerName = decodeURIComponent(String(ownerNameEncoded || '')) || 'Игрок';
+            const challenge = buildTotemChallenge();
             const payload = {
                 type: 'calligraphy_duel_invite',
-                text: `Игрок "${players[myIndex]?.n || 'Игрок'}" приглашает тебя на дуэль каллиграфов`,
+                text: `Игрок "${players[myIndex]?.n || 'Игрок'}" приглашает тебя в игру «Тотемы»`,
                 fromUserId: String(currentUserId),
                 duelKey,
-                symbol,
                 cellIndex: Number(cellIndex),
                 createdAt: now
             };
@@ -45,7 +91,7 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 db.ref(`system_notifications/${cellOwnerUserId}`).push(payload),
                 db.ref(`system_notifications/${currentUserId}`).push({
                     type: 'calligraphy_duel_wait_notice',
-                    text: `Ты бросил вызов игроку "${ownerName}" на дуэль. Ждём схватку!`,
+                    text: `Вызов «Тотемы» отправлен игроку "${ownerName}".`,
                     createdAt: now,
                     expiresAt: now + DUEL_INVITE_TTL_MS,
                     duelKey,
@@ -55,46 +101,81 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 db.ref(`${DUEL_PATH}/${duelKey}`).set({
                     createdAt: now,
                     expiresAt: now + DUEL_INVITE_TTL_MS,
-                    status: 'pending',
-                    symbol,
+                    status: 'invited',
+                    gameType: 'totems',
+                    challenge,
                     challengerId: String(currentUserId),
                     opponentId: String(cellOwnerUserId),
                     players: {
                         [String(currentUserId)]: { accepted: true, nickname: players[myIndex]?.n || 'Игрок' },
                         [String(cellOwnerUserId)]: { accepted: false, nickname: ownerName }
-                    }
-                })
+                    },
+                    attackerCompleted: false,
+                    defenderCompleted: false,
+                    rewardsGrantedAt: 0
+                }),
+                db.ref(`player_season_status/${currentUserId}`).update({ last_impulse_time: now, updatedAt: now })
             ]);
+
+            const duelRow = (await db.ref(`${DUEL_PATH}/${duelKey}`).once('value')).val() || null;
+            if (duelRow) await openCalligraphyDuelUI(duelKey, duelRow, 'attacker');
         }
 
-        async function declineCalligraphyDuel(duelKey) {
+        async function declineCalligraphyDuel(duelKey, __queued = false) {
+            if (!__queued && window.enqueueSnakeAction) {
+                return window.enqueueSnakeAction('totems_decline', () => declineCalligraphyDuel(duelKey, true));
+            }
             if (!duelKey) return;
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
             let challengerId = '';
             const tx = await ref.transaction((row) => {
-                if (!row || row.status !== 'pending') return row;
+                if (!row || ['resolved', 'declined', 'expired'].includes(String(row.status || ''))) return row;
                 challengerId = String(row.challengerId || '');
-                return {
-                    ...row,
-                    status: 'declined',
-                    declinedAt: Date.now(),
-                    declinedBy: String(currentUserId)
-                };
+                return { ...row, status: 'declined', declinedAt: getServerNowMs(), declinedBy: String(currentUserId) };
             });
             if (!tx.committed) return;
             if (challengerId) {
                 await db.ref(`system_notifications/${challengerId}`).push({
                     type: 'calligraphy_duel_declined',
-                    text: 'Соперник уклонился от дуэли. Можно отправить новый импульс.',
-                    createdAt: Date.now()
+                    text: 'Соперник отклонил вызов «Тотемы».',
+                    createdAt: getServerNowMs()
                 });
             }
+        }
+
+        async function acceptCalligraphyDuel(duelKey, __queued = false) {
+            if (!__queued && window.enqueueSnakeAction) {
+                return window.enqueueSnakeAction('totems_accept', () => acceptCalligraphyDuel(duelKey, true));
+            }
+            if (!duelKey) return { ok: false, reason: 'no_duel_key' };
+            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
+            const tx = await ref.transaction((row) => {
+                if (!row || ['resolved', 'declined', 'expired'].includes(String(row.status || ''))) return row;
+                const now = getServerNowMs();
+                if (Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= now) {
+                    return { ...row, status: 'expired', expiredAt: now };
+                }
+                row.players = row.players || {};
+                row.players[String(currentUserId)] = {
+                    ...(row.players[String(currentUserId)] || {}),
+                    accepted: true
+                };
+                row.status = row.attackerCompleted ? 'defender_pending' : 'attacker_pending';
+                row.acceptedAt = now;
+                return row;
+            });
+            if (!tx.committed) return { ok: false, reason: 'not_committed' };
+            const row = tx.snapshot.val() || {};
+            if (String(row.status || '') === 'defender_pending') {
+                await openCalligraphyDuelUI(duelKey, row, 'defender');
+            }
+            return { ok: true, reason: 'accepted' };
         }
 
         async function postCalligraphyDuelStartedNewsIfNeeded(duelKey, duelData = null) {
             if (!duelKey) return;
             const duelNow = duelData || (await db.ref(`${DUEL_PATH}/${duelKey}`).once('value')).val() || {};
-            if (duelNow.status !== 'active') return;
+            if (!['attacker_pending', 'defender_pending'].includes(String(duelNow.status || ''))) return;
             const startedFeedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelStartedNoticePosted`).transaction((posted) => {
                 if (posted) return;
                 return { at: getServerNowMs(), by: String(currentUserId || '') };
@@ -102,348 +183,322 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
             if (!startedFeedTx.committed) return;
             const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
             const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
-            await postNews(`${a} и ${b} сошлись в дуэли каллиграфов`);
+            await postNews(`${a} и ${b} начали игру «Тотемы»`);
         }
 
-        async function acceptCalligraphyDuel(duelKey) {
-            if (!duelKey) return { ok: false, reason: 'no_duel_key' };
-            const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
-            let expiredByTimeout = false;
-            let timeoutNoticeTarget = '';
-            let timeoutNotifiedAt = 0;
+        function compareTotemResults(attacker, defender) {
+            const a = attacker || {};
+            const d = defender || {};
+            const aEff = Number(a.timeMs || 999999) + (Number(a.errors || 0) * 1200);
+            const dEff = Number(d.timeMs || 999999) + (Number(d.errors || 0) * 1200);
+            return dEff < aEff ? 'defender' : 'attacker';
+        }
 
-            const tx = await ref.transaction((row) => {
-                if (!row || row.status !== 'pending') return row;
-                const now = getServerNowMs();
-                if (Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= now) {
-                    expiredByTimeout = true;
-                    timeoutNoticeTarget = String(row.challengerId || '');
-                    timeoutNotifiedAt = Number(row.timeoutNotifiedAt || 0);
-                    return {
-                        ...row,
-                        status: 'expired',
-                        expiredAt: Number(row.expiredAt || now),
-                        timeoutNotifiedAt: Number(row.timeoutNotifiedAt || now)
-                    };
-                }
-
-                row.players = row.players || {};
-                const me = String(currentUserId);
-                if (!row.players[me]) row.players[me] = {};
-                row.players[me].accepted = true;
-                row.players[me].nickname = row.players[me].nickname || players[myIndex]?.n || 'Игрок';
-                const challengerAccepted = !!row.players[String(row.challengerId)]?.accepted;
-                const opponentAccepted = !!row.players[String(row.opponentId)]?.accepted;
-                if (challengerAccepted && opponentAccepted) {
-                    row.status = 'active';
-                    row.startedAt = now;
-                    row.countdownFrom = 5;
-                    row.duelStartAt = now + 5000;
-                    row.drawDurationMs = 7000;
-                    row.duelStartedNoticePosted = false;
-                }
-                return row;
+        async function grantTotemRewardsOnce(duelKey, duelRow) {
+            const row = duelRow || {};
+            const winnerId = String(row.winnerId || '');
+            const loserId = String(row.loserId || '');
+            if (!winnerId) return;
+            const rewardTx = await db.ref(`${DUEL_PATH}/${duelKey}/rewardsGrantedAt`).transaction((v) => {
+                if (Number(v) > 0) return;
+                return getServerNowMs();
             });
+            if (!rewardTx.committed) return;
 
-            const duelNow = (await ref.once('value')).val() || {};
-            if (expiredByTimeout || duelNow.status === 'expired') {
-                if (timeoutNoticeTarget && !timeoutNotifiedAt) {
-                    await db.ref(`system_notifications/${timeoutNoticeTarget}`).push({
-                        type: 'calligraphy_duel_timeout',
-                        text: 'Соперник не принял дуэль. Можно кинуть дуэль другому игроку',
-                        createdAt: Date.now(),
-                        duelKey,
-                        acknowledged: false
+            const rewardItemKey = TOTEM_REWARD_ITEMS[Math.floor(Math.random() * TOTEM_REWARD_ITEMS.length)];
+            await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction((v) => (Number(v) || 0) + 1);
+            const ticket = await claimSequentialTickets(1);
+            if (ticket?.length) {
+                const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
+                const owner = Number(winnerStateSnap.val()?.charIndex);
+                if (Number.isInteger(owner)) {
+                    await db.ref('tickets_archive').push({
+                        owner,
+                        userId: Number(winnerId),
+                        ticket: String(ticket[0]),
+                        taskIdx: -1,
+                        round: currentRoundNum,
+                        cell: 0,
+                        cellIdx: -1,
+                        isEventReward: true,
+                        eventId: 'totems_duel',
+                        taskLabel: 'Награда за победу в игре «Тотемы»',
+                        archivedAt: getServerNowMs(),
+                        excluded: false
                     });
                 }
-                return { ok: false, reason: 'expired' };
             }
-
-            if (!tx.committed) return { ok: false, reason: 'not_committed' };
-            if (duelNow.status === 'active') {
-                await postCalligraphyDuelStartedNewsIfNeeded(duelKey, duelNow);
-                const now = getServerNowMs();
-                await db.ref().update({
-                    [`player_season_status/${duelNow.challengerId}/last_impulse_time`]: now,
-                    [`player_season_status/${duelNow.challengerId}/updatedAt`]: now,
-                    [`${DUEL_PATH}/${duelKey}/cooldownStartedAt`]: now
+            if (loserId) {
+                await db.ref(`player_season_status/${loserId}`).update({
+                    karma_points: firebase.database.ServerValue.increment(1),
+                    updatedAt: getServerNowMs()
                 });
             }
-            return { ok: true, reason: duelNow.status === 'active' ? 'accepted_active' : 'accepted_pending' };
         }
 
-
-        function setupDuelCanvasHandlers() {
-            const canvas = document.getElementById('duel-canvas');
-            if (!canvas || canvas.dataset.ready === '1') return;
-            canvas.dataset.ready = '1';
-            const ctx = canvas.getContext('2d');
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.lineWidth = 9;
-            ctx.strokeStyle = '#311b92';
-
-            const getPos = (evt) => {
-                const rect = canvas.getBoundingClientRect();
-                const t = evt.touches?.[0] || evt.changedTouches?.[0];
-                const cx = t ? t.clientX : evt.clientX;
-                const cy = t ? t.clientY : evt.clientY;
-                return {
-                    x: ((cx - rect.left) / rect.width) * canvas.width,
-                    y: ((cy - rect.top) / rect.height) * canvas.height
-                };
-            };
-
-            const begin = (evt) => {
-                if (!duelDrawingState.enabled || duelDrawingState.ended) return;
-                evt.preventDefault();
-                duelDrawingState.drawing = true;
-                const p = getPos(evt);
-                duelLocalPoints.push({ x: p.x, y: p.y, t: Date.now() });
-                ctx.beginPath();
-                ctx.moveTo(p.x, p.y);
-            };
-            const move = (evt) => {
-                if (!duelDrawingState.drawing || duelDrawingState.ended) return;
-                evt.preventDefault();
-                const p = getPos(evt);
-                duelLocalPoints.push({ x: p.x, y: p.y, t: Date.now() });
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
-            };
-            const end = () => {
-                duelDrawingState.drawing = false;
-            };
-
-            canvas.addEventListener('mousedown', begin);
-            canvas.addEventListener('mousemove', move);
-            canvas.addEventListener('mouseup', end);
-            canvas.addEventListener('mouseleave', end);
-            canvas.addEventListener('touchstart', begin, { passive: false });
-            canvas.addEventListener('touchmove', move, { passive: false });
-            canvas.addEventListener('touchend', end);
-        }
-
-        function scoreCalligraphy(referencePoints = [], playerPoints = []) {
-            if (!referencePoints.length || !playerPoints.length) return 0;
-            const threshold = 34;
-            let hits = 0;
-            for (const p of playerPoints) {
-                let best = Infinity;
-                for (const r of referencePoints) {
-                    const dx = p.x - r.x;
-                    const dy = p.y - r.y;
-                    const d = Math.sqrt(dx * dx + dy * dy);
-                    if (d < best) best = d;
-                    if (best <= threshold) break;
-                }
-                if (best <= threshold) hits++;
-            }
-            return Math.round((hits / Math.max(1, playerPoints.length)) * 100);
-        }
-
-        function createReferencePointsFromSymbol(symbolChar) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 600;
-            canvas.height = 600;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#000';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = '520px serif';
-            ctx.fillText(symbolChar || '永', canvas.width / 2, canvas.height / 2 + 20);
-            const img = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            const pts = [];
-            for (let y = 0; y < canvas.height; y += 10) {
-                for (let x = 0; x < canvas.width; x += 10) {
-                    const a = img[(y * canvas.width + x) * 4 + 3];
-                    if (a > 40) pts.push({ x, y });
-                }
-            }
-            return pts;
-        }
-
-        async function finishCalligraphyDuel(duelKey) {
+        async function resolveTotemChallengeIfReady(duelKey) {
             if (!duelKey) return;
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
-            const lockTx = await ref.transaction(row => {
-                if (!row) return;
-                const now = Date.now();
-                const lockAge = now - Number(row.resolvingAt || 0);
-                const canTakeOverStaleLock = row.status === 'resolving' && lockAge > 30000;
-                if (row.status !== 'active' && !canTakeOverStaleLock) return;
-                row.status = 'resolving';
-                row.resolvingAt = now;
-                row.resolvingBy = String(currentUserId || 'system');
-                return row;
+            const lockTx = await ref.transaction((row) => {
+                if (!row) return row;
+                if (['resolved', 'declined', 'expired'].includes(String(row.status || ''))) return row;
+                if (!row.attackerCompleted || !row.defenderCompleted) return row;
+                if (String(row.status || '') === 'resolving') return row;
+                return { ...row, status: 'resolving', resolvingAt: getServerNowMs(), resolvingBy: String(currentUserId || '') };
             });
             if (!lockTx.committed) return;
+            const duel = lockTx.snapshot.val() || {};
+            if (!duel.attackerResult || !duel.defenderResult) return;
 
-            const duel = lockTx.snapshot.val();
-            if (!duel) return;
-            const symbolChar = duel.symbol?.char || '永';
-            const reference = createReferencePointsFromSymbol(symbolChar);
-            const participants = Object.keys(duel.players || {});
-            const scores = {};
-            participants.forEach(uid => {
-                scores[uid] = scoreCalligraphy(reference, duel.players?.[uid]?.points || []);
-            });
-            let winnerId = participants[0] || '';
-            participants.forEach(uid => {
-                if ((scores[uid] || 0) > (scores[winnerId] || 0)) winnerId = uid;
-            });
-            const loserId = participants.find(uid => String(uid) !== String(winnerId)) || '';
-            const winnerName = duel.players?.[winnerId]?.nickname || 'Игрок';
+            const winnerSide = compareTotemResults(duel.attackerResult, duel.defenderResult);
+            const winnerId = winnerSide === 'defender' ? String(duel.opponentId || '') : String(duel.challengerId || '');
+            const loserId = winnerSide === 'defender' ? String(duel.challengerId || '') : String(duel.opponentId || '');
 
             const resolveTx = await ref.transaction((row) => {
-                if (!row) return;
-                if (row.status === 'done' || row.notificationsPosted) return;
-                if (row.status !== 'resolving') return;
+                if (!row || ['resolved', 'declined', 'expired'].includes(String(row.status || ''))) return row;
+                if (String(row.status || '') !== 'resolving') return row;
                 return {
                     ...row,
-                    status: 'done',
-                    finishedAt: Date.now(),
-                    scores,
+                    status: 'resolved',
+                    finishedAt: getServerNowMs(),
                     winnerId,
                     loserId,
-                    notificationsPosted: false,
-                    duelResolvedNoticePosted: false,
-                    rewardsGrantedAt: row.rewardsGrantedAt || 0
+                    duelResolvedNoticePosted: false
                 };
             });
             if (!resolveTx.committed) return;
+            const resolved = resolveTx.snapshot.val() || {};
 
-            if (winnerId) {
-                const rewardItemKey = DUEL_REWARD_ITEMS[Math.floor(Math.random() * DUEL_REWARD_ITEMS.length)];
-                const rewardMeta = window.itemTypes?.[rewardItemKey] || { emoji: '🎁', name: 'Случайный предмет' };
-                const rewardTx = await db.ref(`${DUEL_PATH}/${duelKey}/rewardsGrantedAt`).transaction((v) => {
-                    if (Number(v) > 0) return;
-                    return Date.now();
-                });
-                if (rewardTx.committed) {
-                    await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction(v => (Number(v) || 0) + 1);
-                    const ticket = await claimSequentialTickets(1);
-                    if (ticket?.length) {
-                        const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
-                        const owner = Number(winnerStateSnap.val()?.charIndex);
-                        if (Number.isInteger(owner)) {
-                            await db.ref('tickets_archive').push({
-                                owner,
-                                userId: Number(winnerId),
-                                ticket: String(ticket[0]),
-                                taskIdx: -1,
-                                round: currentRoundNum,
-                                cell: 0,
-                                cellIdx: -1,
-                                isEventReward: true,
-                                eventId: 'calligraphy_duel',
-                                taskLabel: 'Награда за победу в дуэли каллиграфов',
-                                archivedAt: Date.now(),
-                                excluded: false
-                            });
-                        }
-                    }
-                }
-            }
+            await grantTotemRewardsOnce(duelKey, resolved);
+            const winnerName = resolved.players?.[winnerId]?.nickname || 'Игрок';
 
-            const notificationsTx = await db.ref(`${DUEL_PATH}/${duelKey}/notificationsPosted`).transaction((v) => {
-                if (v) return;
-                return { at: Date.now(), by: String(currentUserId || '') };
-            });
-            if (notificationsTx.committed) {
+            const notifTx = await db.ref(`${DUEL_PATH}/${duelKey}/notificationsPosted`).transaction((v) => v ? v : { at: getServerNowMs() });
+            if (notifTx.committed) {
                 if (winnerId) {
                     await db.ref(`system_notifications/${winnerId}`).push({
-                        text: 'Вот это точность! Молодец! Заслуженные награды уже зачислены',
-                        createdAt: Date.now(),
+                        text: 'Победа в «Тотемах»! Тебе выданы 1 билет и редкий предмет.',
+                        createdAt: getServerNowMs(),
                         type: 'calligraphy_duel_result'
                     });
                 }
                 if (loserId) {
-                    await db.ref(`player_season_status/${loserId}`).update({
-                        karma_points: firebase.database.ServerValue.increment(1),
-                        updatedAt: Date.now()
-                    });
                     await db.ref(`system_notifications/${loserId}`).push({
-                        text: 'Увы! У соперника более точное перо! Но зато ты получаешь +1 в карму',
-                        createdAt: Date.now(),
+                        text: '«Тотемы» завершены: ты получаешь +1 кармы.',
+                        createdAt: getServerNowMs(),
                         type: 'calligraphy_duel_result'
                     });
                 }
             }
 
-            const resolvedFeedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelResolvedNoticePosted`).transaction((posted) => {
-                if (posted) return;
-                return { at: Date.now(), by: String(currentUserId || '') };
-            });
-            if (resolvedFeedTx.committed && winnerName) {
-                await postNews(`${winnerName} победил(а) в дуэли`);
+            const feedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelResolvedNoticePosted`).transaction((v) => v ? v : { at: getServerNowMs() });
+            if (feedTx.committed && winnerName) {
+                await postNews(`${winnerName} победил(а) в игре «Тотемы»`);
             }
         }
 
-        async function openCalligraphyDuelUI(duelKey, duelData) {
-            if (!duelKey || !duelData) return;
-            activeDuelKey = duelKey;
-            const overlay = document.getElementById('duel-overlay');
+        async function runTotemMiniGame({ role, challenge, duelKey }) {
+            const title = document.getElementById('duel-title');
             const subtitle = document.getElementById('duel-subtitle');
             const countdown = document.getElementById('duel-countdown');
             const timer = document.getElementById('duel-timer');
             const refNode = document.getElementById('duel-reference');
             const canvas = document.getElementById('duel-canvas');
-            if (!overlay || !canvas) return;
-            setupDuelCanvasHandlers();
-            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-            duelLocalPoints = [];
-            duelDrawingState = { drawing: false, enabled: false, ended: false };
-            refNode.textContent = duelData.symbol?.char || '永';
-            subtitle.textContent = `Символ: ${duelData.symbol?.char || '永'} (${duelData.symbol?.title || 'Вечность'})`;
-            const countdownFrom = Number(duelData.countdownFrom || 5);
-            const drawDurationMs = Number(duelData.drawDurationMs || 7000);
-            const duelStartAt = Number(duelData.duelStartAt || (Number(duelData.startedAt || 0) + (countdownFrom * 1000)));
-            timer.textContent = `Время рисования: ${Math.ceil(drawDurationMs / 1000)} сек`;
-            countdown.textContent = String(Math.max(1, countdownFrom));
-            overlay.style.display = 'flex';
+            const closeBtn = document.getElementById('duel-close-btn');
+            if (!title || !subtitle || !countdown || !timer || !refNode || !canvas || !closeBtn) {
+                return { aborted: true, reason: 'ui_missing' };
+            }
+            canvas.style.display = 'none';
+            closeBtn.style.display = 'none';
+            title.textContent = `🐍 Тотемы · ${role === 'attacker' ? 'Печать' : 'Защита'}`;
 
-            clearInterval(duelCountdownInterval);
-            let drawStarted = false;
-            duelCountdownInterval = setInterval(() => {
-                const serverNow = getServerNowMs();
-                const msToStart = duelStartAt - serverNow;
-                if (msToStart > 0) {
-                    countdown.textContent = String(Math.max(1, Math.ceil(msToStart / 1000)));
-                    return;
-                }
-                if (!drawStarted) {
-                    drawStarted = true;
-                    clearInterval(duelCountdownInterval);
-                    countdown.textContent = 'Рисуй!';
-                    duelDrawingState.enabled = true;
-                    const startedAt = duelStartAt;
-                    clearInterval(duelTimerInterval);
-                    duelTimerInterval = setInterval(() => {
-                        const left = Math.max(0, drawDurationMs - (getServerNowMs() - startedAt));
-                        timer.textContent = `Время рисования: ${Math.ceil(left / 1000)} сек`;
-                        if (left <= 0) {
-                            clearInterval(duelTimerInterval);
-                            duelDrawingState.enabled = false;
-                            duelDrawingState.ended = true;
-                            countdown.textContent = 'Готово';
-                            db.ref(`${DUEL_PATH}/${duelKey}/players/${currentUserId}`).update({
-                                points: duelLocalPoints,
-                                finishedAt: getServerNowMs()
-                            });
-                        }
-                    }, 180);
-                }
-            }, 150);
+            const totemNames = {
+                head: '🐍 Голова Змеи',
+                tail: '🦂 Хвост Кобры',
+                eye: '👁️ Глаз Питона'
+            };
+
+            const mode = String(challenge?.mode || 'jungle_rhythm');
+            let errors = 0;
+            let progress = 0;
+            let startedAt = getServerNowMs();
+            const pattern = Array.isArray(challenge?.pattern) ? challenge.pattern : [];
+            if (!pattern.length) return { aborted: true, reason: 'empty_pattern' };
+
+            const overlayButtonsHtml = `<div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:8px;">
+                <button class="admin-btn" data-totem="head" style="margin:0;">🐍 Голова Змеи</button>
+                <button class="admin-btn" data-totem="tail" style="margin:0;">🦂 Хвост Кобры</button>
+                <button class="admin-btn" data-totem="eye" style="margin:0;">👁️ Глаз Питона</button>
+            </div>`;
+
+            subtitle.textContent = mode === 'jungle_rhythm'
+                ? 'Режим: Ритм Джунглей'
+                : (mode === 'poison_cipher' ? 'Режим: Ядовитый Шифр' : 'Режим: Чешуя');
+            countdown.textContent = `${pattern.length}`;
+            timer.textContent = 'Подготовка...';
+
+            if (mode === 'poison_cipher') {
+                const showMs = role === 'defender' ? Number(challenge.defenderShowMs || 1700) : Number(challenge.attackerShowMs || 2200);
+                refNode.innerHTML = `<div style="font-size:16px; margin-bottom:6px;">Запомни символы:</div><div style="font-size:28px; letter-spacing:8px;">${(challenge.symbols || []).join(' ')}</div>`;
+                await new Promise((r) => setTimeout(r, showMs));
+                refNode.innerHTML = `<div style="font-size:14px; margin-bottom:6px;">Нажимай тотемы по возрастанию букв/цифр</div><div style="font-size:12px; color:#666;">${(challenge.order || []).join(' → ')}</div>${overlayButtonsHtml}`;
+            } else if (mode === 'shedding') {
+                const swipes = Array.isArray(challenge.swipes) ? challenge.swipes : [];
+                refNode.innerHTML = `<div style="font-size:14px; margin-bottom:6px;">Свайпай по направлению для каждого шага.</div><div style="font-size:12px; color:#666;">${swipes.join(' · ')}</div>${overlayButtonsHtml}`;
+            } else {
+                refNode.innerHTML = `<div style="font-size:14px; margin-bottom:6px;">Повтори ритм тотемов:</div><div style="font-size:12px; color:#666;">${pattern.map((p) => totemNames[p] || p).join(' → ')}</div>${overlayButtonsHtml}`;
+            }
+
+            const wrap = refNode;
+            const buttons = Array.from(wrap.querySelectorAll('[data-totem]'));
+            let swipeStart = null;
+            let done = false;
+            const limit = Number(challenge.timeLimitMs || 20000);
+
+            const finishPromise = new Promise((resolve) => {
+                const finish = (aborted = false) => {
+                    if (done) return;
+                    done = true;
+                    buttons.forEach((btn) => btn.disabled = true);
+                    wrap.removeEventListener('touchstart', onTouchStart);
+                    wrap.removeEventListener('touchend', onTouchEnd);
+                    const timeMs = Math.max(1, getServerNowMs() - startedAt);
+                    const score = Math.max(0, 10000 - timeMs - (errors * 1200));
+                    resolve({
+                        aborted,
+                        mode,
+                        role,
+                        timeMs,
+                        errors,
+                        completed: !aborted && progress >= pattern.length,
+                        progress,
+                        score,
+                        finishedAt: getServerNowMs()
+                    });
+                };
+
+                const onTotem = (totem) => {
+                    if (done) return;
+                    const expected = pattern[progress];
+                    let ok = false;
+                    if (mode === 'poison_cipher') {
+                        const expectedSymbol = (challenge.order || [])[progress];
+                        const expectedTotem = (challenge.symbols || []).findIndex((s) => s === expectedSymbol);
+                        const expectedKey = pattern[Math.max(0, expectedTotem)] || expected;
+                        ok = String(totem) === String(expectedKey);
+                    } else {
+                        ok = String(totem) === String(expected);
+                    }
+                    if (ok) {
+                        progress += 1;
+                        countdown.textContent = `${pattern.length - progress}`;
+                    } else {
+                        errors += 1;
+                    }
+                    if (progress >= pattern.length) finish(false);
+                };
+
+                const onTouchStart = (evt) => {
+                    const t = evt.touches?.[0];
+                    if (!t) return;
+                    swipeStart = { x: t.clientX, y: t.clientY };
+                };
+                const onTouchEnd = (evt) => {
+                    if (mode !== 'shedding') return;
+                    const t = evt.changedTouches?.[0];
+                    if (!t || !swipeStart) return;
+                    const dir = normalizeSwipe(t.clientX - swipeStart.x, t.clientY - swipeStart.y);
+                    swipeStart = null;
+                    const expectedDir = (challenge.swipes || [])[progress] || '';
+                    if (dir && dir === expectedDir) {
+                        progress += 1;
+                        countdown.textContent = `${pattern.length - progress}`;
+                    } else {
+                        errors += 1;
+                    }
+                    if (progress >= pattern.length) finish(false);
+                };
+
+                buttons.forEach((btn) => {
+                    btn.addEventListener('click', () => onTotem(String(btn.getAttribute('data-totem') || '')));
+                });
+                wrap.addEventListener('touchstart', onTouchStart, { passive: true });
+                wrap.addEventListener('touchend', onTouchEnd, { passive: true });
+
+                const timerId = setInterval(() => {
+                    if (done) {
+                        clearInterval(timerId);
+                        return;
+                    }
+                    const left = Math.max(0, limit - (getServerNowMs() - startedAt));
+                    timer.textContent = `Осталось: ${(left / 1000).toFixed(1)} сек`;
+                    if (left <= 0) {
+                        clearInterval(timerId);
+                        finish(false);
+                    }
+                }, 100);
+            });
+
+            const result = await finishPromise;
+            return result;
+        }
+
+        async function openCalligraphyDuelUI(duelKey, duelData, forcedRole = '') {
+            if (!duelKey || !duelData) return;
+            const overlay = document.getElementById('duel-overlay');
+            if (!overlay) return;
+            window.setSnakeCriticalUiLock?.('totems_duel');
+            overlay.style.display = 'flex';
+            activeDuelKey = duelKey;
+
+            const me = String(currentUserId || '');
+            const role = forcedRole || (String(duelData.challengerId || '') === me ? 'attacker' : 'defender');
+            if (role === 'attacker' && duelData.attackerCompleted) return;
+            if (role === 'defender' && duelData.defenderCompleted) return;
+
+            const result = await runTotemMiniGame({ role, challenge: duelData.challenge || {}, duelKey });
+            if (result.aborted) {
+                closeCalligraphyDuelUI();
+                return;
+            }
+
+            const basePath = `${DUEL_PATH}/${duelKey}`;
+            if (role === 'attacker') {
+                await db.ref(basePath).update({
+                    attackerResult: result,
+                    attackerSeal: {
+                        gameType: 'totems',
+                        mode: result.mode,
+                        seed: duelData.challenge?.seed || '',
+                        pattern: duelData.challenge?.pattern || [],
+                        timeMs: result.timeMs,
+                        errors: result.errors,
+                        score: result.score,
+                        finishedAt: result.finishedAt
+                    },
+                    attackerCompleted: true,
+                    status: (duelData.players?.[String(duelData.opponentId)]?.accepted ? 'defender_pending' : 'attacker_pending')
+                });
+            } else {
+                await db.ref(basePath).update({
+                    defenderResult: result,
+                    defenderCompleted: true,
+                    status: 'resolving'
+                });
+            }
+
+            await resolveTotemChallengeIfReady(duelKey);
+            closeCalligraphyDuelUI();
         }
 
         function closeCalligraphyDuelUI() {
             const overlay = document.getElementById('duel-overlay');
+            const canvas = document.getElementById('duel-canvas');
+            const closeBtn = document.getElementById('duel-close-btn');
             if (overlay) overlay.style.display = 'none';
-            clearInterval(duelCountdownInterval);
-            clearInterval(duelTimerInterval);
-            duelDrawingState.enabled = false;
+            if (canvas) canvas.style.display = '';
+            if (closeBtn) closeBtn.style.display = '';
             activeDuelKey = null;
+            window.setSnakeCriticalUiLock?.('');
         }
 
         async function expirePendingCalligraphyDuel(duelKey) {
@@ -451,32 +506,20 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
             const ref = db.ref(`${DUEL_PATH}/${duelKey}`);
             let challengerId = '';
             const tx = await ref.transaction((row) => {
-                if (!row || row.status !== 'pending') return row;
+                if (!row) return row;
+                if (['resolved', 'declined', 'expired'].includes(String(row.status || ''))) return row;
                 if (Number(row.expiresAt || 0) > getServerNowMs()) return row;
                 challengerId = String(row.challengerId || '');
-                return {
-                    ...row,
-                    status: 'expired',
-                    expiredAt: getServerNowMs(),
-                    timeoutNotifiedAt: Number(row.timeoutNotifiedAt || getServerNowMs())
-                };
+                return { ...row, status: 'expired', expiredAt: getServerNowMs() };
             });
-            const rowAfter = tx.snapshot.val() || {};
-            if (!tx.committed || !challengerId || Number(rowAfter.timeoutNotifiedAt || 0) !== Number(rowAfter.expiredAt || 0)) return;
+            if (!tx.committed || !challengerId) return;
             await db.ref(`system_notifications/${challengerId}`).push({
                 type: 'calligraphy_duel_timeout',
-                text: 'Соперник не принял дуэль. Можно кинуть дуэль другому игроку',
-                createdAt: Date.now(),
+                text: 'Вызов «Тотемы» истёк: соперник не ответил вовремя.',
+                createdAt: getServerNowMs(),
                 duelKey,
                 acknowledged: false
             });
-        }
-
-        function formatDuelWaitCountdown(ms) {
-            const safe = Math.max(0, Number(ms) || 0);
-            const mm = String(Math.floor(safe / 60000)).padStart(2, '0');
-            const ss = String(Math.floor((safe % 60000) / 1000)).padStart(2, '0');
-            return `${mm}:${ss}`;
         }
 
         async function acknowledgeDuelNotification(notificationKey) {
@@ -490,25 +533,17 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                 'calligraphy_duel_timeout',
                 'calligraphy_duel_declined'
             ].includes(type);
-
             if (isDuelStatusNotice) {
-                await notificationRef.update({
-                    acknowledged: true,
-                    acknowledgedAt: getServerNowMs()
-                });
+                await notificationRef.update({ acknowledged: true, acknowledgedAt: getServerNowMs() });
                 return;
             }
-
             await closePlayerNotification(`sys-${notificationKey}`, true);
         }
 
         async function acknowledgeCalligraphyDuelResult(duelKey) {
             if (!duelKey || !currentUserId || !db) return;
             const ackRef = db.ref(`${DUEL_PATH}/${duelKey}/resultAcknowledged/${currentUserId}`);
-            await ackRef.transaction((current) => {
-                if (current) return current;
-                return { at: Date.now() };
-            });
+            await ackRef.transaction((current) => current || { at: getServerNowMs() });
         }
 
         function showOutgoingDuelStatusNotification(notificationKey, payload = {}) {
@@ -524,91 +559,59 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
 
             const type = String(payload.type || '');
             const isWaiting = type === 'calligraphy_duel_wait_notice';
-            const notifId = `sys-${notificationKey}`;
-            if (payload?.acknowledged) return;
-            if (isPlayerNotificationDismissed(notifId)) return;
+            textNode.textContent = String(payload.text || 'Статус вызова обновлён');
+            label.style.display = 'block';
+            okBtn.style.display = isWaiting ? 'none' : 'inline-flex';
+            timerNode.textContent = '';
 
             if (isWaiting) {
-                textNode.textContent = String(payload.text || 'Ты бросил вызов на дуэль. Ждём схватку!');
-                okBtn.style.display = 'inline-block';
-                const updateTimer = () => {
+                const tick = () => {
                     const left = Math.max(0, Number(payload.expiresAt || 0) - getServerNowMs());
-                    timerNode.textContent = `⏳ ${formatDuelWaitCountdown(left)} до авто-отмены`;
-                    if (left <= 0) {
+                    timerNode.textContent = `⏳ ${String(Math.floor(left / 60000)).padStart(2, '0')}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')}`;
+                    if (left <= 0 && duelWaitNoticeInterval) {
                         clearInterval(duelWaitNoticeInterval);
                         duelWaitNoticeInterval = null;
                     }
                 };
-                updateTimer();
-                duelWaitNoticeInterval = setInterval(updateTimer, 1000);
-            } else {
-                textNode.textContent = String(payload.text || 'Соперник не принял дуэль. Можно кинуть дуэль другому игроку');
-                timerNode.textContent = '';
-                okBtn.style.display = 'inline-block';
+                tick();
+                duelWaitNoticeInterval = setInterval(tick, 1000);
             }
 
             okBtn.onclick = async () => {
-                if (duelWaitNoticeInterval) {
-                    clearInterval(duelWaitNoticeInterval);
-                    duelWaitNoticeInterval = null;
-                }
                 label.style.display = 'none';
                 await acknowledgeDuelNotification(notificationKey);
             };
-            label.style.display = 'block';
         }
 
-        function showCalligraphyInviteNotification(notificationKey, payload) {
+        function showCalligraphyInviteNotification(notificationKey, payload = {}) {
+            if (!notificationKey || shownInviteKeys[notificationKey]) return;
+            shownInviteKeys[notificationKey] = true;
+            const duelKey = String(payload.duelKey || '').trim();
+            if (!duelKey) return;
+            const text = String(payload.text || 'Тебя пригласили в «Тотемы».');
+            const cardId = `duel-invite-${duelKey}`;
+            if (document.getElementById(cardId)) return;
+
             const wrap = document.getElementById('player-notification-wrap');
-            if (!wrap || !notificationKey) return;
-            if (!payload?.duelKey) return;
-            const id = `duel-invite-${notificationKey}`;
-            if (document.getElementById(id)) return;
+            if (!wrap) return;
             const card = document.createElement('div');
-            card.id = id;
+            card.id = cardId;
             card.className = 'player-notification';
-            card.style.borderColor = '#ffd54f';
-            card.style.pointerEvents = 'auto';
-            const text = String(payload?.text || 'Игрок приглашает тебя на дуэль каллиграфов');
-            card.innerHTML = `
-                <div style="font-size:13px; line-height:1.4; color:#4a148c; margin-bottom:8px;">${text}</div>
-                <div style="display:flex; gap:8px;">
-                    <button class="admin-btn" style="margin:0; flex:1; background:#2e7d32;" data-action="accept">Согласиться</button>
-                    <button class="admin-btn" style="margin:0; flex:1; background:#6d4c41;" data-action="decline">Уклониться</button>
-                </div>`;
-            const closeAndDropNotification = async () => {
+            card.style.borderColor = '#7e57c2';
+            card.innerHTML = `<button class="player-notification-close">✕</button><div style="font-size:13px; color:#4a148c;">${text}</div><div style="display:flex; gap:6px; margin-top:8px;"><button data-action="accept" class="admin-btn" style="margin:0; flex:1;">Принять</button><button data-action="decline" class="admin-btn" style="margin:0; flex:1; background:#ef5350;">Отказаться</button></div>`;
+            const close = async () => {
                 card.remove();
-                await db.ref(`system_notifications/${currentUserId}/${notificationKey}`).remove();
+                await acknowledgeDuelNotification(notificationKey);
             };
-            let processing = false;
-            const handleInviteAction = async (action) => {
-                if (processing) return;
-                processing = true;
-                card.querySelectorAll('button').forEach((btn) => {
-                    btn.disabled = true;
-                    btn.style.opacity = '0.75';
-                });
-                try {
-                    if (action === 'accept') {
-                        const result = await acceptCalligraphyDuel(payload.duelKey);
-                        if (!result?.ok && result?.reason === 'expired') {
-                            alert('Вызов уже истёк — принять его больше нельзя.');
-                        }
-                    } else {
-                        await declineCalligraphyDuel(payload.duelKey);
-                    }
-                    await closeAndDropNotification();
-                } finally {
-                    processing = false;
-                }
-            };
-            card.querySelector('[data-action="accept"]')?.addEventListener('click', (evt) => {
-                evt.stopPropagation();
-                handleInviteAction('accept');
+            card.querySelector('.player-notification-close')?.addEventListener('click', close);
+            card.querySelector('[data-action="accept"]')?.addEventListener('click', async () => {
+                const res = await acceptCalligraphyDuel(duelKey);
+                if (!res.ok) return;
+                await close();
             });
-            card.querySelector('[data-action="decline"]')?.addEventListener('click', (evt) => {
-                evt.stopPropagation();
-                handleInviteAction('decline');
+            card.querySelector('[data-action="decline"]')?.addEventListener('click', async () => {
+                await declineCalligraphyDuel(duelKey);
+                await close();
             });
             wrap.appendChild(card);
         }
@@ -627,32 +630,20 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
             const handler = (duelSnap) => {
                 const row = duelSnap.val() || {};
                 const me = String(currentUserId);
-                const startedAt = Number(row.startedAt || row.createdAt || 0);
-                const isStaleActive = row.status === 'active' && startedAt > 0 && (Date.now() - startedAt) > (20 * 60 * 1000);
+                if (!row || row.gameType !== 'totems') return;
 
-                if (isStaleActive) {
-                    db.ref(`${DUEL_PATH}/${duelSnap.key}`).transaction((current) => {
-                        if (!current || current.status !== 'active') return current;
-                        const currentStartedAt = Number(current.startedAt || current.createdAt || 0);
-                        if (!currentStartedAt || (Date.now() - currentStartedAt) <= (20 * 60 * 1000)) return current;
-                        return { ...current, status: 'done', finishedAt: Date.now(), expiredByTimeout: true, winnerId: '', loserId: '' };
-                    }).catch((err) => console.error('stale duel cleanup failed', err));
+                if (!['resolved', 'declined', 'expired'].includes(String(row.status || ''))
+                    && Number(row.expiresAt || 0) > 0
+                    && Number(row.expiresAt || 0) <= getServerNowMs()) {
+                    expirePendingCalligraphyDuel(duelSnap.key).catch((err) => console.error('totem timeout failed', err));
                     return;
                 }
 
-                if (row.status === 'pending' && Number(row.expiresAt || 0) > 0 && Number(row.expiresAt || 0) <= getServerNowMs()) {
-                    expirePendingCalligraphyDuel(duelSnap.key).catch((err) => console.error('pending duel timeout failed', err));
-                    return;
+                if (String(row.status || '') === 'defender_pending' && String(row.opponentId || '') === me && !row.defenderCompleted && activeDuelKey !== duelSnap.key) {
+                    openCalligraphyDuelUI(duelSnap.key, row, 'defender').catch((err) => console.error('open defender totems failed', err));
                 }
 
-                if (row.status === 'active' && activeDuelKey !== duelSnap.key) {
-                    openCalligraphyDuelUI(duelSnap.key, row);
-                }
-                const allFinished = Object.values(row.players || {}).length >= 2 && Object.values(row.players || {}).every(p => Array.isArray(p.points) && p.points.length > 0);
-                if (row.status === 'active' && allFinished) {
-                    finishCalligraphyDuel(duelSnap.key).catch(err => console.error('finish duel failed', err));
-                }
-                if (row.status === 'done') {
+                if (String(row.status || '') === 'resolved') {
                     if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
                     if (row.resultAcknowledged?.[me]) {
                         duelResultShownByKey[duelSnap.key] = true;
@@ -660,15 +651,14 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
                     }
                     if (duelResultShownByKey[duelSnap.key]) return;
                     duelResultShownByKey[duelSnap.key] = true;
-                    const myScore = Number(row.scores?.[me] || 0);
                     const winner = String(row.winnerId || '') === me;
                     if (winner) {
                         launchCelebrationFireworks();
-                        alert(`Победа в дуэли! Точность: ${myScore}%`);
-                    } else if (!row.expiredByTimeout) {
-                        alert(`Дуэль завершена. Твоя точность: ${myScore}%.`);
+                        alert('Победа в «Тотемах»!');
+                    } else {
+                        alert('Игра «Тотемы» завершена.');
                     }
-                    acknowledgeCalligraphyDuelResult(duelSnap.key).catch((err) => console.error('duel result acknowledge failed', err));
+                    acknowledgeCalligraphyDuelResult(duelSnap.key).catch((err) => console.error('totem result acknowledge failed', err));
                 }
             };
             duelRef.on('value', handler);
@@ -679,22 +669,22 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
             if (!currentUserId) return;
             if (duelInvitesRef) duelInvitesRef.off();
             clearCalligraphyDuelRowListeners();
-            duelInvitesRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(30);
-            duelInvitesRef.on('child_added', snap => {
+            duelInvitesRef = db.ref(`system_notifications/${currentUserId}`).limitToLast(40);
+            duelInvitesRef.on('child_added', (snap) => {
                 const v = snap.val() || {};
                 if (v.type !== 'calligraphy_duel_invite') return;
                 showCalligraphyInviteNotification(snap.key, v);
             });
 
             if (activeDuelRef) activeDuelRef.off();
-            activeDuelRef = db.ref(DUEL_PATH).limitToLast(40);
-            activeDuelRef.on('child_added', snap => {
+            activeDuelRef = db.ref(DUEL_PATH).limitToLast(80);
+            activeDuelRef.on('child_added', (snap) => {
                 const duel = snap.val() || {};
                 const me = String(currentUserId);
-                if (![String(duel.challengerId), String(duel.opponentId)].includes(me)) return;
+                if (![String(duel.challengerId || ''), String(duel.opponentId || '')].includes(me)) return;
                 bindCalligraphyDuelRowListener(snap.key);
             });
-            activeDuelRef.on('child_removed', snap => {
+            activeDuelRef.on('child_removed', (snap) => {
                 const entry = duelRowListeners[snap.key];
                 if (!entry?.ref || !entry?.handler) return;
                 entry.ref.off('value', entry.handler);
@@ -702,7 +692,6 @@ async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncod
             });
         }
 
-        
         window.sendCellImpulseToOwner = sendCellImpulseToOwner;
         window.declineCalligraphyDuel = declineCalligraphyDuel;
         window.acceptCalligraphyDuel = acceptCalligraphyDuel;

@@ -182,8 +182,8 @@ const JSON_URL = 'tasks.json';
         let epicPaintStrokesRef = null;
         let winnerHistoryRef = null;
         let drawScheduleRef = null;
-        const INVENTORY_ITEM_KEYS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak'];
-        let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0 };
+        const INVENTORY_ITEM_KEYS = ['goldenPollen', 'inkSaboteur', 'magnifier', 'cloak', 'greatPythonScale', 'fateBone', 'windBreath', 'rottenRadish', 'doubleBurdenScroll', 'thiefArcane'];
+        let myInventory = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0, greatPythonScale: 0, fateBone: 0, windBreath: 0, rottenRadish: 0, doubleBurdenScroll: 0, thiefArcane: 0 };
         let myInkChallenge = null;
         let myWandBlessing = null;
         let allSubmissions = [];
@@ -223,6 +223,124 @@ const JSON_URL = 'tasks.json';
         let snakeClashesRef = null;
         let activeDuels = [];
         let adminSnakeOverviewState = { fetchedAt: 0, fetching: false, round: 0, mode: '' };
+
+        const SNAKE_SHOP_ITEMS = {
+            greatPythonScale: { emoji: '🛡️', name: 'Чешуя Великого Полоза', price: 10, desc: 'Автоматически нейтрализует негативный snake-эффект и сгорает.' },
+            fateBone: { emoji: '🎯', name: 'Кость Судьбы', price: 30, desc: 'Позволяет выбрать результат броска от 1 до 6.' },
+            windBreath: { emoji: '💨', name: 'Дыхание Ветра', price: 45, desc: 'Даёт 2 последовательных броска и ход на их сумму (до 12).' },
+            rottenRadish: { emoji: '🥕', name: 'Гнилая редиска', price: 15, desc: 'Ловушка пропуска следующего хода для первого наступившего.' },
+            doubleBurdenScroll: { emoji: '📜', name: 'Свиток «Двойное Бремя»', price: 20, desc: 'Ловушка: добавляет бонусное snake-задание до двойного одобрения.' },
+            thiefArcane: { emoji: '🗡️', name: 'Воровской Аркан', price: 65, desc: 'Ставка 1 своего билета и попытка украсть 1 билет у snake-жертвы.' }
+        };
+        const SNAKE_SHOP_OPENINGS_UTC = [9, 15, 21];
+        const SNAKE_SHOP_WINDOW_MS = 30 * 60 * 1000;
+        let snakeActionQueueTail = Promise.resolve();
+        let snakeUiEventQueue = [];
+        let snakeUiEventActive = null;
+        let snakeUiCriticalLock = '';
+        let snakeUiActiveDone = null;
+        let snakePendingStealApplyInFlight = false;
+
+        function enqueueSnakeAction(actionName, fn) {
+            const uid = String(currentUserId || '').trim();
+            if (!uid || typeof fn !== 'function') return Promise.resolve(null);
+            const run = async () => fn();
+            const next = snakeActionQueueTail.then(run, run);
+            snakeActionQueueTail = next.catch(() => {});
+            return next;
+        }
+
+        function setSnakeCriticalUiLock(lockName = '') {
+            snakeUiCriticalLock = String(lockName || '').trim();
+            if (!snakeUiCriticalLock) {
+                setTimeout(() => processNextSnakeUiEvent(), 1000);
+            }
+        }
+
+        function getSnakeUiPendingCount() {
+            return Number(snakeUiEventQueue.length || 0) + (snakeUiEventActive ? 1 : 0);
+        }
+
+        function updateSnakePendingIndicator(extraCount = 0) {
+            const el = document.getElementById('snake-pending-indicator');
+            if (!el) return;
+            const count = Math.max(0, Number(extraCount || 0) + getSnakeUiPendingCount());
+            if (!count) {
+                el.style.display = 'none';
+                return;
+            }
+            el.style.display = 'inline-flex';
+            el.textContent = `📩 ${count}`;
+            el.title = 'Есть отложенные дела в змейке';
+        }
+
+        function processNextSnakeUiEvent() {
+            if (snakeUiEventActive || snakeUiCriticalLock) return;
+            if (!snakeUiEventQueue.length) {
+                updateSnakePendingIndicator(0);
+                return;
+            }
+            snakeUiEventQueue.sort((a, b) => Number(a.rank || 3) - Number(b.rank || 3) || Number(a.createdAt || 0) - Number(b.createdAt || 0));
+            const next = snakeUiEventQueue.shift();
+            if (!next || typeof next.show !== 'function') return;
+            snakeUiEventActive = next;
+            const done = () => {
+                snakeUiActiveDone = null;
+                snakeUiEventActive = null;
+                updateSnakePendingIndicator(0);
+                setTimeout(() => processNextSnakeUiEvent(), 1000);
+            };
+            snakeUiActiveDone = done;
+            Promise.resolve(next.show(done)).catch(() => done());
+            updateSnakePendingIndicator(0);
+        }
+
+        function enqueueSnakeUiEvent(event) {
+            const row = {
+                key: String(event?.key || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+                rank: Number(event?.rank || 3),
+                createdAt: Date.now(),
+                show: event?.show
+            };
+            if (typeof row.show !== 'function') return;
+            if (!snakeUiEventQueue.find((x) => x.key === row.key) && (!snakeUiEventActive || snakeUiEventActive.key !== row.key)) {
+                snakeUiEventQueue.push(row);
+            }
+            updateSnakePendingIndicator(0);
+            processNextSnakeUiEvent();
+        }
+
+        function getCurrentPowerWindowCycleIndex(nowTs = Date.now()) {
+            const p = getCurrentPowerWindowMsk(nowTs);
+            const map = { morning: 0, day: 1, evening: 2 };
+            const idx = Number.isInteger(map[p.activeWindowId]) ? map[p.activeWindowId] : -1;
+            const cycleBase = Number(p.dayKey.replace(/-/g, '')) * 3;
+            return idx < 0 ? -1 : cycleBase + idx;
+        }
+
+        function getForbiddenFruitCyclesRemaining(snakeState, nowTs = Date.now()) {
+            const state = (snakeState && typeof snakeState === 'object') ? snakeState : {};
+            const target = Number(state.forbiddenFruitBlockUntilCycle || 0);
+            if (!target) return 0;
+            const current = getCurrentPowerWindowCycleIndex(nowTs);
+            if (current < 0) return Math.max(0, target - Number(state.forbiddenFruitBlockStartCycle || 0));
+            return Math.max(0, target - current);
+        }
+
+        function isNegativeSnakeEffectType(effectType) {
+            const t = String(effectType || '').trim();
+            return [
+                'snake', 'maelstrom', 'sphinx', 'kaa', 'shedding',
+                'trap_rotten_radish', 'trap_double_burden',
+                'skip', 'skip_turn', 'lock', 'lock_sphinx', 'lock_shedding'
+            ].includes(t);
+        }
+
+        window.enqueueSnakeAction = enqueueSnakeAction;
+        window.enqueueSnakeUiEvent = enqueueSnakeUiEvent;
+        window.setSnakeCriticalUiLock = setSnakeCriticalUiLock;
+        window.getCurrentPowerWindowCycleIndex = getCurrentPowerWindowCycleIndex;
+
 
 
         /************************************************************************************************************
@@ -1178,7 +1296,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function getAdminItemOptions() {
-            return ['cloak', 'magnifier', 'goldenPollen', 'magicWand']
+            return ['cloak', 'magnifier', 'goldenPollen', 'magicWand', 'greatPythonScale', 'fateBone', 'windBreath', 'rottenRadish', 'doubleBurdenScroll', 'thiefArcane']
                 .filter(k => itemTypes?.[k])
                 .map(k => ({ key: k, label: `${itemTypes[k].emoji || '🎁'} ${itemTypes[k].name || k}` }));
         }
@@ -1201,7 +1319,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function renderInventoryIcons(inv = {}) {
-            const keys = ['cloak', 'magnifier', 'goldenPollen'];
+            const keys = ['cloak', 'magnifier', 'goldenPollen', 'greatPythonScale', 'fateBone', 'windBreath', 'rottenRadish', 'doubleBurdenScroll', 'thiefArcane'];
             const chips = keys.filter(k => Number(inv[k] || 0) > 0).map(k => `${itemTypes?.[k]?.emoji || '🎁'}x${Number(inv[k] || 0)}`);
             return chips.length ? chips.join(' ') : 'Пусто';
         }
@@ -1334,11 +1452,9 @@ const JSON_URL = 'tasks.json';
             const snakeState = userState?.snakeState || {};
             if (snakeState.awaitingApproval) return { disabled: true, text: '⏳ Сначала дождись одобрения текущей работы', reason: 'awaiting_approval' };
             if (snakeState.lockedBySphinx) return { disabled: true, text: '🗿 Испытание Сфинкса: ожидается одобрение', reason: 'sphinx_lock' };
-            const forbiddenFruitWaitUntil = Number(snakeState.forbiddenFruitWaitUntil || 0);
-            if (forbiddenFruitWaitUntil > Date.now()) {
-                const leftMs = forbiddenFruitWaitUntil - Date.now();
-                const leftHours = Math.max(1, Math.ceil(leftMs / (60 * 60 * 1000)));
-                return { disabled: true, text: `🍎 Запретный плод: ожидание ~${leftHours} ч`, reason: 'forbidden_fruit_wait' };
+            const fruitCyclesLeft = getForbiddenFruitCyclesRemaining(snakeState, Date.now());
+            if (fruitCyclesLeft > 0) {
+                return { disabled: true, text: `🍎 Запретный плод: осталось циклов окон: ${fruitCyclesLeft}`, reason: 'forbidden_fruit_wait' };
             }
             const sheddingActive = !!snakeState.sheddingActive && !snakeState.sheddingReleasedAt;
             const endsAt = Number(snakeState.sheddingEndsAt || snakeState.sheddingLockUntil || 0);
@@ -1347,11 +1463,673 @@ const JSON_URL = 'tasks.json';
                 const leftMin = Math.ceil(leftMs / 60000);
                 return { disabled: true, text: `🧬 Сброс кожи: ~${leftMin} мин`, reason: 'shedding_lock' };
             }
+            const powerWindowState = canRollInCurrentPowerWindow(snakeState);
+            if (!powerWindowState.ok) return { disabled: true, text: powerWindowState.text, reason: powerWindowState.reason };
             if (duelLockActive) return { disabled: true, text: '🎯 Сначала завершите дуэль', reason: 'duel_lock' };
             if (snakeRollInFlight) return { disabled: true, text: '🎲 Бросок обрабатывается...', reason: 'roll_in_flight' };
             return { disabled: false, text: '🎲 Бросить кубик', reason: '' };
         }
 
+
+        function getMskNowParts(nowTs = Date.now()) {
+            const mskTs = Number(nowTs) + (3 * 60 * 60 * 1000);
+            const d = new Date(mskTs);
+            const year = d.getUTCFullYear();
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            const hour = d.getUTCHours();
+            const minute = d.getUTCMinutes();
+            return { mskTs, dayKey: `${year}-${month}-${day}`, hour, minute, totalMinutes: hour * 60 + minute };
+        }
+
+        function getCurrentPowerWindowMsk(nowTs = Date.now()) {
+            const p = getMskNowParts(nowTs);
+            const windows = [
+                { id: 'morning', startMin: 11 * 60, endMin: 12 * 60, title: 'утреннее' },
+                { id: 'day', startMin: 16 * 60, endMin: 17 * 60, title: 'дневное' },
+                { id: 'evening', startMin: 20 * 60, endMin: 21 * 60, title: 'вечернее' }
+            ];
+            const active = windows.find((w) => p.totalMinutes >= w.startMin && p.totalMinutes < w.endMin) || null;
+            return { ...p, windows, activeWindowId: active?.id || '', activeWindowTitle: active?.title || '' };
+        }
+
+        function getSnakeShopWindowState(nowTs = Date.now()) {
+            const p = getMskNowParts(nowTs);
+            const windows = [
+                { id: 'morning', startMin: (10 * 60) + 50, endMin: (11 * 60) + 20 },
+                { id: 'day', startMin: (15 * 60) + 50, endMin: (16 * 60) + 20 },
+                { id: 'evening', startMin: (19 * 60) + 50, endMin: (20 * 60) + 20 }
+            ];
+            const active = windows.find((w) => p.totalMinutes >= w.startMin && p.totalMinutes < w.endMin) || null;
+            const next = windows.find((w) => p.totalMinutes < w.startMin) || windows[0];
+            const nextHour = Math.floor(next.startMin / 60);
+            const nextMinute = String(next.startMin % 60).padStart(2, '0');
+            return {
+                isOpen: !!active,
+                activeStart: active ? active.startMin : 0,
+                activeEnd: active ? active.endMin : 0,
+                nextStartLabel: `${String(nextHour).padStart(2, '0')}:${nextMinute}`,
+                windowId: active?.id || ''
+            };
+        }
+
+        function canRollInCurrentPowerWindow(snakeState, nowTs = Date.now()) {
+            const power = getCurrentPowerWindowMsk(nowTs);
+            if (!power.activeWindowId) return { ok: false, reason: 'outside_power_window', text: '🕒 Бросок доступен только в Окна Силы (11-12, 16-17, 20-21 МСК)' };
+            const state = (snakeState && typeof snakeState === 'object') ? snakeState : {};
+            const selectedDay = String(state.powerWindowDayMsk || '');
+            const selectedId = String(state.selectedPowerWindowId || '');
+            if (selectedDay === power.dayKey && selectedId && selectedId !== power.activeWindowId) {
+                const label = selectedId === 'morning' ? 'утреннее' : (selectedId === 'day' ? 'дневное' : 'вечернее');
+                return { ok: false, reason: 'power_window_already_selected', text: `🕒 Сегодня уже выбрано ${label} окно` };
+            }
+            return { ok: true, power };
+        }
+
+        function getSnakeInventorySummary(inv = myInventory) {
+            return ['greatPythonScale', 'fateBone', 'windBreath', 'rottenRadish', 'doubleBurdenScroll', 'thiefArcane']
+                .filter((key) => Number(inv[key] || 0) > 0)
+                .map((key) => `${SNAKE_SHOP_ITEMS[key]?.emoji || '🎁'} ${SNAKE_SHOP_ITEMS[key]?.name || key} ×${Number(inv[key] || 0)}`)
+                .join('<br>') || 'Пусто';
+        }
+
+        function renderSnakeShopControls() {
+            const wrap = document.getElementById('snake-shop-controls');
+            const statusEl = document.getElementById('snake-shop-status');
+            const previewEl = document.getElementById('snake-backpack-preview');
+            const isSnakeMode = resolveRoundFieldMode(currentRoundData) === 'snake';
+            const isPlayer = myIndex !== -1 && Number(currentUserId) !== Number(ADMIN_ID);
+            if (!wrap) return;
+            if (!isSnakeMode || !isPlayer) {
+                wrap.style.display = 'none';
+                return;
+            }
+            wrap.style.display = 'flex';
+            const state = getSnakeShopWindowState();
+            if (statusEl) {
+                statusEl.textContent = state.isOpen
+                    ? `Лавка открыта в окне ${state.windowId || ''} (МСК)`
+                    : `Лавка закрыта. Следующее открытие: ${state.nextStartLabel} МСК`;
+            }
+            if (previewEl) previewEl.innerHTML = getSnakeInventorySummary();
+        }
+
+        async function refreshSnakePendingIndicator() {
+            if (resolveRoundFieldMode(currentRoundData) !== 'snake' || !currentUserId || Number(currentUserId) === Number(ADMIN_ID)) {
+                updateSnakePendingIndicator(0);
+                return;
+            }
+            const [pendingStealSnap, notifSnap] = await Promise.all([
+                db.ref(`whitelist/${currentUserId}/pendingStealResolutions`).once('value'),
+                db.ref(`system_notifications/${currentUserId}`).limitToLast(40).once('value')
+            ]);
+            const pendingStealCount = Object.values(pendingStealSnap.val() || {}).filter((r) => r && String(r.status || '') === 'pending').length;
+            const inviteCount = Object.values(notifSnap.val() || {}).filter((r) => r && String(r.type || '') === 'calligraphy_duel_invite' && !r.acknowledged).length;
+            updateSnakePendingIndicator(pendingStealCount + inviteCount);
+        }
+
+        async function snakePurchaseItem(itemKey, viaSmuggler = false) {
+            return enqueueSnakeAction(`snake_purchase_${itemKey}`, async () => {
+            const item = SNAKE_SHOP_ITEMS[itemKey];
+            if (!item) return alert('Неизвестный предмет.');
+            if (!getSnakeShopWindowState().isOpen && !viaSmuggler) return alert('Лавка сейчас закрыта.');
+            if (viaSmuggler) {
+                const smug = (await db.ref('snake_smuggler/current').once('value')).val() || {};
+                const allowed = Number(smug.expiresAt || 0) > Date.now() && !!smug?.eligible?.[String(currentUserId || '')];
+                if (!allowed) return alert('Контрабандист сейчас недоступен для тебя.');
+            }
+            const uid = String(currentUserId || '').trim();
+            if (!uid) return;
+            const invRef = db.ref(`whitelist/${uid}/inventory`);
+            const invTx = await invRef.transaction((row) => {
+                const next = (row && typeof row === 'object') ? { ...row } : {};
+                const count = Number(next[itemKey] || 0);
+                if (count >= 3) return;
+                next[itemKey] = count + 1;
+                return next;
+            });
+            if (!invTx.committed) return alert('Лимит этого предмета уже достигнут (макс. 3).');
+            const karmaRef = db.ref(`player_season_status/${uid}/karma_points`);
+            const karmaTx = await karmaRef.transaction((value) => {
+                const current = Number(value || 0);
+                const price = calcSnakeShopPrice(itemKey, !!viaSmuggler);
+                if (current < price) return;
+                return current - price;
+            });
+            if (!karmaTx.committed) {
+                await invRef.transaction((row) => {
+                    const next = (row && typeof row === 'object') ? { ...row } : {};
+                    next[itemKey] = Math.max(0, Number(next[itemKey] || 0) - 1);
+                    return next;
+                });
+                return alert('Недостаточно кармы для покупки.');
+            }
+            await db.ref(`player_season_status/${uid}/updatedAt`).set(Date.now());
+            await postNews(`🐍 ${players[myIndex].n} купил(а) в «Шепоте Клыка»: ${item.emoji} ${item.name}.`);
+            alert(`Покупка успешна: ${item.name}`);
+            });
+        }
+
+        async function openSnakeShopModal() {
+            if (resolveRoundFieldMode(currentRoundData) !== 'snake') return alert('Лавка доступна только в режиме «Змейка».');
+            const state = getSnakeShopWindowState();
+            const smugRow = (await db.ref('snake_smuggler/current').once('value')).val() || {};
+            const smugEligible = Number(smugRow.expiresAt || 0) > Date.now() && !!smugRow?.eligible?.[String(currentUserId || '')];
+            const cards = Object.entries(SNAKE_SHOP_ITEMS).map(([key, item]) => {
+                const count = Number(myInventory[key] || 0);
+                const disabled = (!state.isOpen && !smugEligible) || count >= 3;
+                const price = calcSnakeShopPrice(key, smugEligible);
+                return `<div class="snake-shop-card"><div class="snake-shop-card-title">${item.emoji} ${item.name}</div><div class="snake-shop-card-desc">${item.desc}</div><div class="snake-shop-card-meta">Цена: ${price} кармы${smugEligible ? ' (Слизняк -20%)' : ''} · В рюкзаке: ${count}/3</div><button class="admin-btn" style="margin:0; width:100%;" ${disabled ? 'disabled' : ''} onclick="snakePurchaseItem('${key}', ${smugEligible ? 'true' : 'false'})">Купить</button></div>`;
+            }).join('');
+            enqueueSnakeUiEvent({
+                key: 'snake_shop_modal',
+                rank: 2,
+                show: (done) => {
+                    document.getElementById('mTitle').textContent = '🐍 Лавка «Шепот Клыка»';
+                    document.getElementById('mText').innerHTML = `<div style="font-size:12px; color:#555;">${state.isOpen ? 'Лавка открыта (30 минут).' : 'Лавка закрыта. Приходи в одно из 3 открытий в сутки.'}</div><div class="snake-shop-grid">${cards}</div><button id="snake-shop-close-inline" class="admin-btn" style="margin-top:8px; width:100%;">Закрыть</button>`;
+                    document.getElementById('modal').style.display = 'block';
+                    document.getElementById('overlay').style.display = 'block';
+                    document.getElementById('snake-shop-close-inline')?.addEventListener('click', () => {
+                        closeModal();
+                    }, { once: true });
+                }
+            });
+        }
+
+        function openSnakeBackpackModal() {
+            const body = ['greatPythonScale', 'fateBone', 'windBreath', 'rottenRadish', 'doubleBurdenScroll', 'thiefArcane'].map((key) => {
+                const item = SNAKE_SHOP_ITEMS[key];
+                return `<div class="snake-shop-card"><div class="snake-shop-card-title">${item.emoji} ${item.name}</div><div class="snake-shop-card-meta">Количество: ${Number(myInventory[key] || 0)}</div><div class="snake-shop-card-desc">${item.desc}</div></div>`;
+            }).join('');
+            enqueueSnakeUiEvent({
+                key: 'snake_backpack_modal',
+                rank: 2,
+                show: (done) => {
+                    document.getElementById('mTitle').textContent = '🎒 Рюкзак змейки';
+                    document.getElementById('mText').innerHTML = `<div style="font-size:12px; color:#555; margin-bottom:8px;">Предметы работают только в режиме «Змейка».</div>${body}${renderSnakeTrapActionsInBackpack()}<button id="snake-backpack-close-inline" class="admin-btn" style="margin-top:8px; width:100%;">Закрыть</button>`;
+                    document.getElementById('modal').style.display = 'block';
+                    document.getElementById('overlay').style.display = 'block';
+                    document.getElementById('snake-backpack-close-inline')?.addEventListener('click', () => {
+                        closeModal();
+                    }, { once: true });
+                }
+            });
+        }
+
+        async function tryConsumeSnakeInventoryItem(itemKey) {
+            const uid = String(currentUserId || '').trim();
+            if (!uid) return false;
+            const ref = db.ref(`whitelist/${uid}/inventory`);
+            const tx = await ref.transaction((row) => {
+                const next = (row && typeof row === 'object') ? { ...row } : {};
+                const count = Number(next[itemKey] || 0);
+                if (count <= 0) return;
+                next[itemKey] = count - 1;
+                return next;
+            });
+            return !!tx.committed;
+        }
+
+
+        async function getCurrentSnakeRoundNumSafe() {
+            const roundSnap = await db.ref('current_round').once('value');
+            const round = roundSnap.val() || {};
+            if (resolveRoundFieldMode(round) !== 'snake') return 0;
+            return Number(round.number || 0);
+        }
+
+        async function placeSnakeTrapFromInventory(trapType) {
+            return enqueueSnakeAction(`snake_trap_${trapType}`, async () => {
+            const uid = String(currentUserId || '').trim();
+            if (!uid) return;
+            const roundNum = await getCurrentSnakeRoundNumSafe();
+            if (!roundNum) return alert('Ловушки доступны только в snake-раунде.');
+            const snakeState = (await db.ref(`whitelist/${uid}/snakeState`).once('value')).val() || {};
+            const position = Number(snakeState.position || 1);
+            const raw = prompt('Укажи номер клетки для ловушки (в радиусе 10):', String(Math.min(99, position + 1)));
+            if (raw === null) return;
+            const cell = Number(raw);
+            if (!Number.isInteger(cell) || cell < 2 || cell > 99) return alert('Можно ставить только на клетки 2..99.');
+            if (Math.abs(cell - position) > 10) return alert('Клетка должна быть в радиусе 10 от твоей позиции.');
+            const trapPath = `snake_traps/${roundNum}/${cell}`;
+            const trapRef = db.ref(trapPath);
+            const tx = await trapRef.transaction((row) => {
+                const now=Date.now();
+                if (row && Number(row.expiresAt || 0) > now && row.armed) return;
+                return {
+                    type: trapType,
+                    ownerId: uid,
+                    round: roundNum,
+                    cell,
+                    createdAt: Date.now(),
+                    armed: true,
+                    triggeredBy: '',
+                    triggeredAt: 0,
+                    expiresAt: Date.now() + (24 * 60 * 60 * 1000)
+                };
+            });
+            if (!tx.committed) return alert('На этой клетке уже есть ловушка.');
+            const itemKey = trapType === 'rotten_radish' ? 'rottenRadish' : 'doubleBurdenScroll';
+            const consumed = await tryConsumeSnakeInventoryItem(itemKey);
+            if (!consumed) {
+                await trapRef.remove();
+                return alert('Предмет уже закончился в рюкзаке.');
+            }
+            await postNews(`🕳️ ${players[myIndex].n} установил(а) ловушку в джунглях.`);
+            alert('Ловушка установлена.');
+            });
+        }
+
+        function renderSnakeTrapActionsInBackpack() {
+            const radish = Number(myInventory.rottenRadish || 0);
+            const scroll = Number(myInventory.doubleBurdenScroll || 0);
+            const arcane = Number(myInventory.thiefArcane || 0);
+            return `<div class="snake-shop-grid"><div class="snake-shop-card"><div class="snake-shop-card-title">🥕 Гнилая редиска</div><div class="snake-shop-card-meta">В рюкзаке: ${radish}</div><button class="admin-btn" style="margin:0; width:100%;" ${radish > 0 ? '' : 'disabled'} onclick="placeSnakeTrapFromInventory('rotten_radish')">Поставить ловушку</button></div><div class="snake-shop-card"><div class="snake-shop-card-title">📜 Свиток «Двойное Бремя»</div><div class="snake-shop-card-meta">В рюкзаке: ${scroll}</div><button class="admin-btn" style="margin:0; width:100%;" ${scroll > 0 ? '' : 'disabled'} onclick="placeSnakeTrapFromInventory('double_burden')">Поставить ловушку</button></div><div class="snake-shop-card"><div class="snake-shop-card-title">🗡️ Воровской Аркан</div><div class="snake-shop-card-meta">В рюкзаке: ${arcane}</div><button class="admin-btn" style="margin:0; width:100%;" ${arcane > 0 ? '' : 'disabled'} onclick="startThiefArcaneFromBackpack()">Запустить взлом</button></div></div>`;
+        }
+
+
+        function buildArcaneArrowSequence() {
+            const arrows = ['↑', '↓', '←', '→'];
+            const len = 6 + Math.floor(Math.random() * 3);
+            return Array.from({ length: len }, () => arrows[Math.floor(Math.random() * arrows.length)]);
+        }
+
+        function normalizeArrowKey(key) {
+            const map = {
+                ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+                w: '↑', W: '↑', s: '↓', S: '↓', a: '←', A: '←', d: '→', D: '→'
+            };
+            return map[String(key || '')] || '';
+        }
+
+        async function getSnakeActiveTicketRowsByUserId(userId) {
+            const uid = String(userId || '').trim();
+            if (!uid) return [];
+            const ticketsSnap = await db.ref('tickets').once('value');
+            const revokedSnap = await db.ref('revoked_tickets').once('value');
+            const revoked = revokedSnap.val() || {};
+            const rows = [];
+            ticketsSnap.forEach((item) => {
+                const row = item.val() || {};
+                const num = String(row.ticketNum || row.num || item.key || '').trim();
+                if (!/^\d+$/.test(num)) return;
+                if (String(row.userId || '') !== uid) return;
+                if (revoked[num]) return;
+                const mode = String(row.mode || '');
+                const source = String(row.source || '');
+                if (mode !== 'snake' && !source.startsWith('snake_')) return;
+                rows.push({ key: item.key, num, row });
+            });
+            rows.sort((a,b)=>Number(a.num)-Number(b.num));
+            return rows;
+        }
+
+
+        async function getSnakeVictimArcaneState(victimUid) {
+            const uid = String(victimUid || '').trim();
+            if (!uid) return null;
+            const [userSnap, roundSnap, presenceSnap] = await Promise.all([
+                db.ref(`whitelist/${uid}`).once('value'),
+                db.ref('current_round').once('value'),
+                db.ref('snake_presence').once('value')
+            ]);
+            const user = userSnap.val() || {};
+            const snakeState = user.snakeState || {};
+            const position = Number(snakeState.position || 0);
+            const round = Number(roundSnap.val()?.number || 0);
+            const turnLock = snakeState.turnLock || {};
+            const isInFlight = !!turnLock.inFlight;
+            let lastSeenAt = 0;
+            const byRound = presenceSnap.val() || {};
+            const roundMap = byRound[round] || {};
+            const cellMap = roundMap[position] || {};
+            const row = cellMap[uid] || cellMap[String(uid)] || null;
+            lastSeenAt = Number(row?.lastSeenAt || 0);
+            const isOnline = !!lastSeenAt && (Date.now() - lastSeenAt) <= 60000;
+            const cellKey = `${round}_${position}`;
+            return { uid, snakeState, position, round, cellKey, isInFlight, isOnline };
+        }
+
+        async function markSnakeIncident(userId, payload) {
+            const uid = String(userId || '').trim();
+            if (!uid) return;
+            const key = db.ref(`whitelist/${uid}/incidentLog`).push().key;
+            await db.ref(`whitelist/${uid}/incidentLog/${key}`).set({
+                ...(payload || {}),
+                createdAt: Date.now(),
+                readAt: 0
+            });
+        }
+
+        async function applyPendingStealResolutionsForCurrentUser() {
+            if (snakePendingStealApplyInFlight) return;
+            snakePendingStealApplyInFlight = true;
+            try {
+                return await enqueueSnakeAction('snake_apply_pending_steal', async () => {
+                    const uid = String(currentUserId || '').trim();
+                    if (!uid) return;
+                    const pendingSnap = await db.ref(`whitelist/${uid}/pendingStealResolutions`).once('value');
+                    const pending = pendingSnap.val() || {};
+                    for (const [rid, row] of Object.entries(pending)) {
+                        if (!row || String(row.status || '') !== 'pending') continue;
+                        const ticketRows = await getSnakeActiveTicketRowsByUserId(uid);
+                        const ticket = ticketRows[0] || null;
+                        if (!ticket) {
+                            await db.ref(`whitelist/${uid}/pendingStealResolutions/${rid}/status`).set('skipped_no_ticket');
+                            continue;
+                        }
+                        const burnTx = await db.ref(`revoked_tickets/${ticket.num}`).transaction((v) => v ? v : true);
+                        if (!burnTx.committed) continue;
+                        await db.ref().update({
+                            [`whitelist/${uid}/pendingStealResolutions/${rid}/status`]: 'applied',
+                            [`whitelist/${uid}/pendingStealResolutions/${rid}/appliedAt`]: Date.now(),
+                            [`whitelist/${uid}/pendingStealResolutions/${rid}/burnedTicketNum`]: String(ticket.num)
+                        });
+                        await markSnakeIncident(uid, { type: 'arcane_deferred_loss', text: `Пока ты был(а) оффлайн, с тебя списан билет №${ticket.num} из-за Воровского Аркана.` });
+                    }
+                });
+            } finally {
+                snakePendingStealApplyInFlight = false;
+            }
+        }
+
+        async function startThiefArcaneFromBackpack() {
+            return enqueueSnakeAction('snake_thief_arcane_start', async () => {
+            if (resolveRoundFieldMode(currentRoundData) !== 'snake') return alert('Аркан доступен только в режиме «Змейка».');
+            const myArcane = Number(myInventory.thiefArcane || 0);
+            if (myArcane <= 0) return alert('В рюкзаке нет Воровского Аркана.');
+
+            const myUid = String(currentUserId || '').trim();
+            const roundNum = Number(currentRoundData?.number || 0);
+            if (!myUid || roundNum <= 0) return;
+
+            const myTickets = await getSnakeActiveTicketRowsByUserId(myUid);
+            if (!myTickets.length) return alert('Для Аркана нужен минимум 1 активный snake-билет для ставки.');
+
+            const whitelistSnap = await db.ref('whitelist').once('value');
+            const victims = [];
+            const checks = [];
+            whitelistSnap.forEach((snap) => {
+                const uid = String(snap.key || '').trim();
+                const row = snap.val() || {};
+                if (!uid || uid === myUid) return;
+                const pos = Number(row?.snakeState?.position || 0);
+                if (pos <= 0) return;
+                checks.push((async () => {
+                    const t = await getSnakeActiveTicketRowsByUserId(uid);
+                    if (!t.length) return;
+                    const vState = await getSnakeVictimArcaneState(uid);
+                    if (!vState || Number(vState.position || 0) <= 0) return;
+                    const name = players[Number(row?.charIndex)]?.n || row?.nickname || `ID ${uid}`;
+                    victims.push({ uid, name, ticketCount: t.length, sampleTicket: t[0].num, victimState: vState });
+                })());
+            });
+            await Promise.all(checks);
+            victims.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+            if (!victims.length) return alert('Нет доступных жертв с snake-билетами.');
+
+            const optionsText = victims.map((v, i) => `${i + 1} — ${v.name} (билеты: ${v.ticketCount})`).join('\n');
+            const pickRaw = prompt(`Выбери жертву для Аркана:
+${optionsText}
+
+Введи номер:`, '1');
+            if (pickRaw === null) return;
+            const pick = Number(pickRaw);
+            if (!Number.isInteger(pick) || pick < 1 || pick > victims.length) return alert('Некорректный выбор жертвы.');
+            const victim = victims[pick - 1];
+            const victimState = victim.victimState || await getSnakeVictimArcaneState(victim.uid);
+            if (!victimState) return alert('Жертва недоступна.');
+            if (victimState.isInFlight) return alert('Нельзя грабить игрока во время активного хода.');
+            if (!victimState.isOnline) {
+                const pendingSnap = await db.ref(`whitelist/${victim.uid}/pendingStealResolutions`).once('value');
+                const hasPending = Object.values(pendingSnap.val() || {}).some((row) => row && String(row.status || '') === 'pending');
+                if (hasPending) return alert('Этого оффлайн-игрока уже ожидает одно оффлайн-ограбление. Больше нельзя до его входа.');
+            }
+            const guardPath = `snake_robbery_cell_guard/${victimState.round}/${victimState.position}/${victim.uid}`;
+            const guardTx = await db.ref(guardPath).transaction((v) => v ? undefined : { by: myUid, at: Date.now() });
+            if (!guardTx.committed) return alert('На этой клетке этого игрока уже пытались ограбить.');
+
+            const consumed = await tryConsumeSnakeInventoryItem('thiefArcane');
+            if (!consumed) return alert('Аркан уже закончился в рюкзаке.');
+
+            const stake = myTickets[0];
+            const sessionRef = db.ref('snake_arcane_sessions').push();
+            const sessionId = String(sessionRef.key || '').trim();
+            const sequence = buildArcaneArrowSequence();
+            const sessionPayload = {
+                sessionId,
+                status: 'pending',
+                createdAt: Date.now(),
+                round: roundNum,
+                attackerId: myUid,
+                victimId: victim.uid,
+                victimCellKey: victimState.cellKey,
+                victimCellPos: Number(victimState.position || 0),
+                victimRound: Number(victimState.round || 0),
+                victimWasOnline: !!victimState.isOnline,
+                stakeTicketNum: String(stake.num),
+                sequence,
+                timeLimitMs: 5000,
+                result: '',
+                finalizedAt: 0,
+                finalizedBy: '',
+                finalizedRequestId: '',
+                transferTicketNum: '',
+                burnedTicketNum: ''
+            };
+            await sessionRef.set(sessionPayload);
+            await openSnakeArcaneHackModal(sessionPayload, victim);
+            });
+        }
+
+        async function finalizeSnakeArcaneSession(sessionId, success) {
+            return enqueueSnakeAction('snake_finalize_arcane', async () => {
+            const sid = String(sessionId || '').trim();
+            if (!sid) return;
+            const myUid = String(currentUserId || '').trim();
+            const requestId = `${myUid}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+            const sessionRef = db.ref(`snake_arcane_sessions/${sid}`);
+            let sessionRow = null;
+            const lockTx = await sessionRef.transaction((row) => {
+                if (!row || String(row.status || '') !== 'pending') return row;
+                if (String(row.attackerId || '') !== myUid) return row;
+                return { ...row, status: 'finalizing', finalizedBy: myUid, finalizedRequestId: requestId, finalizedAt: Date.now(), result: success ? 'success' : 'fail' };
+            });
+            if (!lockTx.committed) return alert('Сессия уже завершена или недоступна.');
+            sessionRow = lockTx.snapshot?.val?.() || {};
+
+            const attackerId = String(sessionRow.attackerId || '');
+            const victimId = String(sessionRow.victimId || '');
+            const stakeNum = String(sessionRow.stakeTicketNum || '');
+            let transferTicketNum = '';
+            let burnedTicketNum = '';
+            let resolvedSuccess = !!success;
+
+            if (success && !!sessionRow.victimWasOnline) {
+                const victimTickets = await getSnakeActiveTicketRowsByUserId(victimId);
+                const victimCandidate = victimTickets[0] || null;
+                if (!victimCandidate) {
+                    resolvedSuccess = false;
+                } else {
+                    const victimTicketRef = db.ref(`tickets/${victimCandidate.num}`);
+                    const tx = await victimTicketRef.transaction((row) => {
+                        if (!row || String(row.userId || '') !== victimId) return;
+                        const next = { ...row, userId: attackerId, owner: Number(myIndex), transferredByArcaneSession: sid, updatedAt: Date.now() };
+                        return next;
+                    });
+                    if (tx.committed) {
+                        transferTicketNum = String(victimCandidate.num);
+                        const moved = tx.snapshot?.val?.() || {};
+                        const updates = {};
+                        updates[`users/${victimId}/tickets/${transferTicketNum}`] = null;
+                        updates[`users/${attackerId}/tickets/${transferTicketNum}`] = moved;
+                        await db.ref().update(updates);
+                    } else {
+                        resolvedSuccess = false;
+                    }
+                }
+            }
+
+            if (success && !sessionRow.victimWasOnline) {
+                const pendingRef = db.ref(`whitelist/${victimId}/pendingStealResolutions`);
+                const pendingSnap = await pendingRef.once('value');
+                const hasPending = Object.values(pendingSnap.val() || {}).some((row) => row && String(row.status || '') === 'pending');
+                if (hasPending) {
+                    resolvedSuccess = false;
+                } else {
+                    await db.ref(`whitelist/${victimId}/pendingStealResolutions/${sid}`).set({ status: 'pending', fromUserId: attackerId, createdAt: Date.now(), reason: 'arcane_offline_deferred' });
+                    await markSnakeIncident(victimId, { type: 'arcane_attempt_offline', text: 'Пока ты был(а) оффлайн, против тебя применили Воровской Аркан.' });
+                }
+            }
+
+            if (!resolvedSuccess) {
+                const burnTx = await db.ref(`revoked_tickets/${stakeNum}`).transaction((v) => v ? v : true);
+                if (burnTx.committed) burnedTicketNum = stakeNum;
+            }
+
+            await sessionRef.update({
+                status: 'resolved',
+                result: resolvedSuccess ? 'success' : 'fail',
+                transferTicketNum,
+                burnedTicketNum,
+                resolvedAt: Date.now(),
+                finalizedRequestId: requestId,
+                sideEffectsApplied: true
+            });
+
+            if (resolvedSuccess) {
+                await postNews(`🗡️ ${players[myIndex].n} успешно применил(а) Воровской Аркан и украл(а) билет №${transferTicketNum}.`);
+                await markSnakeIncident(attackerId, { type: 'arcane_win', text: `Успех Аркана: получен билет №${transferTicketNum}.` });
+                await markSnakeIncident(victimId, { type: 'arcane_lost', text: sessionRow.victimWasOnline ? 'Кто-то ограбил тебя через Воровской Аркан.' : 'Кто-то пытался ограбить тебя (оффлайн-режим Аркана).' });
+                alert(`Успех! Ты сохранил(а) ставку и получил(а) билет №${transferTicketNum}.`);
+            } else {
+                await postNews(`🗡️ ${players[myIndex].n} провалил(а) Воровской Аркан. Сгорел билет №${burnedTicketNum || stakeNum}.`);
+                await markSnakeIncident(attackerId, { type: 'arcane_fail', text: `Провал Аркана: сгорел билет №${burnedTicketNum || stakeNum}.` });
+                await markSnakeIncident(victimId, { type: 'arcane_defended', text: 'Кто-то пытался тебя ограбить, но ты отбился.' });
+                alert(`Провал. Сгорел твой билет №${burnedTicketNum || stakeNum}.`);
+            }
+            });
+        }
+
+        async function openSnakeArcaneHackModal(sessionRow, victim) {
+            const sequence = Array.isArray(sessionRow?.sequence) ? sessionRow.sequence : buildArcaneArrowSequence();
+            const timeLimitMs = Number(sessionRow?.timeLimitMs || 5000);
+            const sid = String(sessionRow?.sessionId || '');
+            const victimName = victim?.name || 'Жертва';
+            let progress = [];
+            let finished = false;
+
+            const finish = async (ok) => {
+                if (finished) return;
+                finished = true;
+                window.__snakeArcaneOnKeyDown && window.removeEventListener('keydown', window.__snakeArcaneOnKeyDown);
+                window.__snakeArcaneOnKeyDown = null;
+                await finalizeSnakeArcaneSession(sid, !!ok);
+                closeModal();
+            };
+
+            document.getElementById('mTitle').textContent = `🗡️ Змеиный взлом · ${victimName}`;
+            document.getElementById('mText').innerHTML = `<div style="font-size:12px; color:#555;">Повтори последовательность за 5 секунд.</div>
+            <div id="arcane-seq" style="margin-top:8px; font-size:24px; letter-spacing:6px; text-align:center;">${sequence.join(' ')}</div>
+            <div id="arcane-progress" style="margin-top:8px; font-size:20px; text-align:center; color:#6a1b9a;">—</div>
+            <div id="arcane-timer" style="margin-top:8px; font-size:13px; text-align:center;">⏳ 5.0s</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px;">
+              <button class="admin-btn" style="margin:0;" onclick="window.__snakeArcaneInput('↑')">↑</button>
+              <button class="admin-btn" style="margin:0;" onclick="window.__snakeArcaneInput('→')">→</button>
+              <button class="admin-btn" style="margin:0;" onclick="window.__snakeArcaneInput('←')">←</button>
+              <button class="admin-btn" style="margin:0;" onclick="window.__snakeArcaneInput('↓')">↓</button>
+            </div>`;
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+            setSnakeCriticalUiLock('snake_arcane');
+
+            const startedAt = Date.now();
+            const timerId = setInterval(() => {
+                if (finished) {
+                    clearInterval(timerId);
+                    return;
+                }
+                const left = Math.max(0, timeLimitMs - (Date.now() - startedAt));
+                const timerEl = document.getElementById('arcane-timer');
+                if (timerEl) timerEl.textContent = `⏳ ${(left / 1000).toFixed(1)}s`;
+                if (left <= 0) {
+                    clearInterval(timerId);
+                    finish(false);
+                }
+            }, 100);
+
+            const pushInput = (arrow) => {
+                if (finished) return;
+                const expected = sequence[progress.length];
+                if (arrow !== expected) {
+                    finish(false);
+                    return;
+                }
+                progress.push(arrow);
+                const progressEl = document.getElementById('arcane-progress');
+                if (progressEl) progressEl.textContent = progress.join(' ');
+                if (progress.length >= sequence.length) {
+                    finish(true);
+                }
+            };
+
+            window.__snakeArcaneInput = pushInput;
+            window.__snakeArcaneOnKeyDown = (ev) => {
+                const arrow = normalizeArrowKey(ev.key);
+                if (!arrow) return;
+                ev.preventDefault();
+                pushInput(arrow);
+            };
+            window.addEventListener('keydown', window.__snakeArcaneOnKeyDown);
+        }
+
+        async function refreshSnakeSmugglerPresence(userState = null) {
+            const isSnakeMode = resolveRoundFieldMode(currentRoundData) === 'snake';
+            if (!isSnakeMode || !currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
+            const shop = getSnakeShopWindowState();
+            const ref = db.ref('snake_smuggler/current');
+            if (!shop.isOpen) {
+                const existing = (await ref.once('value')).val() || null;
+                if (existing) await ref.remove();
+                return;
+            }
+            const now = Date.now();
+            const row = (await ref.once('value')).val() || null;
+            let current = row;
+            if (!row || String(row.windowId || '') !== String(shop.windowId || '') || String(row.dayKey || '') !== String(getMskNowParts().dayKey || '')) {
+                const roundNum = Number(currentRoundData?.number || 0);
+                const pos = 2 + Math.floor(Math.random() * 98);
+                const boardSnap = await db.ref('board').once('value');
+                const board = boardSnap.val() || {};
+                const eligible = {};
+                Object.values(board).forEach((c) => {
+                    if (!c || String(c.mode || '') !== 'snake') return;
+                    if (Number(c.pathPos || 0) !== pos) return;
+                    if (c.userId) eligible[String(c.userId)] = true;
+                });
+                current = {
+                    position: pos,
+                    spawnedAt: now,
+                    expiresAt: now + (30 * 60 * 1000),
+                    discountPercent: 20,
+                    eligible,
+                    round: roundNum,
+                    windowId: String(shop.windowId || ''),
+                    dayKey: getMskNowParts().dayKey
+                };
+                await ref.set(current);
+            }
+            const userPos = Number((userState?.snakeState?.position) || (await db.ref(`whitelist/${currentUserId}/snakeState/position`).once('value')).val() || 0);
+            if (userPos === Number(current.position || 0) && !current?.eligible?.[String(currentUserId)]) {
+                await db.ref(`snake_smuggler/current/eligible/${currentUserId}`).set(true);
+            }
+        }
+
+        function calcSnakeShopPrice(itemKey, useSmugglerDiscount = false) {
+            const base = Number(SNAKE_SHOP_ITEMS[itemKey]?.price || 0);
+            if (!useSmugglerDiscount) return base;
+            return Math.ceil(base * 0.8);
+        }
         function updateTimerDisplay() {
             if (window.timerInt) clearInterval(window.timerInt);
             const btn = document.getElementById('dice-btn');
@@ -1445,6 +2223,7 @@ const JSON_URL = 'tasks.json';
                     btn.disabled = true;
                     btn.innerText = "⏳ Раунд завершен";
                     hideSnakeStatusBlock();
+                    renderSnakeShopControls();
                     await postRoundEndNewsIfNeeded(currentRoundNum);
                     await handleMiniGameRoundFailure();
                     return;
@@ -1460,6 +2239,7 @@ const JSON_URL = 'tasks.json';
                     btn.disabled = true;
                     btn.innerText = "🔒 Нет доступа";
                     hideSnakeStatusBlock();
+                    renderSnakeShopControls();
                     return;
                 }
 
@@ -1474,6 +2254,7 @@ const JSON_URL = 'tasks.json';
 
                 const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
                 const userState = userStateSnap.val() || {};
+                applyPendingStealResolutionsForCurrentUser().catch(() => {});
                 if (userState.isEliminated) {
                     myRoundHasMove = true;
                     btn.disabled = true;
@@ -1490,6 +2271,7 @@ const JSON_URL = 'tasks.json';
                 btn.disabled = myRoundHasMove;
                 btn.innerText = btn.disabled ? "🎲 Ход сделан" : "🎲 Бросить кубик";
                 if (isSnakeMode) {
+                    showIncidentSummaryOnPowerWindowEntry().catch(() => {});
                     const snakeRollState = getSnakeRollDisabledReason({
                         userState,
                         duelLockActive,
@@ -1501,6 +2283,9 @@ const JSON_URL = 'tasks.json';
                     btn.disabled = true;
                 }
                 await renderSnakeStatusBlock(userState);
+                refreshSnakeSmugglerPresence(userState).catch(() => {});
+                renderSnakeShopControls();
+                refreshSnakePendingIndicator().catch(() => {});
                 window.updateEventUiState?.();
             }, 1000);
         }
@@ -1859,8 +2644,8 @@ const JSON_URL = 'tasks.json';
                     txReason = 'sphinx_locked';
                     return;
                 }
-                const forbiddenFruitWaitUntil = Number(state.forbiddenFruitWaitUntil || 0);
-                if (forbiddenFruitWaitUntil > Date.now()) {
+                const cyclesLeft = getForbiddenFruitCyclesRemaining(state, Date.now());
+                if (cyclesLeft > 0) {
                     txReason = 'forbidden_fruit_wait';
                     return;
                 }
@@ -2007,6 +2792,8 @@ const JSON_URL = 'tasks.json';
         }
 
         async function roll() {
+            return enqueueSnakeAction('roll', async () => {
+                setSnakeCriticalUiLock('snake_roll');
             const rollTrace = (label, payload) => {
                 if (payload === undefined) {
                     console.info(`[ROLL] ${label}`);
@@ -2031,6 +2818,7 @@ const JSON_URL = 'tasks.json';
             try {
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
+                applyPendingStealResolutionsForCurrentUser().catch(() => {});
             if (userState.isEliminated) return alert('Ты подтвердил(а) выход из игры и больше не участвуешь в следующих раундах.');
 
             const currentRoundSnap = await db.ref('current_round').once('value');
@@ -2074,11 +2862,13 @@ const JSON_URL = 'tasks.json';
                     snakeState = refreshSnakeState;
                 }
 
-                const forbiddenFruitWaitUntil = Number(snakeState.forbiddenFruitWaitUntil || 0);
-                if (forbiddenFruitWaitUntil > Date.now()) {
-                    const waitHours = Math.max(1, Math.ceil((forbiddenFruitWaitUntil - Date.now()) / (60 * 60 * 1000)));
-                    return alert(`🍎 Запретный плод: ожидание после сдачи работы ещё ~${waitHours} ч. Пока бросок недоступен.`);
+                const fruitCyclesLeft = getForbiddenFruitCyclesRemaining(snakeState, Date.now());
+                if (fruitCyclesLeft > 0) {
+                    return alert(`🍎 Запретный плод: нужно пропустить ещё ${fruitCyclesLeft} полн. цикла(ов) окон.`);
                 }
+
+                const powerGuard = canRollInCurrentPowerWindow(snakeState);
+                if (!powerGuard.ok) return alert(powerGuard.text || 'Сейчас не окно силы.');
 
                 const rollRequestId = buildSnakeRollRequestId(currentUserId);
                 activeSnakeRollRequestId = rollRequestId;
@@ -2091,7 +2881,7 @@ const JSON_URL = 'tasks.json';
                     if (reserve.reason === 'awaiting_approval') return alert('Сначала дождись одобрения текущей работы админом.');
                     if (reserve.reason === 'sphinx_locked') return alert('Испытание Сфинкса ещё не завершено.');
                     if (reserve.reason === 'shedding_locked') return alert('Сброс кожи пока активен.');
-                    if (reserve.reason === 'forbidden_fruit_wait') return alert('🍎 Запретный плод: 48 часов ожидания после сдачи работы ещё не прошли.');
+                    if (reserve.reason === 'forbidden_fruit_wait') return alert('🍎 Запретный плод: блокировка по циклам окон ещё активна.');
                     if (reserve.reason === 'lock_in_flight') return alert('Подожди, предыдущий бросок ещё обрабатывается.');
                     if (reserve.reason === 'already_processed') return;
                     return alert('Не удалось начать ход. Попробуй ещё раз.');
@@ -2099,9 +2889,44 @@ const JSON_URL = 'tasks.json';
                 snakeState = reserve.snakeState || snakeState;
 
                 let playerKarma = Number((await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value')).val() || 0);
-                let dice = 1 + Math.floor(Math.random() * 6);
+                let diceSource = 'normal';
+                let forcedDice = null;
+                const fateCount = Number(myInventory.fateBone || 0);
+                const windCount = Number(myInventory.windBreath || 0);
+                if (fateCount > 0 || windCount > 0) {
+                    const useSpecial = prompt(`Выбери тип броска:
+0 — обычный
+1 — Кость Судьбы (x${fateCount})
+2 — Дыхание Ветра (x${windCount})`, '0');
+                    if (useSpecial === '1' && fateCount > 0) {
+                        const picked = Number(prompt('Выбери число от 1 до 6', '6'));
+                        if (Number.isInteger(picked) && picked >= 1 && picked <= 6) {
+                            const consumed = await tryConsumeSnakeInventoryItem('fateBone');
+                            if (consumed) {
+                                diceSource = 'fateBone';
+                                playerKarma = Number((await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value')).val() || 0);
+                                forcedDice = picked;
+                            } else {
+                                alert('Кость Судьбы уже закончилась.');
+                            }
+                        }
+                    } else if (useSpecial === '2' && windCount > 0) {
+                        const first = 1 + Math.floor(Math.random() * 6);
+                        const second = 1 + Math.floor(Math.random() * 6);
+                        alert(`Дыхание Ветра: ${first} + ${second} = ${first + second}`);
+                        const consumed = await tryConsumeSnakeInventoryItem('windBreath');
+                        if (consumed) {
+                            diceSource = 'windBreath';
+                            playerKarma = Number((await db.ref(`player_season_status/${currentUserId}/karma_points`).once('value')).val() || 0);
+                            forcedDice = Math.min(12, first + second);
+                        } else {
+                            alert('Дыхание Ветра уже закончилось.');
+                        }
+                    }
+                }
+                let dice = Number.isFinite(forcedDice) ? Number(forcedDice) : (1 + Math.floor(Math.random() * 6));
                 let usedReroll = false;
-                if (playerKarma >= 15) {
+                if (diceSource === 'normal' && playerKarma >= 15) {
                     const doReroll = confirm(`Выпало ${dice}. Потратить 15 кармы на «Второе дыхание» и перебросить кубик?`);
                     if (doReroll) {
                         await updateKarma(currentUserId, -15);
@@ -2122,21 +2947,79 @@ const JSON_URL = 'tasks.json';
                 const rankName = window.karmaSystem?.getKarmaRank ? window.karmaSystem.getKarmaRank(playerKarma) : '';
                 const isCreatorRank = String(rankName).includes('Творец Миров');
                 const negativeTrapTypes = new Set(['snake', 'maelstrom', 'kaa', 'sphinx', 'shedding']);
+                let scaleShieldedCell = false;
+                let jungleImmunityUsed = false;
+                let appliedNegativeEffectThisRoll = false;
+                const jungleImmunityPending = !!snakeState.jungleImmunityPending;
 
                 if (String(effect.type) === 'kaa' && isCreatorRank) {
                     effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, text: '🛡️ Твой ранг «Творец Миров» защитил от гипноза Каа.' };
                     nextPos = baseNextPos;
                     alert('Твой ранг «Творец Миров» защитил от гипноза Каа!');
-                } else if (negativeTrapTypes.has(String(effect.type || '')) && playerKarma >= 30) {
-                    const useAmulet = confirm(`Попадание на ловушку (${effect.text || effect.type}). Потратить 30 кармы на Защитный амулет и игнорировать эффект?`);
-                    if (useAmulet) {
-                        await updateKarma(currentUserId, -30);
-                        playerKarma = Math.max(0, playerKarma - 30);
-                        effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, lockSphinx: false, lockUntil: null, text: '🛡️ Защитный амулет нейтрализовал ловушку.' };
+                } else if (negativeTrapTypes.has(String(effect.type || ''))) {
+                    const consumedScale = await tryConsumeSnakeInventoryItem('greatPythonScale');
+                    if (consumedScale) {
+                        scaleShieldedCell = true;
+                        effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, lockSphinx: false, lockUntil: null, text: '🛡️ Чешуя Великого Полоза нейтрализовала всю угрозу клетки.' };
                         nextPos = baseNextPos;
-                        alert('Защитный амулет сработал: негативный эффект отменён.');
+                        alert('Чешуя Великого Полоза сработала: негативный эффект полностью отменён.');
+                    } else if (jungleImmunityPending) {
+                        jungleImmunityUsed = true;
+                        effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, lockSphinx: false, lockUntil: null, text: '🌿 Иммунитет джунглей поглотил негативный эффект.' };
+                        nextPos = baseNextPos;
+                        alert('🌿 Иммунитет джунглей сработал: негативный эффект поглощён.');
+                    } else if (playerKarma >= 30) {
+                        const useAmulet = confirm(`Попадание на ловушку (${effect.text || effect.type}). Потратить 30 кармы на Защитный амулет и игнорировать эффект?`);
+                        if (useAmulet) {
+                            await updateKarma(currentUserId, -30);
+                            playerKarma = Math.max(0, playerKarma - 30);
+                            effect = { ...effect, type: 'normal', to: baseNextPos, invertNextRoll: false, lockSphinx: false, lockUntil: null, text: '🛡️ Защитный амулет нейтрализовал ловушку.' };
+                            nextPos = baseNextPos;
+                            alert('Защитный амулет сработал: негативный эффект отменён.');
+                        }
                     }
+                    if (negativeTrapTypes.has(String(effect.type || ''))) appliedNegativeEffectThisRoll = true;
                 }
+
+                const roundIdForTrap = Number(currentRound.number || 0);
+                const trapPath = `snake_traps/${roundIdForTrap}/${nextPos}`;
+                const trapTx = await db.ref(trapPath).transaction((row) => {
+                    if (!row || !row.armed) return row;
+                    if (Number(row.expiresAt || 0) <= Date.now()) return null;
+                    return { ...row, armed: false, triggeredBy: String(currentUserId || ''), triggeredAt: Date.now() };
+                });
+                const trapRow = trapTx.snapshot?.val?.() || null;
+                const trapTriggered = !!(trapTx.committed && trapRow && !trapRow.armed && String(trapRow.triggeredBy || '') === String(currentUserId || ''));
+                let doubleBurdenBonusTaskIdx = null;
+                if (trapTriggered) {
+                    const trapType = String(trapRow.type || '');
+                    const consumedScaleOnTrap = scaleShieldedCell ? false : await tryConsumeSnakeInventoryItem('greatPythonScale');
+                    if (scaleShieldedCell || consumedScaleOnTrap) {
+                        alert('Чешуя Великого Полоза поглотила ловушку.');
+                    } else if (jungleImmunityPending && !jungleImmunityUsed) {
+                        jungleImmunityUsed = true;
+                        alert('🌿 Иммунитет джунглей поглотил ловушку.');
+                    } else if (trapType === 'rotten_radish') {
+                        appliedNegativeEffectThisRoll = true;
+                        snakeState = { ...snakeState, forbiddenFruitSkipPending: true, skipNextTurn: true };
+                        alert('🥕 Гнилая редиска: следующий ход будет пропущен.');
+                        await markSnakeIncident(String(trapRow.ownerId || ''), { type: 'trap_radish_triggered', actorName: players[myIndex]?.n || '', text: `На твою Редиску наступил(а) ${players[myIndex]?.n || 'игрок'}.` });
+                    } else if (trapType === 'double_burden') {
+                        appliedNegativeEffectThisRoll = true;
+                        const bonusPick = pickSnakeTaskForPlayer(snakeState, currentRound.number);
+                        doubleBurdenBonusTaskIdx = Number(bonusPick.taskIdx || 0);
+                        snakeState = { ...snakeState, usedTaskIds: bonusPick.usedTaskIds };
+                        alert('📜 Ловушка «Двойное Бремя»: получено дополнительное задание.');
+                        await markSnakeIncident(String(trapRow.ownerId || ''), { type: 'trap_scroll_triggered', actorName: players[myIndex]?.n || '', text: `Твой Свиток сработал на ${players[myIndex]?.n || 'игроке'}.` });
+                    }
+                    await db.ref(trapPath).remove();
+                }
+
+                const baseNegativeApplied = isNegativeSnakeEffectType(effect.type);
+                if (baseNegativeApplied) appliedNegativeEffectThisRoll = true;
+                const previousNegativeChain = Math.max(0, Number(snakeState.consecutiveNegativeEffects || 0));
+                const nextNegativeChain = appliedNegativeEffectThisRoll ? (previousNegativeChain + 1) : 0;
+                const shouldGrantJungleImmunity = !jungleImmunityUsed && nextNegativeChain >= 2;
 
                 const boardSnapSnake = await db.ref('board').once('value');
                 const boardSnake = boardSnapSnake.val() || {};
@@ -2198,7 +3081,8 @@ const JSON_URL = 'tasks.json';
                         isSphinxTrial: String(effect.type || '') === 'sphinx',
                         taskLabel: String(effect.type || '') === 'sphinx'
                             ? '🗿 Испытание Сфинкса: сложное супер-задание (бросок кубика заблокирован до одобрения)'
-                            : ''
+                            : (Number.isInteger(doubleBurdenBonusTaskIdx) ? `📜 Двойное Бремя: основное + бонусное задание (#${doubleBurdenBonusTaskIdx})` : ''),
+                        bonusTaskIdx: Number.isInteger(doubleBurdenBonusTaskIdx) ? Number(doubleBurdenBonusTaskIdx) : null
                     },
                     currentAssignmentId: `${currentRound.number}_${nextPos}_${taskIdx}`,
                     usedTaskIds: taskPick.usedTaskIds,
@@ -2215,16 +3099,22 @@ const JSON_URL = 'tasks.json';
                     sheddingResolvedBy: String(effect.type || '') === 'shedding' ? '' : null,
                     movedAt: Date.now(),
                     lastCellEnteredAt: Date.now(),
-                    skipNextTurn: false,
+                    skipNextTurn: !!snakeState.skipNextTurn,
+                    consecutiveNegativeEffects: Math.max(0, nextNegativeChain),
+                    jungleImmunityPending: shouldGrantJungleImmunity,
+                    jungleImmunityConsumedAt: jungleImmunityUsed ? Date.now() : Number(snakeState.jungleImmunityConsumedAt || 0),
                     forbiddenFruitActive: false,
                     forbiddenFruitAccepted: false,
                     forbiddenFruitGrantedAt: 0,
-                    forbiddenFruitSkipPending: false,
+                    forbiddenFruitSkipPending: !!snakeState.forbiddenFruitSkipPending,
                     forbiddenFruitConsumedAt: Number(snakeState.forbiddenFruitConsumedAt || 0),
                     forbiddenFruitChoice: '',
                     forbiddenFruitAwaitingSubmission: false,
                     forbiddenFruitWaitUntil: 0,
                     forbiddenFruitWaitStartedAt: 0,
+                    forbiddenFruitBlockStartCycle: Number(snakeState.forbiddenFruitBlockStartCycle || 0),
+                    forbiddenFruitBlockUntilCycle: Number(snakeState.forbiddenFruitBlockUntilCycle || 0),
+                    forbiddenFruitBlockedWindowCycles: Number(snakeState.forbiddenFruitBlockedWindowCycles || 0),
                     lastRollRequestId: rollRequestId,
                     lastProcessedRequestId: rollRequestId,
                     turnLock: {
@@ -2234,11 +3124,15 @@ const JSON_URL = 'tasks.json';
                         lockedAt: nowTs,
                         completedAt: nowTs
                     },
+                    powerWindowDayMsk: getCurrentPowerWindowMsk().dayKey,
+                    selectedPowerWindowId: getCurrentPowerWindowMsk().activeWindowId,
+                    firstPowerRollAt: (String(snakeState.powerWindowDayMsk || '') === String(getCurrentPowerWindowMsk().dayKey || '')) ? Number(snakeState.firstPowerRollAt || Date.now()) : Date.now(),
                     rollMeta: {
                         usedReroll,
                         baseDice: usedReroll ? null : dice,
                         finalDice: dice,
-                        spentOnReroll: usedReroll ? 15 : 0
+                        spentOnReroll: usedReroll ? 15 : 0,
+                        diceSource
                     },
                     masterTrapVisionEnabled: playerKarma >= 90,
                     masterTrapVisionSource: playerKarma >= 90 ? {
@@ -2252,6 +3146,10 @@ const JSON_URL = 'tasks.json';
                         }
                     } : null
                 };
+
+                if (shouldGrantJungleImmunity) {
+                    alert('🌿 Иммунитет джунглей активирован: следующий негативный эффект будет поглощён.');
+                }
 
                 for (const other of othersOnCell) {
                     const otherUserId = String(other.userId || '').trim();
@@ -2349,7 +3247,7 @@ const JSON_URL = 'tasks.json';
                 }
 
                 if (String(effect.type) === 'forbiddenFruit') {
-                    const accepted = confirm('🍎 Запретный плод: получить +20 кармы сейчас и активировать паузу 48 часов после принятия текущей работы?');
+                    const accepted = confirm('🍎 Запретный плод: получить +20 кармы сейчас и после принятия текущей работы пропустить 2 полных цикла окон силы?');
                     nextSnakeState.forbiddenFruitActive = true;
                     nextSnakeState.forbiddenFruitAccepted = !!accepted;
                     if (accepted) {
@@ -2361,16 +3259,22 @@ const JSON_URL = 'tasks.json';
                         nextSnakeState.forbiddenFruitAwaitingSubmission = true;
                         nextSnakeState.forbiddenFruitWaitUntil = 0;
                         nextSnakeState.forbiddenFruitWaitStartedAt = 0;
+                        nextSnakeState.forbiddenFruitBlockStartCycle = 0;
+                        nextSnakeState.forbiddenFruitBlockUntilCycle = 0;
+                        nextSnakeState.forbiddenFruitBlockedWindowCycles = 0;
                         nextSnakeState.forbiddenFruitSkipPending = false;
                         nextSnakeState.skipNextTurn = false;
                         nextSnakeState.forbiddenFruitConsumedAt = 0;
-                        alert('🍎 Ты выбрал(а) +20 к карме. Сдай работу по текущему заданию. После принятия работы останешься на этой клетке и не сможешь бросать кубик 48 часов. Потом игра продолжится.');
+                        alert('🍎 Ты выбрал(а) +20 к карме. Сдай работу по текущему заданию. После принятия работы нужно будет пропустить 2 полных цикла окон силы.');
                     } else {
                         nextSnakeState.forbiddenFruitGrantedAt = 0;
                         nextSnakeState.forbiddenFruitChoice = '';
                         nextSnakeState.forbiddenFruitAwaitingSubmission = false;
                         nextSnakeState.forbiddenFruitWaitUntil = 0;
                         nextSnakeState.forbiddenFruitWaitStartedAt = 0;
+                        nextSnakeState.forbiddenFruitBlockStartCycle = 0;
+                        nextSnakeState.forbiddenFruitBlockUntilCycle = 0;
+                        nextSnakeState.forbiddenFruitBlockedWindowCycles = 0;
                         nextSnakeState.forbiddenFruitSkipPending = false;
                         nextSnakeState.skipNextTurn = false;
                         nextSnakeState.forbiddenFruitConsumedAt = Date.now();
@@ -2400,6 +3304,8 @@ const JSON_URL = 'tasks.json';
                     rollRequestId,
                     status: 'assigned',
                     rewardGranted: false,
+                    bonusTaskIdx: Number.isInteger(doubleBurdenBonusTaskIdx) ? Number(doubleBurdenBonusTaskIdx) : null,
+                    approvals: { main: false, bonus: !Number.isInteger(doubleBurdenBonusTaskIdx) },
                     createdAt: nowTs
                 };
                 updates[`rounds/${roundId}/snake/moves/${uid}/${rollRequestId}`] = {
@@ -2579,7 +3485,9 @@ const JSON_URL = 'tasks.json';
                 return;
             } finally {
                 snakeRollInFlight = false;
+                setSnakeCriticalUiLock('');
             }
+            });
         }
 
         async function showSnakeCellInfo(cellPos) {
@@ -3829,7 +4737,14 @@ const JSON_URL = 'tasks.json';
             }
             if (id === 'tab-gallery' && typeof renderGalleryTab === 'function') renderGalleryTab();
         }
-        function closeModal() { document.getElementById('modal').style.display='none'; document.getElementById('overlay').style.display='none'; }
+        function closeModal() {
+            document.getElementById('modal').style.display='none';
+            document.getElementById('overlay').style.display='none';
+            setSnakeCriticalUiLock('');
+            const done = snakeUiActiveDone;
+            snakeUiActiveDone = null;
+            if (typeof done === 'function') done();
+        }
         function openRulesScroll() {
             const btn = document.querySelector('.nav-item[onclick*="tab-rules"]');
             switchTab('tab-rules', btn);
@@ -5357,6 +6272,7 @@ const JSON_URL = 'tasks.json';
 
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
             const userState = userStateSnap.val() || {};
+                applyPendingStealResolutionsForCurrentUser().catch(() => {});
             if (userState.isParticipationBlocked || userState.eliminationReason === 'no_submission') return;
 
             const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
@@ -5519,8 +6435,41 @@ const JSON_URL = 'tasks.json';
                 return alert('Этот билетик вычеркнут из игры, загрузка работы для него недоступна.');
             }
 
+            let snakeAssignmentPart = 'main';
+            let activeSnakeAssignmentId = '';
+            if (String(cell.mode || '') === 'snake') {
+                const snakeStateSnap = await db.ref(`whitelist/${currentUserId}/snakeState`).once('value');
+                const snakeState = snakeStateSnap.val() || {};
+                const activeTask = snakeState.activeTask || {};
+                activeSnakeAssignmentId = String(activeTask.assignmentId || snakeState.currentAssignmentId || '').trim();
+                const assignRound = Number(activeTask.round || cell.round || 0);
+                if (activeSnakeAssignmentId && assignRound > 0) {
+                    const assignment = (await db.ref(`rounds/${assignRound}/snake/assignments/${currentUserId}/${activeSnakeAssignmentId}`).once('value')).val() || {};
+                    const hasBonus = Number.isInteger(Number(assignment.bonusTaskIdx));
+                    const appr = assignment.approvals || {};
+                    const pendingMain = !appr.main;
+                    const pendingBonus = !!hasBonus && !appr.bonus;
+                    if (pendingMain && pendingBonus) {
+                        const pick = prompt(`Какую часть сдаёшь?\n1 — основное задание\n2 — бонусное задание`, '1');
+                        snakeAssignmentPart = pick === '2' ? 'bonus' : 'main';
+                    } else if (pendingBonus && !pendingMain) {
+                        snakeAssignmentPart = 'bonus';
+                    } else {
+                        snakeAssignmentPart = 'main';
+                    }
+                }
+            }
+
             const existing = getLatestSubmissionForCell(cell.round, chosenCellIdx);
-            if (existing?.status === 'pending' || isAcceptedLikeStatus(existing?.status)) {
+            if (String(cell.mode || '') === 'snake' && activeSnakeAssignmentId) {
+                const partExisting = (allSubmissions || [])
+                    .filter((r) => String(r.snakeAssignmentId || '') === activeSnakeAssignmentId && String(r.snakeAssignmentPart || 'main') === snakeAssignmentPart)
+                    .sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0))[0];
+                if (partExisting?.status === 'pending' || isAcceptedLikeStatus(partExisting?.status)) {
+                    refreshUploadStateForSelectedTask();
+                    return alert(partExisting.status === 'pending' ? 'Эта часть задания уже на проверке.' : 'Эта часть задания уже принята.');
+                }
+            } else if (existing?.status === 'pending' || isAcceptedLikeStatus(existing?.status)) {
                 refreshUploadStateForSelectedTask();
                 return alert(existing.status === 'pending' ? 'Работа уже на проверке. Дождись модерации.' : 'Эта работа уже принята. Повторная загрузка заблокирована.');
             }
@@ -5570,6 +6519,7 @@ const JSON_URL = 'tasks.json';
                     payload.snakeRollRequestId = String(snakeState.lastProcessedRequestId || '').trim();
                     payload.isSphinxTrial = !!activeTask.isSphinxTrial;
                     if (activeTask.taskLabel) payload.taskLabel = String(activeTask.taskLabel);
+                    payload.snakeAssignmentPart = snakeAssignmentPart;
                 }
             }
             await db.ref('submissions').push(payload);
@@ -5629,6 +6579,21 @@ const JSON_URL = 'tasks.json';
                     const assignmentRound = Number(row.snakeTaskRound || activeTask.round || row.round || roundData.number || 0);
                     const assignmentPath = assignmentId ? `rounds/${assignmentRound}/snake/assignments/${uid}/${assignmentId}` : '';
                     if (assignmentId && assignmentPath) {
+                        const assignmentBefore = (await db.ref(assignmentPath).once('value')).val() || {};
+                        const submissionPart = String(row.snakeAssignmentPart || 'main');
+                        const approvals = assignmentBefore.approvals || { main: false, bonus: !Number.isInteger(Number(assignmentBefore.bonusTaskIdx)) };
+                        if (submissionPart === 'bonus') approvals.bonus = true; else approvals.main = true;
+                        const bothApproved = !!approvals.main && !!approvals.bonus;
+                        if (!bothApproved) {
+                            await db.ref().update({
+                                [`${assignmentPath}/approvals`]: approvals,
+                                [`${assignmentPath}/status`]: 'partially_approved',
+                                [`${assignmentPath}/approvedAt`]: Date.now(),
+                                [`whitelist/${uid}/snakeState/awaitingApproval`]: true
+                            });
+                            return;
+                        }
+
                         let rewardGrantedNow = false;
                         const rewardTx = await db.ref(assignmentPath).transaction((assignmentRow) => {
                             const current = (assignmentRow && typeof assignmentRow === 'object') ? assignmentRow : {
@@ -5645,6 +6610,7 @@ const JSON_URL = 'tasks.json';
                             rewardGrantedNow = true;
                             return {
                                 ...current,
+                                approvals,
                                 rewardGranted: true,
                                 rewardGrantedAt: Date.now(),
                                 status: 'reward_granted',
@@ -5682,16 +6648,19 @@ const JSON_URL = 'tasks.json';
                             const updates = {};
                             updates[`tickets/${nextTicket}`] = ticketPayload;
                             updates[`users/${uid}/tickets/${nextTicket}`] = ticketPayload;
+                            updates[`${assignmentPath}/approvals`] = approvals;
                             updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
                             updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
                             updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
                             const fruitChoice = String(snakeState.forbiddenFruitChoice || '');
                             const needFruitWait = fruitChoice === 'karma20' && !!snakeState.forbiddenFruitAwaitingSubmission;
                             if (needFruitWait) {
-                                const startedAt = nowTs;
-                                const waitUntil = startedAt + (48 * 60 * 60 * 1000);
-                                updates[`whitelist/${uid}/snakeState/forbiddenFruitWaitStartedAt`] = startedAt;
-                                updates[`whitelist/${uid}/snakeState/forbiddenFruitWaitUntil`] = waitUntil;
+                                const startCycle = Math.max(0, getCurrentPowerWindowCycleIndex(nowTs));
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitWaitStartedAt`] = nowTs;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitWaitUntil`] = 0;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitBlockStartCycle`] = startCycle;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitBlockUntilCycle`] = startCycle + 2;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitBlockedWindowCycles`] = 2;
                                 updates[`whitelist/${uid}/snakeState/forbiddenFruitAwaitingSubmission`] = false;
                                 updates[`whitelist/${uid}/snakeState/forbiddenFruitActive`] = false;
                             }
@@ -5934,6 +6903,103 @@ const JSON_URL = 'tasks.json';
                 syncMasterTrapVisionState(userId, seasonProfileData.karma_points).catch((err) => console.warn('syncMasterTrapVisionState failed', err));
                 updateProfileUI();
             });
+        }
+
+        let incidentLogExpanded = false;
+        let lastIncidentSummaryKey = '';
+
+        function toggleIncidentLogPanel() {
+            incidentLogExpanded = !incidentLogExpanded;
+            renderIncidentLogPanel().catch(() => {});
+        }
+
+        function toggleProfileTicketHistory() {
+            const panel = document.getElementById('profile-ticket-history-panel');
+            const btn = document.getElementById('profile-ticket-history-toggle-btn');
+            if (!panel || !btn) return;
+            const collapsed = panel.style.display === 'none';
+            panel.style.display = collapsed ? 'block' : 'none';
+            btn.textContent = collapsed ? 'Свернуть' : 'Развернуть';
+        }
+
+        async function renderIncidentLogPanel() {
+            const wrap = document.getElementById('profile-incident-log');
+            const btn = document.getElementById('profile-incident-toggle-btn');
+            if (!wrap || !btn) return;
+            if (!incidentLogExpanded) {
+                wrap.style.maxHeight = '0';
+                wrap.classList.remove('expanded');
+                btn.textContent = 'Развернуть';
+                return;
+            }
+            const snap = await db.ref(`whitelist/${currentUserId}/incidentLog`).limitToLast(40).once('value');
+            const rows = [];
+            snap.forEach((item) => rows.push({ id: item.key, ...(item.val() || {}) }));
+            rows.sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
+            wrap.innerHTML = rows.map((r) => `<div style="padding:6px 0; border-bottom:1px dashed #eee;"><div style="font-size:12px; color:#4a148c;">${new Date(Number(r.createdAt||0)).toLocaleString('ru-RU')}</div><div style="font-size:13px;">${String(r.text || 'Событие')}</div></div>`).join('') || '<div style="font-size:12px; color:#777;">Пока пусто.</div>';
+            wrap.style.maxHeight = '35vh';
+            wrap.classList.add('expanded');
+            btn.textContent = 'Свернуть';
+        }
+
+        async function showIncidentSummaryOnPowerWindowEntry() {
+            const power = getCurrentPowerWindowMsk();
+            if (!power.activeWindowId) return;
+            const key = `${power.dayKey}_${power.activeWindowId}`;
+            if (lastIncidentSummaryKey === key) return;
+            const [snap, notifSnap] = await Promise.all([
+                db.ref(`whitelist/${currentUserId}/incidentLog`).limitToLast(20).once('value'),
+                db.ref(`system_notifications/${currentUserId}`).limitToLast(50).once('value')
+            ]);
+            const rows = [];
+            snap.forEach((item) => rows.push(item.val() || {}));
+            const fresh = rows.filter((r) => Number(r.createdAt || 0) > (Date.now() - 24 * 60 * 60 * 1000));
+            const notifs = [];
+            notifSnap.forEach((item) => notifs.push({ key: item.key, ...(item.val() || {}) }));
+            const activeInvite = notifs
+                .filter((n) => String(n.type || '') === 'calligraphy_duel_invite' && !n.acknowledged)
+                .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0] || null;
+            const radishVictims = fresh.filter((r) => String(r.type || '') === 'trap_radish_triggered').map((r) => String(r.actorName || '').trim()).filter(Boolean);
+            const arcaneDefs = fresh.filter((r) => String(r.type || '') === 'arcane_defended').length;
+            const parts = [];
+            if (radishVictims.length) parts.push(`Пока тебя не было, на твою Редиску наступили: ${radishVictims.join(', ')}.`);
+            if (arcaneDefs > 0) parts.push(`Пока тебя не было, попыток ограбления, где ты отбился(ась): ${arcaneDefs}.`);
+            if (activeInvite) parts.push('Есть активный вызов в «Тотемы».');
+            if (!parts.length) {
+                lastIncidentSummaryKey = key;
+                return;
+            }
+            enqueueSnakeUiEvent({
+                key: `recap_${key}`,
+                rank: 3,
+                show: (done) => {
+                    const titleEl = document.getElementById('mTitle');
+                    const textEl = document.getElementById('mText');
+                    const modalEl = document.getElementById('modal');
+                    const overlayEl = document.getElementById('overlay');
+                    if (!titleEl || !textEl || !modalEl || !overlayEl) {
+                        done();
+                        return;
+                    }
+                    titleEl.textContent = '📩 Сводка окна силы';
+                    const goBtn = activeInvite
+                        ? `<button id="snake-recap-go-duel" class="admin-btn" style="margin:8px 0 0; width:100%; background:#6a1b9a;">Перейти к вызову</button>`
+                        : '';
+                    textEl.innerHTML = `<div style="font-size:13px; color:#4a148c; text-align:left;">${parts.map((p) => `• ${p}`).join('<br>')}</div><button id="snake-recap-ok" class="admin-btn" style="margin:8px 0 0; width:100%;">Понятно</button>${goBtn}`;
+                    modalEl.style.display = 'block';
+                    overlayEl.style.display = 'block';
+                    document.getElementById('snake-recap-ok')?.addEventListener('click', () => {
+                        closeModal();
+                    }, { once: true });
+                    document.getElementById('snake-recap-go-duel')?.addEventListener('click', async () => {
+                        if (window.acceptCalligraphyDuel && activeInvite?.duelKey) {
+                            await window.acceptCalligraphyDuel(String(activeInvite.duelKey));
+                        }
+                        closeModal();
+                    }, { once: true });
+                }
+            });
+            lastIncidentSummaryKey = key;
         }
 
         function updateProfileTicketBalance(expandedRows) {
@@ -6277,6 +7343,13 @@ const JSON_URL = 'tasks.json';
         window.adminAdjustKarma = adminAdjustKarma;
 	        window.sendGalleryCompliment = sendGalleryCompliment;
         window.roll = roll;
+        window.openSnakeShopModal = openSnakeShopModal;
+        window.openSnakeBackpackModal = openSnakeBackpackModal;
+        window.snakePurchaseItem = snakePurchaseItem;
+        window.placeSnakeTrapFromInventory = placeSnakeTrapFromInventory;
+        window.startThiefArcaneFromBackpack = startThiefArcaneFromBackpack;
+        window.toggleIncidentLogPanel = toggleIncidentLogPanel;
+        window.toggleProfileTicketHistory = toggleProfileTicketHistory;
 
         // END works.js
 
