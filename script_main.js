@@ -1862,7 +1862,8 @@ const JSON_URL = 'tasks.json';
 
             const currentRoundSnap = await db.ref('current_round').once('value');
             const currentRound = currentRoundSnap.val() || {};
-            if (window.snakeRound?.isSnakeRound?.(currentRound)) {
+            const activeFieldMode = resolveRoundFieldMode(currentRound);
+            if (activeFieldMode === 'snake') {
                 await tryResolveSheddingLockByTimer(currentUserId, userState.snakeState || null);
                 let snakeState = await window.snakeRound.getUserSnakeState(db, currentUserId);
                 if (snakeState.awaitingApproval) return alert('Сначала дождись одобрения текущей работы админом.');
