@@ -193,10 +193,8 @@
     const cols = 10;
     const cells = [];
     for (let row = 0; row < rows; row += 1) {
-      const leftToRight = (row % 2) === 0;
       for (let col = 0; col < cols; col += 1) {
-        const realCol = leftToRight ? col : (cols - 1 - col);
-        const value = (row * cols) + realCol + 1;
+        const value = (row * cols) + col + 1;
         cells.push(value);
       }
     }
