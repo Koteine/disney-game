@@ -594,6 +594,7 @@ const JSON_URL = 'tasks.json';
                 window.addEventListener('resize', () => window.resizeEpicPaintCanvasForPhone?.());
                 window.addEventListener('orientationchange', () => window.resizeEpicPaintCanvasForPhone?.());
                 document.getElementById('work-task-select')?.addEventListener('change', refreshUploadStateForSelectedTask);
+                setRulesSectionState(null);
                 checkAccess();
                 syncData();
                 window.syncGameEvents?.();
@@ -3834,17 +3835,26 @@ const JSON_URL = 'tasks.json';
             switchTab('tab-rules', btn);
         }
 
-        function toggleRulesSection(sectionName) {
+        let activeRulesSection = null;
+        function setRulesSectionState(sectionName) {
             const sections = ['cells', 'snake'];
+            const normalized = sections.includes(sectionName) ? sectionName : null;
+            activeRulesSection = normalized;
             sections.forEach((name) => {
                 const btn = document.getElementById(`rules-section-${name}-btn`);
                 const panel = document.getElementById(`rules-section-${name}`);
-                const active = name === sectionName ? !panel?.classList.contains('active') : panel?.classList.contains('active');
+                const isActive = normalized === name;
                 if (!btn || !panel) return;
-                btn.classList.toggle('active', !!active);
-                panel.classList.toggle('active', !!active);
-                panel.style.display = active ? 'block' : 'none';
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-expanded', String(isActive));
+                panel.classList.toggle('active', isActive);
+                panel.hidden = !isActive;
             });
+        }
+
+        function toggleRulesSection(sectionName) {
+            const nextSection = activeRulesSection === sectionName ? null : sectionName;
+            setRulesSectionState(nextSection);
         }
 
 

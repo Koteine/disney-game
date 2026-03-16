@@ -373,10 +373,10 @@
                     <p style="margin:0;"><b>🃏 Розыгрыш:</b> в конце раунда участвуют все активные билетики и определяется победитель.</p>
                 </div>
                 <div class="rules-accordion" style="margin-top:8px;">
-                    <button id="rules-section-cells-btn" class="rules-accordion-btn active" type="button" onclick="toggleRulesSection('cells')">
+                    <button id="rules-section-cells-btn" class="rules-accordion-btn" type="button" onclick="toggleRulesSection('cells')" aria-expanded="false" aria-controls="rules-section-cells">
                         <span>🧩 Клетки</span><span class="rules-accordion-arrow">▾</span>
                     </button>
-                    <div id="rules-section-cells" class="rules-accordion-panel active" style="display:block; text-align:left;">
+                    <div id="rules-section-cells" class="rules-accordion-panel" style="text-align:left;" hidden>
                         <p><b>🎲 Классическое поле:</b> игрок открывает клетку, получает задание и после принятия работы сохраняет билет в игре.</p>
                         <p><b>🔮 Магическая связь:</b> выдаёт парное задание с другим игроком или сольный магический квест.</p>
                         <p><b>🫧 Капля:</b> специальная клетка с диверсией — задание усложняется и требует особого условия.</p>
@@ -387,10 +387,10 @@
                         <p><b>🫧 Клякса-диверсант:</b> накладывает искажение на работу выбранного игрока.</p>
                     </div>
 
-                    <button id="rules-section-snake-btn" class="rules-accordion-btn" type="button" onclick="toggleRulesSection('snake')">
+                    <button id="rules-section-snake-btn" class="rules-accordion-btn" type="button" onclick="toggleRulesSection('snake')" aria-expanded="false" aria-controls="rules-section-snake">
                         <span>🐍 Змейка</span><span class="rules-accordion-arrow">▾</span>
                     </button>
-                    <div id="rules-section-snake" class="rules-accordion-panel" style="display:none; text-align:left;">
+                    <div id="rules-section-snake" class="rules-accordion-panel" style="text-align:left;" hidden>
                         <p><b>📍 Движение:</b> после броска персонаж смещается по snake-полю на выпавшее значение и получает задание текущей клетки.</p>
                         <p><b>📤 Задание клетки:</b> работа сдаётся во вкладке «Работы», а до модерации бросок недоступен.</p>
                         <p><b>🍎 Запретный плод:</b> можно выбрать +20 кармы; после принятия текущей работы с этим выбором игрок ждёт 48 часов на той же клетке без броска кубика.</p>
