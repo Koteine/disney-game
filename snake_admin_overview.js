@@ -39,6 +39,7 @@
       db,
       currentUserId,
       adminId,
+      charColors = [],
       players = [],
       activeTabId = '',
       cacheState = { fetchedAt: 0, fetching: false, round: 0, mode: '' },
@@ -76,17 +77,27 @@
       }
 
       const roundId = Number(round.number || 0);
-      const [whitelistSnap, clashSnap, synergySnap] = await Promise.all([
+      const [whitelistSnap, clashSnap, synergySnap, boardSnap] = await Promise.all([
         db.ref('whitelist').once('value'),
         db.ref(`snake_clashes/${roundId}`).once('value'),
-        db.ref(`snake_synergy/${roundId}`).once('value')
+        db.ref(`snake_synergy/${roundId}`).once('value'),
+        db.ref('board').once('value')
       ]);
 
       const whitelist = whitelistSnap.val() || {};
       const clashes = clashSnap.val() || {};
       const synergy = synergySnap.val() || {};
+      const board = boardSnap.val() || {};
       const cfg = round.snakeConfig || {};
       const safetyWindowMs = Number(window.snakeRound?.SAFETY_WINDOW_MS || 3600000);
+
+      const boardHtml = `
+        <div class="snake-admin-card">
+          <h4>Поле змейки (единый вид с игроком)</h4>
+          <div class="snake-grid">${window.snakeRound?.buildSnakeBoardHtml?.(board, round, charColors, players, {}) || ''}</div>
+          <div style="font-size:12px; color:#6a1b9a; margin-top:8px;">Клик по клетке показывает число игроков на позиции.</div>
+        </div>
+      `;
 
       const configHtml = `
         <div class="snake-admin-card">
@@ -148,7 +159,11 @@
         </div>
       `;
 
-      body.innerHTML = configHtml + playersHtml + interactionsHtml;
+      body.innerHTML = boardHtml + configHtml + playersHtml + interactionsHtml;
+      body.querySelectorAll('[data-snake-pos]').forEach((btn) => {
+        const pos = Number(btn.getAttribute('data-snake-pos'));
+        btn.onclick = () => window.showSnakeCellInfo?.(pos);
+      });
       return { fetchedAt: now, fetching: false, round: roundId, mode };
     } catch (err) {
       console.warn('snakeAdminOverview render failed', err);

@@ -80,8 +80,7 @@ window.__initTicketsModule = function __initTicketsModule() {
                             });
                             grid.querySelectorAll('[data-snake-pos]').forEach((btn) => {
                                 const pos = Number(btn.getAttribute('data-snake-pos'));
-                                const cellIdx = pos - 1;
-                                btn.onclick = () => showCell(cellIdx, data[cellIdx] || null);
+                                btn.onclick = () => window.showSnakeCellInfo?.(pos);
                             });
                         }
                         Object.entries(data).forEach(([idx, cell]) => {
