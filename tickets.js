@@ -11,6 +11,7 @@ window.__initTicketsModule = function __initTicketsModule() {
             let adminTicketsSubtab = 'player';
             let selectedAdminTicketUserId = null;
             let adminProfileLogRequestId = 0;
+            let boardRenderVersion = 0;
 
             function clearArchiveSubscriptions() {
                 archiveRefs.forEach(ref => ref.off());
@@ -59,8 +60,10 @@ window.__initTicketsModule = function __initTicketsModule() {
 
             function syncTicketData() {
                 db.ref('board').on('value', async snap => {
+                    const renderVersion = ++boardRenderVersion;
                     const data = snap.val() || {};
                     const roundSnap = await db.ref('current_round').once('value');
+                    if (renderVersion !== boardRenderVersion) return;
                     const currentRound = roundSnap.val() || {};
                     const grid = document.getElementById('grid');
                     if (grid) grid.innerHTML = "";
@@ -68,6 +71,7 @@ window.__initTicketsModule = function __initTicketsModule() {
 
                     if (window.snakeRound?.isSnakeRound?.(currentRound)) {
                         const snakeState = currentUserId ? ((await db.ref(`whitelist/${currentUserId}/snakeState`).once('value')).val() || {}) : {};
+                        if (renderVersion !== boardRenderVersion) return;
                         const masterTrapVisionEnabled = !!snakeState.masterTrapVisionEnabled;
                         const dangerPositions = window.snakeRound?.getDangerPositions
                             ? window.snakeRound.getDangerPositions(currentRound?.snakeConfig || {})
