@@ -1333,6 +1333,12 @@ const JSON_URL = 'tasks.json';
             const snakeState = userState?.snakeState || {};
             if (snakeState.awaitingApproval) return { disabled: true, text: '⏳ Сначала дождись одобрения текущей работы', reason: 'awaiting_approval' };
             if (snakeState.lockedBySphinx) return { disabled: true, text: '🗿 Испытание Сфинкса: ожидается одобрение', reason: 'sphinx_lock' };
+            const forbiddenFruitWaitUntil = Number(snakeState.forbiddenFruitWaitUntil || 0);
+            if (forbiddenFruitWaitUntil > Date.now()) {
+                const leftMs = forbiddenFruitWaitUntil - Date.now();
+                const leftHours = Math.max(1, Math.ceil(leftMs / (60 * 60 * 1000)));
+                return { disabled: true, text: `🍎 Запретный плод: ожидание ~${leftHours} ч`, reason: 'forbidden_fruit_wait' };
+            }
             const sheddingActive = !!snakeState.sheddingActive && !snakeState.sheddingReleasedAt;
             const endsAt = Number(snakeState.sheddingEndsAt || snakeState.sheddingLockUntil || 0);
             if (sheddingActive && (!endsAt || endsAt > Date.now())) {
@@ -1852,6 +1858,11 @@ const JSON_URL = 'tasks.json';
                     txReason = 'sphinx_locked';
                     return;
                 }
+                const forbiddenFruitWaitUntil = Number(state.forbiddenFruitWaitUntil || 0);
+                if (forbiddenFruitWaitUntil > Date.now()) {
+                    txReason = 'forbidden_fruit_wait';
+                    return;
+                }
                 if (state.sheddingActive && !state.sheddingReleasedAt) {
                     const endsAt = Number(state.sheddingEndsAt || state.sheddingLockUntil || 0);
                     if (!endsAt || endsAt > Date.now()) {
@@ -2062,9 +2073,10 @@ const JSON_URL = 'tasks.json';
                     snakeState = refreshSnakeState;
                 }
 
-                const fruitSkipState = await consumeForbiddenFruitSkipIfPending(currentUserId);
-                if (fruitSkipState.consumed) {
-                    return alert('🍎 Ход пропущен: сработал эффект «Запретного плода». Следующий бросок снова доступен.');
+                const forbiddenFruitWaitUntil = Number(snakeState.forbiddenFruitWaitUntil || 0);
+                if (forbiddenFruitWaitUntil > Date.now()) {
+                    const waitHours = Math.max(1, Math.ceil((forbiddenFruitWaitUntil - Date.now()) / (60 * 60 * 1000)));
+                    return alert(`🍎 Запретный плод: ожидание после сдачи работы ещё ~${waitHours} ч. Пока бросок недоступен.`);
                 }
 
                 const rollRequestId = buildSnakeRollRequestId(currentUserId);
@@ -2078,6 +2090,7 @@ const JSON_URL = 'tasks.json';
                     if (reserve.reason === 'awaiting_approval') return alert('Сначала дождись одобрения текущей работы админом.');
                     if (reserve.reason === 'sphinx_locked') return alert('Испытание Сфинкса ещё не завершено.');
                     if (reserve.reason === 'shedding_locked') return alert('Сброс кожи пока активен.');
+                    if (reserve.reason === 'forbidden_fruit_wait') return alert('🍎 Запретный плод: 48 часов ожидания после сдачи работы ещё не прошли.');
                     if (reserve.reason === 'lock_in_flight') return alert('Подожди, предыдущий бросок ещё обрабатывается.');
                     if (reserve.reason === 'already_processed') return;
                     return alert('Не удалось начать ход. Попробуй ещё раз.');
@@ -2207,6 +2220,10 @@ const JSON_URL = 'tasks.json';
                     forbiddenFruitGrantedAt: 0,
                     forbiddenFruitSkipPending: false,
                     forbiddenFruitConsumedAt: Number(snakeState.forbiddenFruitConsumedAt || 0),
+                    forbiddenFruitChoice: '',
+                    forbiddenFruitAwaitingSubmission: false,
+                    forbiddenFruitWaitUntil: 0,
+                    forbiddenFruitWaitStartedAt: 0,
                     lastRollRequestId: rollRequestId,
                     lastProcessedRequestId: rollRequestId,
                     turnLock: {
@@ -2331,7 +2348,7 @@ const JSON_URL = 'tasks.json';
                 }
 
                 if (String(effect.type) === 'forbiddenFruit') {
-                    const accepted = confirm('🍎 Запретный плод: получить +20 кармы сейчас и пропустить следующий ход?');
+                    const accepted = confirm('🍎 Запретный плод: получить +20 кармы сейчас и активировать паузу 48 часов после принятия текущей работы?');
                     nextSnakeState.forbiddenFruitActive = true;
                     nextSnakeState.forbiddenFruitAccepted = !!accepted;
                     if (accepted) {
@@ -2339,11 +2356,20 @@ const JSON_URL = 'tasks.json';
                         playerKarma += 20;
                         const grantedAt = Date.now();
                         nextSnakeState.forbiddenFruitGrantedAt = grantedAt;
-                        nextSnakeState.forbiddenFruitSkipPending = true;
-                        nextSnakeState.skipNextTurn = true;
+                        nextSnakeState.forbiddenFruitChoice = 'karma20';
+                        nextSnakeState.forbiddenFruitAwaitingSubmission = true;
+                        nextSnakeState.forbiddenFruitWaitUntil = 0;
+                        nextSnakeState.forbiddenFruitWaitStartedAt = 0;
+                        nextSnakeState.forbiddenFruitSkipPending = false;
+                        nextSnakeState.skipNextTurn = false;
                         nextSnakeState.forbiddenFruitConsumedAt = 0;
+                        alert('🍎 Ты выбрал(а) +20 к карме. Сдай работу по текущему заданию. После принятия работы останешься на этой клетке и не сможешь бросать кубик 48 часов. Потом игра продолжится.');
                     } else {
                         nextSnakeState.forbiddenFruitGrantedAt = 0;
+                        nextSnakeState.forbiddenFruitChoice = '';
+                        nextSnakeState.forbiddenFruitAwaitingSubmission = false;
+                        nextSnakeState.forbiddenFruitWaitUntil = 0;
+                        nextSnakeState.forbiddenFruitWaitStartedAt = 0;
                         nextSnakeState.forbiddenFruitSkipPending = false;
                         nextSnakeState.skipNextTurn = false;
                         nextSnakeState.forbiddenFruitConsumedAt = Date.now();
@@ -3808,15 +3834,16 @@ const JSON_URL = 'tasks.json';
             switchTab('tab-rules', btn);
         }
 
-        function switchRulesSubtab(tabName) {
-            const tabs = ['items', 'events', 'cells'];
-            tabs.forEach(name => {
-                const btn = document.getElementById(`rules-tab-${name}-btn`);
-                const panel = document.getElementById(`rules-panel-${name}`);
-                const active = name === tabName;
-                btn?.classList.toggle('active', active);
-                panel?.classList.toggle('active', active);
-                if (panel) panel.style.display = active ? 'block' : 'none';
+        function toggleRulesSection(sectionName) {
+            const sections = ['cells', 'snake'];
+            sections.forEach((name) => {
+                const btn = document.getElementById(`rules-section-${name}-btn`);
+                const panel = document.getElementById(`rules-section-${name}`);
+                const active = name === sectionName ? !panel?.classList.contains('active') : panel?.classList.contains('active');
+                if (!btn || !panel) return;
+                btn.classList.toggle('active', !!active);
+                panel.classList.toggle('active', !!active);
+                panel.style.display = active ? 'block' : 'none';
             });
         }
 
@@ -5632,7 +5659,7 @@ const JSON_URL = 'tasks.json';
                                 ticketNum: nextTicket,
                                 ticket: String(nextTicket),
                                 userId: uid,
-                                owner: Number(row.owner),
+                                owner: Number.isFinite(Number(row.owner)) ? Number(row.owner) : Number(snakeState.owner ?? row.charIndex ?? -1),
                                 round: Number(row.round || assignmentRound || roundData.number || 0),
                                 cell: Number(rowCell || activeCell || 0),
                                 taskIdx: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
@@ -5648,6 +5675,16 @@ const JSON_URL = 'tasks.json';
                             updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
                             updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
                             updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
+                            const fruitChoice = String(snakeState.forbiddenFruitChoice || '');
+                            const needFruitWait = fruitChoice === 'karma20' && !!snakeState.forbiddenFruitAwaitingSubmission;
+                            if (needFruitWait) {
+                                const startedAt = nowTs;
+                                const waitUntil = startedAt + (48 * 60 * 60 * 1000);
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitWaitStartedAt`] = startedAt;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitWaitUntil`] = waitUntil;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitAwaitingSubmission`] = false;
+                                updates[`whitelist/${uid}/snakeState/forbiddenFruitActive`] = false;
+                            }
                             updates[`${assignmentPath}/ticketNum`] = nextTicket;
                             updates[`${assignmentPath}/status`] = 'approved';
                             updates[`${assignmentPath}/approvedAt`] = nowTs;

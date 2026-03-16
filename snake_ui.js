@@ -182,12 +182,15 @@
       }
 
       const forbiddenFruitAccepted = !!snakeState.forbiddenFruitAccepted;
-      const forbiddenFruitPendingSkip = !!snakeState.forbiddenFruitSkipPending || !!snakeState.skipNextTurn;
+      const forbiddenFruitAwaitingSubmission = !!snakeState.forbiddenFruitAwaitingSubmission;
       const forbiddenFruitGrantedAt = Number(snakeState.forbiddenFruitGrantedAt || 0);
-      if (forbiddenFruitAccepted && forbiddenFruitPendingSkip) {
-        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 Бонус +20 кармы получен. Следующий бросок будет пропущен.'));
+      const forbiddenFruitWaitUntil = Number(snakeState.forbiddenFruitWaitUntil || 0);
+      if (forbiddenFruitAccepted && forbiddenFruitAwaitingSubmission) {
+        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 +20 кармы получено. Сдай текущую работу, чтобы запустить 48 часов ожидания.'));
+      } else if (forbiddenFruitWaitUntil > now) {
+        statusRows.push(formatSnakeStatusLine('Запретный плод', `🍎 Ожидание после сдачи работы: ещё ~${formatSnakeMinutesLeft(forbiddenFruitWaitUntil - now)} мин`));
       } else if (forbiddenFruitAccepted && forbiddenFruitGrantedAt > 0) {
-        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 Эффект уже сработал: бонус получен, пропуск хода использован.'));
+        statusRows.push(formatSnakeStatusLine('Запретный плод', '🍎 Эффект завершён: 48 часов ожидания прошли.'));
       }
 
       const enteredAt = Number(snakeState.lastCellEnteredAt || snakeState.movedAt || 0);

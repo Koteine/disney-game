@@ -1,7 +1,8 @@
 window.__initTicketsModule = function __initTicketsModule() {
         (function () {
             function updateAllTicketsDataAndRender() {
-                allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData];
+                const snakeRows = Object.values(snakeTicketsByNum || {});
+                allTicketsData = [...archivedTicketsData, ...liveBoardTicketsData, ...snakeRows];
                 updateTicketsTable();
             }
 
@@ -12,6 +13,7 @@ window.__initTicketsModule = function __initTicketsModule() {
             let selectedAdminTicketUserId = null;
             let adminProfileLogRequestId = 0;
             let boardRenderVersion = 0;
+            let snakeTicketsByNum = {};
 
             function clearArchiveSubscriptions() {
                 archiveRefs.forEach(ref => ref.off());
@@ -58,7 +60,34 @@ window.__initTicketsModule = function __initTicketsModule() {
                 });
             }
 
+            function subscribeSnakeTickets() {
+                const ref = db.ref('tickets');
+                ref.on('value', snap => {
+                    const next = {};
+                    snap.forEach((item) => {
+                        const row = item.val() || {};
+                        const mode = String(row.mode || '');
+                        const source = String(row.source || '');
+                        if (mode !== 'snake' && !source.startsWith('snake_')) return;
+                        const num = String(row.ticketNum || row.num || item.key || '').trim();
+                        if (!/^\d+$/.test(num)) return;
+                        next[num] = {
+                            ...row,
+                            ticket: String(row.ticket || row.ticketNum || row.num || num),
+                            ticketNum: Number(row.ticketNum || row.num || num),
+                            isArchived: false,
+                            isSnakeTicket: true,
+                            excluded: false,
+                            cellIdx: Number(row.cell || 0) > 0 ? Number(row.cell) - 1 : -1
+                        };
+                    });
+                    snakeTicketsByNum = next;
+                    updateAllTicketsDataAndRender();
+                });
+            }
+
             function syncTicketData() {
+                subscribeSnakeTickets();
                 db.ref('board').on('value', async snap => {
                     const renderVersion = ++boardRenderVersion;
                     const data = snap.val() || {};
