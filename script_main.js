@@ -5423,12 +5423,42 @@ const JSON_URL = 'tasks.json';
             if (!beforeFile || !afterFile) return alert('Нужно добавить оба фото: «До» и «После».');
 
             const selectedTicketRow = allTicketsData.find(t => Number(t.cellIdx) === chosenCellIdx && (Number(t.userId) === Number(currentUserId) || Number(t.owner) === Number(myIndex)));
-            let cell = selectedTicketRow || null;
+            const snakeCandidate = await getActiveSnakeSubmitCandidate().catch(() => null);
+            const selectedSnakeCandidate = snakeCandidate && Number(snakeCandidate.cellIdx) === Number(chosenCellIdx)
+                ? snakeCandidate
+                : null;
+
+            let cell = selectedSnakeCandidate || selectedTicketRow || null;
             if (!cell?.virtualSnakeActive) {
                 const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
                 cell = boardCellSnap.val();
-                if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+                if (!cell || Number(cell.userId) !== Number(currentUserId)) return alert('Можно отправлять только свою работу по своему заданию.');
             } else {
+                if (Number(cell.userId) !== Number(currentUserId) || Number(cell.owner) !== Number(myIndex)) {
+                    return alert('Можно отправлять только свою работу по своему заданию.');
+                }
+
+                const snakeStateSnap = await db.ref(`whitelist/${currentUserId}/snakeState`).once('value');
+                const snakeState = snakeStateSnap.val() || {};
+                const activeTask = snakeState.activeTask || {};
+                const activeAssignmentId = String(activeTask.assignmentId || snakeState.currentAssignmentId || '').trim();
+                const selectedAssignmentId = String(cell.snakeAssignmentId || '').trim();
+                const selectedRound = Number(cell.round || 0);
+                const activeRound = Number(activeTask.round || currentRoundNum || 0);
+                if (!selectedAssignmentId || !activeAssignmentId || selectedAssignmentId !== activeAssignmentId
+                    || !selectedRound || selectedRound !== activeRound) {
+                    return alert('Можно отправлять только свою работу по своему заданию.');
+                }
+
+                const assignmentSnap = await db.ref(`rounds/${selectedRound}/snake/assignments/${currentUserId}/${selectedAssignmentId}`).once('value');
+                const assignment = assignmentSnap.val() || null;
+                if (!assignment || Number(assignment.userId) !== Number(currentUserId)
+                    || Number(assignment.cell || 0) !== Number(chosenCellIdx) + 1
+                    || isSnakeAssignmentClosedStatus(assignment.status)
+                    || !!assignment.rewardGranted) {
+                    return alert('Можно отправлять только свою работу по своему заданию.');
+                }
+
                 cell = {
                     ...cell,
                     round: Number(cell.round || currentRoundNum || 0),
