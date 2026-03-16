@@ -760,6 +760,59 @@ const JSON_URL = 'tasks.json';
             return filtered[0] || null;
         }
 
+        function isAcceptedLikeStatus(status) {
+            const normalized = String(status || '').trim().toLowerCase();
+            return ['accepted', 'approved', 'approvedbymod', 'done', 'принято'].includes(normalized);
+        }
+
+        function isSnakeAssignmentClosedStatus(status) {
+            const normalized = String(status || '').trim().toLowerCase();
+            return ['approved', 'reward_granted', 'done', 'completed', 'accepted', 'принято'].includes(normalized);
+        }
+
+        async function getActiveSnakeSubmitCandidate() {
+            const roundSnap = await db.ref('current_round').once('value');
+            const roundData = roundSnap.val() || {};
+            if (!window.snakeRound?.isSnakeRound?.(roundData)) return null;
+
+            const snakeStateSnap = await db.ref(`whitelist/${currentUserId}/snakeState`).once('value');
+            const snakeState = snakeStateSnap.val() || {};
+            const activeTask = snakeState.activeTask || {};
+            const activeCell = Number(activeTask.cell || 0);
+            if (!activeCell) return null;
+
+            const assignmentRound = Number(activeTask.round || roundData.number || currentRoundNum || 0);
+            const assignmentId = String(activeTask.assignmentId || snakeState.currentAssignmentId || '').trim();
+            if (!assignmentId || assignmentRound <= 0) return null;
+
+            const assignmentPath = `rounds/${assignmentRound}/snake/assignments/${currentUserId}/${assignmentId}`;
+            const assignmentSnap = await db.ref(assignmentPath).once('value');
+            const assignment = assignmentSnap.val() || null;
+            if (!assignment) return null;
+            if (Number(assignment.cell || 0) !== activeCell) return null;
+            if (!!assignment.rewardGranted || isSnakeAssignmentClosedStatus(assignment.status)) return null;
+
+            const cellIdx = activeCell - 1;
+            const latest = getLatestSubmissionForCell(assignmentRound, cellIdx);
+            if (latest && isAcceptedLikeStatus(latest.status)) return null;
+
+            const baseTask = Number.isInteger(Number(activeTask.taskIdx)) && Number(activeTask.taskIdx) >= 0
+                ? tasks[Number(activeTask.taskIdx)]
+                : null;
+            return {
+                cell: activeCell,
+                cellIdx,
+                round: assignmentRound,
+                mode: 'snake',
+                ticket: '',
+                userId: currentUserId,
+                owner: myIndex,
+                virtualSnakeActive: true,
+                snakeAssignmentId: assignmentId,
+                taskLabel: String(activeTask.taskLabel || assignment.taskLabel || baseTask?.text || 'Активное задание змейки')
+            };
+        }
+
         function refreshUploadStateForSelectedTask() {
             const select = document.getElementById('work-task-select');
             const submitBtn = document.getElementById('work-submit-btn');
@@ -805,7 +858,7 @@ const JSON_URL = 'tasks.json';
                 return;
             }
 
-            if (latest.status === 'accepted') {
+            if (isAcceptedLikeStatus(latest.status)) {
                 submitBtn.disabled = true;
                 setUploadVisibility(false);
                 statusEl.innerText = '✅ Принято';
@@ -1874,6 +1927,73 @@ const JSON_URL = 'tasks.json';
         }
 
 
+
+        async function grantSnakeFinalRewardIfNeeded({ userId, roundNum, landingPos }) {
+            const uid = String(userId || '').trim();
+            const round = Number(roundNum || 0);
+            const pos = Number(landingPos || 0);
+            if (!uid || round <= 0 || pos !== 100) return { granted: false, reason: 'not_final_cell' };
+
+            const markerPath = `whitelist/${uid}/snakeState/final100Reward`;
+            let shouldGrant = false;
+            const markerTx = await db.ref(markerPath).transaction((row) => {
+                const current = (row && typeof row === 'object') ? row : {};
+                if (current.granted) return;
+                shouldGrant = true;
+                return {
+                    granted: true,
+                    round,
+                    cell: 100,
+                    grantedAt: Date.now(),
+                    label: 'Финал "Змейки"'
+                };
+            });
+            if (!markerTx.committed || !shouldGrant) return { granted: false, reason: 'already_granted' };
+
+            let startFrom = null;
+            const counterTx = await db.ref('ticket_counter').transaction((value) => {
+                const current = Number(value) || 0;
+                startFrom = current + 1;
+                return current + 2;
+            });
+            if (!counterTx.committed || !Number.isInteger(startFrom)) {
+                await db.ref(markerPath).remove();
+                return { granted: false, reason: 'ticket_counter_failed' };
+            }
+
+            const ticketNums = [startFrom, startFrom + 1];
+            const updates = {};
+            const nowTs = Date.now();
+            ticketNums.forEach((num) => {
+                const ticketPayload = {
+                    num,
+                    ticketNum: num,
+                    ticket: String(num),
+                    userId: uid,
+                    owner: Number(myIndex),
+                    round,
+                    cell: 100,
+                    mode: 'snake',
+                    source: 'snake_final_100',
+                    sourceLabel: 'Финал "Змейки"',
+                    taskLabel: 'Финал "Змейки"',
+                    createdAt: nowTs
+                };
+                updates[`tickets/${num}`] = ticketPayload;
+                updates[`users/${uid}/tickets/${num}`] = ticketPayload;
+            });
+            updates[`${markerPath}/tickets`] = ticketNums;
+            updates[`${markerPath}/ticketCounterApplied`] = true;
+            updates[`system_notifications/${uid}/snake_final_100_${round}`] = {
+                text: `🏁 Финал «Змейки» достигнут! Выданы 2 билетика: #${ticketNums[0]} и #${ticketNums[1]}.`,
+                type: 'snake_final_reward',
+                createdAt: nowTs,
+                expiresAt: nowTs + (7 * 24 * 3600 * 1000)
+            };
+            await db.ref().update(updates);
+            return { granted: true, ticketNums };
+        }
+
         async function roll() {
             const rollTrace = (label, payload) => {
                 if (payload === undefined) {
@@ -2280,6 +2400,13 @@ const JSON_URL = 'tasks.json';
                     };
                 }
                 await db.ref().update(updates);
+                if (Number(nextPos) === 100) {
+                    await grantSnakeFinalRewardIfNeeded({
+                        userId: currentUserId,
+                        roundNum: Number(currentRound.number || 0),
+                        landingPos: Number(nextPos)
+                    });
+                }
                 rollTrace('snake persist success');
 
                 await postNews(`🐍 ${players[myIndex].n} бросил(а) ${dice} и теперь на клетке №${nextPos}. ${effect.text || ''}`);
@@ -4879,7 +5006,7 @@ const JSON_URL = 'tasks.json';
             el.innerText = `⏳ Клякса: до конца дедлайна ${h}ч ${m}м.`;
         }
 
-        function fillSubmissionTaskOptions() {
+        async function fillSubmissionTaskOptions() {
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
@@ -4892,7 +5019,22 @@ const JSON_URL = 'tasks.json';
                 if (typeof hasRevokedTicket === 'function' && hasRevokedTicket(t.ticket)) return false;
                 return true;
             });
-            if (!myCells.length) {
+            const submitCells = myCells.filter((cell) => {
+                if (String(cell.mode || '') !== 'snake') return true;
+                const latest = getLatestSubmissionForCell(cell.round, cell.cellIdx);
+                return !(latest && isAcceptedLikeStatus(latest.status));
+            });
+
+            const snakeCandidate = await getActiveSnakeSubmitCandidate().catch(() => null);
+            if (snakeCandidate) {
+                const alreadyListed = submitCells.some((cell) => Number(cell.cellIdx) === Number(snakeCandidate.cellIdx)
+                    && Number(cell.round) === Number(snakeCandidate.round));
+                if (!alreadyListed) {
+                    submitCells.push(snakeCandidate);
+                }
+            }
+
+            if (!submitCells.length) {
                 select.innerHTML = '<option value="">Сначала открой клетку с заданием</option>';
                 select.disabled = true;
                 return;
@@ -4900,10 +5042,13 @@ const JSON_URL = 'tasks.json';
 
             updateInkDeadlineHint();
             select.disabled = false;
-            select.innerHTML = myCells.map(cell => {
-                const shortTask = getTaskLabelByCell(cell).slice(0, 90);
-                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · Билет ${cell.ticket} · ${shortTask}</option>`;
+            select.innerHTML = submitCells.map(cell => {
+                const shortTask = String(cell.taskLabel || getTaskLabelByCell(cell)).slice(0, 90);
+                const ticketLabel = String(cell.ticket || '').trim() ? `Билет ${cell.ticket}` : (String(cell.mode || '') === 'snake' ? 'Активное snake-задание' : 'Без билета');
+                return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · ${ticketLabel} · ${shortTask}</option>`;
             }).join('');
+
+            refreshUploadStateForSelectedTask();
         }
 
         function renderSubmissions() {
@@ -5277,9 +5422,21 @@ const JSON_URL = 'tasks.json';
             const afterFile = afterInput?.files?.[0];
             if (!beforeFile || !afterFile) return alert('Нужно добавить оба фото: «До» и «После».');
 
-            const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
-            const cell = boardCellSnap.val();
-            if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+            const selectedTicketRow = allTicketsData.find(t => Number(t.cellIdx) === chosenCellIdx && (Number(t.userId) === Number(currentUserId) || Number(t.owner) === Number(myIndex)));
+            let cell = selectedTicketRow || null;
+            if (!cell?.virtualSnakeActive) {
+                const boardCellSnap = await db.ref(`board/${chosenCellIdx}`).once('value');
+                cell = boardCellSnap.val();
+                if (!cell || cell.userId !== currentUserId) return alert('Можно отправлять только свою работу по своему заданию.');
+            } else {
+                cell = {
+                    ...cell,
+                    round: Number(cell.round || currentRoundNum || 0),
+                    mode: 'snake',
+                    excluded: false,
+                    ticket: ''
+                };
+            }
 
             const debtSnap = await db.ref(`whitelist/${currentUserId}/debt`).once('value');
             const debt = debtSnap.val();
@@ -5296,7 +5453,7 @@ const JSON_URL = 'tasks.json';
             }
 
             const existing = getLatestSubmissionForCell(cell.round, chosenCellIdx);
-            if (existing?.status === 'pending' || existing?.status === 'accepted') {
+            if (existing?.status === 'pending' || isAcceptedLikeStatus(existing?.status)) {
                 refreshUploadStateForSelectedTask();
                 return alert(existing.status === 'pending' ? 'Работа уже на проверке. Дождись модерации.' : 'Эта работа уже принята. Повторная загрузка заблокирована.');
             }
@@ -5389,35 +5546,31 @@ const JSON_URL = 'tasks.json';
                 const uid = String(row.userId || '');
                 const roundSnap = await db.ref('current_round').once('value');
                 const roundData = roundSnap.val() || {};
-                if (uid && window.snakeRound?.isSnakeRound?.(roundData)) {
+                const isSnakeSubmission = String(row.mode || '') === 'snake' || !!row.snakeAssignmentId || Number(row.snakeTaskRound || 0) > 0;
+                if (uid && isSnakeSubmission) {
                     const snakeStateSnap = await db.ref(`whitelist/${uid}/snakeState`).once('value');
                     const snakeState = snakeStateSnap.val() || {};
                     const activeTask = snakeState.activeTask || {};
-                    const rowCell = Number(row.cellIdx) + 1;
+                    const rowCell = Number(row.snakeTaskCell || (Number(row.cellIdx) + 1) || 0);
                     const activeCell = Number(activeTask.cell || 0);
-                    const isActiveCellMatch = activeCell > 0 && rowCell === activeCell;
-                    const activeTaskType = String(activeTask.type || 'snake_standard');
-                    const rowTaskType = String(row.snakeTaskType || 'snake_standard');
-                    const isSphinxTask = !!activeTask.isSphinxTrial || activeTaskType === 'snake_sphinx';
-                    const isTaskTypeMatch = rowTaskType === activeTaskType;
                     const assignmentId = String(
                         row.snakeAssignmentId
                         || activeTask.assignmentId
                         || snakeState.currentAssignmentId
-                        || `legacy_${Number(activeTask.round || row.round || roundData.number || 0)}_${activeCell}_${Number(activeTask.taskIdx ?? -1)}`
+                        || `legacy_${Number(row.snakeTaskRound || row.round || roundData.number || 0)}_${rowCell}_${Number(activeTask.taskIdx ?? row.taskIdx ?? -1)}`
                     ).trim();
                     const assignmentRound = Number(row.snakeTaskRound || activeTask.round || row.round || roundData.number || 0);
                     const assignmentPath = assignmentId ? `rounds/${assignmentRound}/snake/assignments/${uid}/${assignmentId}` : '';
-                    if (isActiveCellMatch && isTaskTypeMatch && assignmentId && assignmentPath) {
+                    if (assignmentId && assignmentPath) {
                         let rewardGrantedNow = false;
                         const rewardTx = await db.ref(assignmentPath).transaction((assignmentRow) => {
                             const current = (assignmentRow && typeof assignmentRow === 'object') ? assignmentRow : {
                                 assignmentId,
                                 userId: uid,
                                 round: assignmentRound,
-                                cell: activeCell,
-                                taskId: Number(activeTask.taskIdx ?? -1),
-                                taskIdx: Number(activeTask.taskIdx ?? -1),
+                                cell: rowCell,
+                                taskId: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
+                                taskIdx: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
                                 status: 'assigned',
                                 createdAt: Date.now()
                             };
@@ -5428,91 +5581,98 @@ const JSON_URL = 'tasks.json';
                                 rewardGranted: true,
                                 rewardGrantedAt: Date.now(),
                                 status: 'reward_granted',
+                                acceptedStatus: String(status),
                                 lastSubmissionId: String(submissionId || ''),
                                 reviewedBy: String(currentUserId || '')
                             };
                         });
-                        if (!rewardTx.committed || !rewardGrantedNow) {
-                            return;
-                        }
+                        if (rewardTx.committed && rewardGrantedNow) {
+                            let nextTicket = null;
+                            await db.ref('ticket_counter').transaction((value) => {
+                                const current = Number(value) || 0;
+                                nextTicket = current + 1;
+                                return nextTicket;
+                            });
+                            if (!Number.isInteger(nextTicket) || nextTicket <= 0) return;
 
-                        const ticketCounterSnap = await db.ref('ticket_counter').once('value');
-                        const nextTicket = (Number(ticketCounterSnap.val()) || 0) + 1;
-                        const ticketPayload = {
-                            num: nextTicket,
-                            ticketNum: nextTicket,
-                            ticket: String(nextTicket),
-                            userId: uid,
-                            owner: Number(row.owner),
-                            round: Number(row.round || assignmentRound || roundData.number || 0),
-                            cell: Number(activeTask.cell || 0),
-                            taskIdx: Number(activeTask.taskIdx ?? -1),
-                            taskLabel: String(row.taskLabel || ''),
-                            mode: 'snake',
-                            assignmentId,
-                            createdAt: Date.now()
-                        };
-                        const updates = {};
-                        updates.ticket_counter = nextTicket;
-                        updates[`tickets/${nextTicket}`] = ticketPayload;
-                        updates[`users/${uid}/tickets/${nextTicket}`] = ticketPayload;
-                        updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
-                        updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
-                        updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
-                        updates[`${assignmentPath}/ticketNum`] = nextTicket;
-                        updates[`${assignmentPath}/status`] = 'approved';
-                        updates[`${assignmentPath}/approvedAt`] = Date.now();
-                        updates[`system_notifications/${uid}/${Date.now()}_snake_ticket`] = {
-                            text: `Твоя работа принята! Твой номер в розыгрыше: #${nextTicket}`,
-                            type: 'snake_ticket',
-                            createdAt: Date.now(),
-                            expiresAt: Date.now() + (7 * 24 * 3600 * 1000)
-                        };
-                        if (isSphinxTask) {
-                            const clearTs = Date.now();
-                            updates[`system_notifications/${uid}/snake_sphinx_trial_done_${clearTs}`] = {
-                                text: '🗿 Испытание Сфинкса пройдено. Путь снова открыт.',
-                                type: 'snake_sphinx_trial_done',
-                                onceKey: `snake_sphinx_trial_done_${Number(activeTask.round || 0)}_${activeCell}`,
-                                createdAt: clearTs,
-                                expiresAt: clearTs + (24 * 60 * 60 * 1000)
+                            const isSphinxTask = !!activeTask.isSphinxTrial || String(activeTask.type || row.snakeTaskType || '') === 'snake_sphinx';
+                            const nowTs = Date.now();
+                            const ticketPayload = {
+                                num: nextTicket,
+                                ticketNum: nextTicket,
+                                ticket: String(nextTicket),
+                                userId: uid,
+                                owner: Number(row.owner),
+                                round: Number(row.round || assignmentRound || roundData.number || 0),
+                                cell: Number(rowCell || activeCell || 0),
+                                taskIdx: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
+                                taskLabel: String(row.taskLabel || ''),
+                                mode: 'snake',
+                                assignmentId,
+                                source: 'snake_assignment',
+                                createdAt: nowTs
                             };
-                        }
-                        await db.ref().update(updates);
-                        await updateKarma(uid, 5);
-
-                        const synergyCell = Number(activeTask.cell || 0);
-                        const synergyRound = Number(row.round || roundData.number || 0);
-                        const synergySnap = await db.ref(`snake_synergy/${synergyRound}/${synergyCell}`).once('value');
-                        for (const pairNode of Object.entries(synergySnap.val() || {})) {
-                            const [pairKey, synergyRow] = pairNode;
-                            const playersPair = Array.isArray(synergyRow?.players) ? synergyRow.players.map((v) => String(v || '').trim()) : [];
-                            if (!playersPair.includes(uid)) continue;
-                            if (String(synergyRow?.status || '') !== 'active') continue;
-                            if (synergyRow?.appliedTo && synergyRow.appliedTo[uid]) continue;
-
-                            await updateKarma(uid, 5);
-                            const opponentId = playersPair.find((x) => String(x) !== uid) || '';
-                            const clashId = `${synergyRound}_${synergyCell}_${pairKey}`;
-                            const appliedMap = { ...(synergyRow.appliedTo || {}), [uid]: true };
-                            const done = playersPair.every((id) => !!appliedMap[String(id)]);
-                            const synergyUpdates = {};
-                            synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/appliedTo`] = appliedMap;
-                            synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/updatedAt`] = Date.now();
-                            if (done) {
-                                synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/status`] = 'completed';
-                                synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/completedAt`] = Date.now();
+                            const updates = {};
+                            updates[`tickets/${nextTicket}`] = ticketPayload;
+                            updates[`users/${uid}/tickets/${nextTicket}`] = ticketPayload;
+                            updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
+                            updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
+                            updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
+                            updates[`${assignmentPath}/ticketNum`] = nextTicket;
+                            updates[`${assignmentPath}/status`] = 'approved';
+                            updates[`${assignmentPath}/approvedAt`] = nowTs;
+                            updates[`system_notifications/${uid}/${nowTs}_snake_ticket`] = {
+                                text: `Твоя работа принята! Твой номер в розыгрыше: #${nextTicket}`,
+                                type: 'snake_ticket',
+                                createdAt: nowTs,
+                                expiresAt: nowTs + (7 * 24 * 3600 * 1000)
+                            };
+                            if (isSphinxTask) {
+                                const clearTs = Date.now();
+                                updates[`system_notifications/${uid}/snake_sphinx_trial_done_${clearTs}`] = {
+                                    text: '🗿 Испытание Сфинкса пройдено. Путь снова открыт.',
+                                    type: 'snake_sphinx_trial_done',
+                                    onceKey: `snake_sphinx_trial_done_${Number(activeTask.round || assignmentRound || 0)}_${Number(activeCell || rowCell || 0)}`,
+                                    createdAt: clearTs,
+                                    expiresAt: clearTs + (24 * 60 * 60 * 1000)
+                                };
                             }
-                            synergyUpdates[`system_notifications/${uid}/snake_synergy_bonus_${clashId}_${uid}`] = {
-                                text: 'Синергия сработала! Ты получил(а) +5 кармы.',
-                                type: 'snake_synergy_bonus',
-                                clashId,
-                                onceKey: `synergy_bonus_${clashId}_${uid}`,
-                                partnerId: opponentId,
-                                createdAt: Date.now(),
-                                expiresAt: Date.now() + (2 * 60 * 60 * 1000)
-                            };
-                            await db.ref().update(synergyUpdates);
+                            await db.ref().update(updates);
+                            await updateKarma(uid, 5);
+
+                            const synergyCell = Number(rowCell || activeCell || 0);
+                            const synergyRound = Number(row.round || assignmentRound || roundData.number || 0);
+                            const synergySnap = await db.ref(`snake_synergy/${synergyRound}/${synergyCell}`).once('value');
+                            for (const pairNode of Object.entries(synergySnap.val() || {})) {
+                                const [pairKey, synergyRow] = pairNode;
+                                const playersPair = Array.isArray(synergyRow?.players) ? synergyRow.players.map((v) => String(v || '').trim()) : [];
+                                if (!playersPair.includes(uid)) continue;
+                                if (String(synergyRow?.status || '') !== 'active') continue;
+                                if (synergyRow?.appliedTo && synergyRow.appliedTo[uid]) continue;
+
+                                await updateKarma(uid, 5);
+                                const opponentId = playersPair.find((x) => String(x) !== uid) || '';
+                                const clashId = `${synergyRound}_${synergyCell}_${pairKey}`;
+                                const appliedMap = { ...(synergyRow.appliedTo || {}), [uid]: true };
+                                const done = playersPair.every((id) => !!appliedMap[String(id)]);
+                                const synergyUpdates = {};
+                                synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/appliedTo`] = appliedMap;
+                                synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/updatedAt`] = Date.now();
+                                if (done) {
+                                    synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/status`] = 'completed';
+                                    synergyUpdates[`snake_synergy/${synergyRound}/${synergyCell}/${pairKey}/completedAt`] = Date.now();
+                                }
+                                synergyUpdates[`system_notifications/${uid}/snake_synergy_bonus_${clashId}_${uid}`] = {
+                                    text: 'Синергия сработала! Ты получил(а) +5 кармы.',
+                                    type: 'snake_synergy_bonus',
+                                    clashId,
+                                    onceKey: `synergy_bonus_${clashId}_${uid}`,
+                                    partnerId: opponentId,
+                                    createdAt: Date.now(),
+                                    expiresAt: Date.now() + (2 * 60 * 60 * 1000)
+                                };
+                                await db.ref().update(synergyUpdates);
+                            }
                         }
                     }
                 }
