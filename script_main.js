@@ -2618,6 +2618,8 @@ ${optionsText}
             return `${uid || 'u'}_${Date.now()}_${rand}`;
         }
 
+        const SNAKE_ROLL_LOCK_STALE_MS = 90 * 1000;
+
         async function reserveSnakeRollSlot({ userId, roundNum, rollRequestId }) {
             const uid = String(userId || '').trim();
             const requestId = String(rollRequestId || '').trim();
@@ -2635,8 +2637,13 @@ ${optionsText}
                     return state;
                 }
                 if (existingLock.inFlight) {
-                    txReason = 'lock_in_flight';
-                    return;
+                    const lockTs = Number(existingLock.lockedAt || 0);
+                    const lockAgeMs = lockTs > 0 ? (Date.now() - lockTs) : 0;
+                    const isStaleLock = lockTs > 0 && lockAgeMs >= SNAKE_ROLL_LOCK_STALE_MS;
+                    if (!isStaleLock) {
+                        txReason = 'lock_in_flight';
+                        return;
+                    }
                 }
                 if (state.awaitingApproval) {
                     txReason = 'awaiting_approval';
@@ -7255,34 +7262,18 @@ ${optionsText}
             return String(value || '').trim().replace(/[.#$\[\]/\:]/g, '_');
         }
 
-
         function isRecentRoundResult(endedAt) {
             return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
-
         }
 
-        function startGalleryRealtime() {
-            if (!fs || galleryRealtimeState.stopActiveWork) return;
-            galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
-                const row = snap.exists ? (snap.data() || {}) : {};
-                const nextWorkId = String(row.workId || '').trim();
-                if (!nextWorkId) {
-                    galleryRealtimeState.activeWorkId = '';
-                    galleryRealtimeState.activeWorkDoc = null;
-                    renderGalleryFromState();
-                    return;
-                }
-                if (galleryRealtimeState.activeWorkId === nextWorkId) return;
-                galleryRealtimeState.activeWorkId = nextWorkId;
-                galleryRealtimeState.myReactionType = '';
-                galleryRealtimeState.pendingReactionType = '';
-                galleryRealtimeState.inFlight = false;
-                bindGalleryWorkDoc(nextWorkId);
-            }, (err) => {
-                console.error('Active gallery listener failed', err);
-            });
+        function checkLastRoundResult(roundKey) {
+            const key = String(roundKey || '').trim();
+            if (!key) return false;
+            const sessionKey = `round-result-shown-${key}`;
+            if (sessionStorage.getItem(sessionKey) === '1') return false;
+            sessionStorage.setItem(sessionKey, '1');
+            return true;
         }
-
 
         async function updateKarma(targetUserId, amount) {
             const uid = String(targetUserId || '').trim();
@@ -7295,8 +7286,11 @@ ${optionsText}
                 });
                 const fallbackSnap = await db.ref(`player_season_status/${uid}/karma_points`).once('value');
                 return Number(fallbackSnap.val()) || 0;
-
-
+            }
+            const fallbackNickname = getTelegramDisplayName();
+            await window.karmaSystem.ensureSeasonProfile(db, uid, fallbackNickname, false);
+            return window.karmaSystem.addKarmaPoints(db, uid, delta, ADMIN_ID);
+        }
 
         function getGalleryWorkReactionBinding(work) {
             const ownerUserId = resolveSubmissionOwnerUserId(work);
@@ -7397,7 +7391,6 @@ ${optionsText}
                     </div>
                 </div>`;
         }
-
         function bindGalleryWorkDoc(workId) {
             if (!fs || !workId) return;
             if (typeof galleryRealtimeState.stopWorkDoc === 'function') galleryRealtimeState.stopWorkDoc();
@@ -7516,7 +7509,6 @@ ${optionsText}
             galleryRealtimeState.pendingReactionType = '';
             renderGalleryFromState();
         }
-
 
         function renderGalleryTab() {
             startGalleryRealtime();
