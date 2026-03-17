@@ -7359,9 +7359,11 @@ ${optionsText}
             const fallback = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
             if (!fallback) return null;
             const ownerUserId = resolveSubmissionOwnerUserId(fallback);
+
             const binding = getGalleryWorkReactionBinding(fallback);
             return {
                 workId: binding.stableWorkId,
+
                 ownerUserId,
                 imageUrl: fallback.afterImageData || fallback.imageData || '',
                 reactionCounts: { clap: 0, heart: 0, sun: 0 }
@@ -7384,9 +7386,12 @@ ${optionsText}
             const ownerUserId = String(work.ownerUserId || '').trim();
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
+            const isFallbackMode = !runtimeWork;
             const disabledByRole = currentUserRole === 'admin';
+
             const controlsDisabled = hasReaction || inFlight || disabledByRole || !exhibitId;
             const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
