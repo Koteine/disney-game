@@ -7384,12 +7384,15 @@ ${optionsText}
             }
         }
 
-        function getGalleryFallbackWorkDoc() {
-            const fallback = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
+        function getGalleryFallbackWorkDoc(preferredWorkId) {
+            const preferredId = String(preferredWorkId || '').trim();
+            const preferredWork = preferredId ? findAcceptedSubmissionByWorkId(preferredId) : null;
+            const fallback = preferredWork || pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
             if (!fallback) return null;
             const binding = getGalleryWorkReactionBinding(fallback);
+            const resolvedWorkId = String(fallback.workId || fallback.galleryWorkId || binding.stableWorkId || '').trim();
             return {
-                workId: String(fallback.workId || fallback.galleryWorkId || binding.stableWorkId || '').trim(),
+                workId: preferredWork ? preferredId : resolvedWorkId,
                 ownerUserId: binding.ownerUserId,
                 imageUrl: fallback.afterImageData || fallback.imageData || '',
                 reactionCounts: { clap: 0, heart: 0, sun: 0 }
@@ -7400,21 +7403,25 @@ ${optionsText}
             const wrap = document.getElementById('gallery-content');
             if (!wrap) return;
             const runtimeWork = galleryRealtimeState.activeWorkDoc;
-            const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc();
+            const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
+            const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc(activeWorkId);
             const work = runtimeWork || fallbackWork;
             if (!work) {
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
             }
-            const exhibitId = String(work.workId || galleryRealtimeState.activeWorkId || '').trim();
+            const exhibitId = String(work.workId || activeWorkId || '').trim();
             const counts = getGalleryCountsFromWork(work);
             const img = work.imageUrl || work.afterImageData || work.imageData || '';
             const ownerUserId = resolveGalleryOwnerUserId(work, exhibitId);
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
             const disabledByRole = currentUserRole === 'admin';
-            const controlsDisabled = hasReaction || inFlight || disabledByRole;
-            const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+            const fallbackNotSynced = !runtimeWork && !!activeWorkId && exhibitId !== activeWorkId;
+            const controlsDisabled = hasReaction || inFlight || disabledByRole || fallbackNotSynced;
+            const feedbackLine = fallbackNotSynced
+                ? 'Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.'
+                : `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
@@ -7522,7 +7529,7 @@ ${optionsText}
                 return alert('Не удалось определить работу галереи. Попробуй еще раз.');
             }
             if (activeWorkId && workId !== activeWorkId) {
-                return alert('Работа в галерее уже сменилась, попробуй еще раз.');
+                return alert('Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.');
             }
 
             const targetOwnerUserId = String(ownerUserId || resolveGalleryOwnerUserId(galleryRealtimeState.activeWorkDoc, workId) || '').trim();
