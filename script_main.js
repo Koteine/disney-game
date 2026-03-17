@@ -7358,10 +7358,10 @@ ${optionsText}
         function getGalleryFallbackWorkDoc() {
             const fallback = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
             if (!fallback) return null;
-            const ownerUserId = resolveSubmissionOwnerUserId(fallback);
+            const binding = getGalleryWorkReactionBinding(fallback);
             return {
-                workId: '',
-                ownerUserId,
+                workId: String(fallback.workId || fallback.galleryWorkId || binding.stableWorkId || '').trim(),
+                ownerUserId: binding.ownerUserId,
                 imageUrl: fallback.afterImageData || fallback.imageData || '',
                 reactionCounts: { clap: 0, heart: 0, sun: 0 }
             };
@@ -7377,18 +7377,15 @@ ${optionsText}
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
             }
-            const exhibitId = String(galleryRealtimeState.activeWorkId || '').trim();
+            const exhibitId = String(work.workId || galleryRealtimeState.activeWorkId || '').trim();
             const counts = getGalleryCountsFromWork(work);
             const img = work.imageUrl || work.afterImageData || work.imageData || '';
             const ownerUserId = String(work.ownerUserId || '').trim();
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
-            const isFallbackMode = !runtimeWork;
             const disabledByRole = currentUserRole === 'admin';
-            const controlsDisabled = hasReaction || inFlight || disabledByRole || isFallbackMode;
-            const feedbackLine = isFallbackMode
-                ? 'Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.'
-                : `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+            const controlsDisabled = hasReaction || inFlight || disabledByRole;
+            const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
@@ -7494,7 +7491,11 @@ ${optionsText}
             if (galleryRealtimeState.myReactionType) return alert('Ты уже отправлял(а) реакцию этой картине.');
 
             const workId = String(exhibitId || galleryRealtimeState.activeWorkId || '').trim();
-            if (!workId || workId !== String(galleryRealtimeState.activeWorkId || '').trim()) {
+            const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
+            if (!workId) {
+                return alert('Не удалось определить работу галереи. Попробуй еще раз.');
+            }
+            if (activeWorkId && workId !== activeWorkId) {
                 return alert('Работа в галерее уже сменилась, попробуй еще раз.');
             }
 
