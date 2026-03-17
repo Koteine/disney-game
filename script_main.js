@@ -7410,7 +7410,6 @@ ${optionsText}
                     </div>
                 </div>`;
         }
-
         function bindGalleryWorkDoc(workId) {
             if (!fs || !workId) return;
             if (typeof galleryRealtimeState.stopWorkDoc === 'function') galleryRealtimeState.stopWorkDoc();
