@@ -2618,6 +2618,8 @@ ${optionsText}
             return `${uid || 'u'}_${Date.now()}_${rand}`;
         }
 
+        const SNAKE_ROLL_LOCK_STALE_MS = 90 * 1000;
+
         async function reserveSnakeRollSlot({ userId, roundNum, rollRequestId }) {
             const uid = String(userId || '').trim();
             const requestId = String(rollRequestId || '').trim();
@@ -2635,8 +2637,13 @@ ${optionsText}
                     return state;
                 }
                 if (existingLock.inFlight) {
-                    txReason = 'lock_in_flight';
-                    return;
+                    const lockTs = Number(existingLock.lockedAt || 0);
+                    const lockAgeMs = lockTs > 0 ? (Date.now() - lockTs) : 0;
+                    const isStaleLock = lockTs > 0 && lockAgeMs >= SNAKE_ROLL_LOCK_STALE_MS;
+                    if (!isStaleLock) {
+                        txReason = 'lock_in_flight';
+                        return;
+                    }
                 }
                 if (state.awaitingApproval) {
                     txReason = 'awaiting_approval';
