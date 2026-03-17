@@ -2618,6 +2618,8 @@ ${optionsText}
             return `${uid || 'u'}_${Date.now()}_${rand}`;
         }
 
+        const SNAKE_ROLL_LOCK_STALE_MS = 90 * 1000;
+
         async function reserveSnakeRollSlot({ userId, roundNum, rollRequestId }) {
             const uid = String(userId || '').trim();
             const requestId = String(rollRequestId || '').trim();
@@ -2635,8 +2637,13 @@ ${optionsText}
                     return state;
                 }
                 if (existingLock.inFlight) {
-                    txReason = 'lock_in_flight';
-                    return;
+                    const lockTs = Number(existingLock.lockedAt || 0);
+                    const lockAgeMs = lockTs > 0 ? (Date.now() - lockTs) : 0;
+                    const isStaleLock = lockTs > 0 && lockAgeMs >= SNAKE_ROLL_LOCK_STALE_MS;
+                    if (!isStaleLock) {
+                        txReason = 'lock_in_flight';
+                        return;
+                    }
                 }
                 if (state.awaitingApproval) {
                     txReason = 'awaiting_approval';
@@ -7177,7 +7184,7 @@ ${optionsText}
                 if (!ownerUserId || ownerUserId === String(ADMIN_ID)) return false;
 
                 const profile = seasonProfilesByUserId?.[ownerUserId];
-                if (!profile || profile.deletedAt) return false;
+                if (profile?.deletedAt) return false;
 
                 return true;
             });
@@ -7255,34 +7262,18 @@ ${optionsText}
             return String(value || '').trim().replace(/[.#$\[\]/\:]/g, '_');
         }
 
-
         function isRecentRoundResult(endedAt) {
             return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
-
         }
 
-        function startGalleryRealtime() {
-            if (!fs || galleryRealtimeState.stopActiveWork) return;
-            galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
-                const row = snap.exists ? (snap.data() || {}) : {};
-                const nextWorkId = String(row.workId || '').trim();
-                if (!nextWorkId) {
-                    galleryRealtimeState.activeWorkId = '';
-                    galleryRealtimeState.activeWorkDoc = null;
-                    renderGalleryFromState();
-                    return;
-                }
-                if (galleryRealtimeState.activeWorkId === nextWorkId) return;
-                galleryRealtimeState.activeWorkId = nextWorkId;
-                galleryRealtimeState.myReactionType = '';
-                galleryRealtimeState.pendingReactionType = '';
-                galleryRealtimeState.inFlight = false;
-                bindGalleryWorkDoc(nextWorkId);
-            }, (err) => {
-                console.error('Active gallery listener failed', err);
-            });
+        function checkLastRoundResult(roundKey) {
+            const key = String(roundKey || '').trim();
+            if (!key) return false;
+            const sessionKey = `round-result-shown-${key}`;
+            if (sessionStorage.getItem(sessionKey) === '1') return false;
+            sessionStorage.setItem(sessionKey, '1');
+            return true;
         }
-
 
         async function updateKarma(targetUserId, amount) {
             const uid = String(targetUserId || '').trim();
@@ -7295,8 +7286,11 @@ ${optionsText}
                 });
                 const fallbackSnap = await db.ref(`player_season_status/${uid}/karma_points`).once('value');
                 return Number(fallbackSnap.val()) || 0;
-
-
+            }
+            const fallbackNickname = getTelegramDisplayName();
+            await window.karmaSystem.ensureSeasonProfile(db, uid, fallbackNickname, false);
+            return window.karmaSystem.addKarmaPoints(db, uid, delta, ADMIN_ID);
+        }
 
         function getGalleryWorkReactionBinding(work) {
             const ownerUserId = resolveSubmissionOwnerUserId(work);
@@ -7361,10 +7355,24 @@ ${optionsText}
             }
         }
 
+        function getGalleryFallbackWorkDoc() {
+            const fallback = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
+            if (!fallback) return null;
+            const ownerUserId = resolveSubmissionOwnerUserId(fallback);
+            return {
+                workId: '',
+                ownerUserId,
+                imageUrl: fallback.afterImageData || fallback.imageData || '',
+                reactionCounts: { clap: 0, heart: 0, sun: 0 }
+            };
+        }
+
         function renderGalleryFromState() {
             const wrap = document.getElementById('gallery-content');
             if (!wrap) return;
-            const work = galleryRealtimeState.activeWorkDoc;
+            const runtimeWork = galleryRealtimeState.activeWorkDoc;
+            const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc();
+            const work = runtimeWork || fallbackWork;
             if (!work) {
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
@@ -7375,23 +7383,28 @@ ${optionsText}
             const ownerUserId = String(work.ownerUserId || '').trim();
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
+            const isFallbackMode = !runtimeWork;
             const disabledByRole = currentUserRole === 'admin';
+            const controlsDisabled = hasReaction || inFlight || disabledByRole || isFallbackMode;
+            const feedbackLine = isFallbackMode
+                ? 'Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.'
+                : `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
                     <img src="${img}" class="gallery-image" alt="Выставленная работа">
-                    <div id="gallery-feedback-line" style="font-size:12px; margin-top:6px;">Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.</div>
+                    <div id="gallery-feedback-line" style="font-size:12px; margin-top:6px;">${feedbackLine}</div>
                     <div class="gallery-compliments" style="margin-top:8px;">
                         <div class="compliment-option">
-                            <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${(hasReaction || inFlight || disabledByRole) ? '0.5' : '1'};" ${(hasReaction || inFlight || disabledByRole) ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
+                            <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${controlsDisabled ? '0.5' : '1'};" ${controlsDisabled ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
                             <small>Бесплатно (+1 Карма)</small>
                         </div>
                         <div class="compliment-option">
-                            <button class="admin-btn compliment-btn heart" style="margin:0; opacity:${(hasReaction || inFlight || disabledByRole) ? '0.5' : '1'};" ${(hasReaction || inFlight || disabledByRole) ? 'disabled' : ''} onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️</button>
+                            <button class="admin-btn compliment-btn heart" style="margin:0; opacity:${controlsDisabled ? '0.5' : '1'};" ${controlsDisabled ? 'disabled' : ''} onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️</button>
                             <small>1 Билет (+3 Карма)</small>
                         </div>
                         <div class="compliment-option">
-                            <button class="admin-btn compliment-btn sun" style="margin:0; opacity:${(hasReaction || inFlight || disabledByRole) ? '0.5' : '1'};" ${(hasReaction || inFlight || disabledByRole) ? 'disabled' : ''} onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞</button>
+                            <button class="admin-btn compliment-btn sun" style="margin:0; opacity:${controlsDisabled ? '0.5' : '1'};" ${controlsDisabled ? 'disabled' : ''} onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞</button>
                             <small>2 Билета (+5 Карма)</small>
                         </div>
                     </div>
@@ -7516,7 +7529,6 @@ ${optionsText}
             galleryRealtimeState.pendingReactionType = '';
             renderGalleryFromState();
         }
-
 
         function renderGalleryTab() {
             startGalleryRealtime();
