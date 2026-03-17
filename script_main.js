@@ -3054,6 +3054,7 @@ ${optionsText}
 
                 const taskPick = pickSnakeTaskForPlayer(snakeState, currentRound.number);
                 const taskIdx = Number(taskPick.taskIdx || 0);
+                const taskLabelSnapshot = String(tasks[taskIdx]?.text || 'Обычное задание');
                 const assignmentId = `${roundId}_${uid}_${nextPos}_${taskIdx}_${nowTs}`;
                 updates[`board/${nextPos - 1}`] = {
                     owner: myIndex,
@@ -3081,7 +3082,7 @@ ${optionsText}
                         isSphinxTrial: String(effect.type || '') === 'sphinx',
                         taskLabel: String(effect.type || '') === 'sphinx'
                             ? '🗿 Испытание Сфинкса: сложное супер-задание (бросок кубика заблокирован до одобрения)'
-                            : (Number.isInteger(doubleBurdenBonusTaskIdx) ? `📜 Двойное Бремя: основное + бонусное задание (#${doubleBurdenBonusTaskIdx})` : ''),
+                            : (Number.isInteger(doubleBurdenBonusTaskIdx) ? `📜 Двойное Бремя: основное + бонусное задание (#${doubleBurdenBonusTaskIdx})` : taskLabelSnapshot),
                         bonusTaskIdx: Number.isInteger(doubleBurdenBonusTaskIdx) ? Number(doubleBurdenBonusTaskIdx) : null
                     },
                     currentAssignmentId: `${currentRound.number}_${nextPos}_${taskIdx}`,
@@ -3303,6 +3304,8 @@ ${optionsText}
                     cell: nextPos,
                     taskId: taskIdx,
                     taskIdx,
+                    taskLabel: taskLabelSnapshot,
+                    taskLabelSnapshot,
                     rollRequestId,
                     status: 'assigned',
                     rewardGranted: false,
@@ -6021,6 +6024,33 @@ ${optionsText}
             return t?.text || 'Обычное задание';
         }
 
+        function getSnakeTaskLabelSnapshot(row = {}, snakeAssignment = null) {
+            const directLabel = String(
+                row.taskLabel
+                || row.snakeTaskLabel
+                || row.snakeTaskLabelSnapshot
+                || row.assignmentTaskLabel
+                || snakeAssignment?.taskLabel
+                || snakeAssignment?.taskLabelSnapshot
+                || ''
+            ).trim();
+            if (directLabel) return directLabel;
+
+            const candidateTaskIdx = Number(
+                row.snakeTaskIdx
+                ?? row.taskIdx
+                ?? row.taskId
+                ?? snakeAssignment?.taskIdx
+                ?? snakeAssignment?.taskId
+                ?? -1
+            );
+            if (Number.isInteger(candidateTaskIdx) && candidateTaskIdx >= 0 && Array.isArray(tasks) && tasks[candidateTaskIdx]) {
+                return String(tasks[candidateTaskIdx].text || 'Обычное задание');
+            }
+
+            return '';
+        }
+
         function getSubmissionStatusInfo(status) {
             if (status === 'accepted') return { text: 'Принято', className: 'status-accepted' };
             if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
@@ -6146,7 +6176,7 @@ ${optionsText}
                     <div id="${pendingBodyId}" class="collapse-body">
                         ${pendingForReview.length ? pendingForReview.map(item => {
                             const pendingPlayer = getSubmissionPlayerNickname(item) || 'Без никнейма';
-                            const pendingTask = item.taskLabel || 'Описание задания отсутствует';
+                            const pendingTask = getSnakeTaskLabelSnapshot(item) || item.taskLabel || 'Описание задания отсутствует';
                             return `
                                 <div style="margin-top:8px; padding:8px; border-radius:8px; background:#fff8e1;">
                                     <div style="font-size:12px; color:#444; line-height:1.4;">👤 <b style="color:${charColors[item.owner] || '#333'}">${pendingPlayer}</b> · Раунд ${item.round || '—'} · Клетка №${(item.cellIdx ?? -1) + 1}</div>
@@ -6183,7 +6213,7 @@ ${optionsText}
                         </div>
                         <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
                         <div style="font-size:12px; margin-top:4px; color:#555;">🕒 Загружено: ${uploadedAtText}</div>
-                        <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${item.taskLabel || 'Описание задания отсутствует'}</div>
+                        <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${getSnakeTaskLabelSnapshot(item) || item.taskLabel || 'Описание задания отсутствует'}</div>
                         ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
 
                         <div class="work-stage-block">
@@ -6605,7 +6635,21 @@ ${optionsText}
                     payload.snakeAssignmentId = String(activeTask.assignmentId || snakeState.currentAssignmentId || '').trim();
                     payload.snakeRollRequestId = String(snakeState.lastProcessedRequestId || '').trim();
                     payload.isSphinxTrial = !!activeTask.isSphinxTrial;
-                    if (activeTask.taskLabel) payload.taskLabel = String(activeTask.taskLabel);
+                    payload.snakeTaskIdx = Number(activeTask.taskIdx ?? cell.taskIdx ?? -1);
+                    payload.sourceAssignmentId = payload.snakeAssignmentId;
+                    payload.sourceTaskId = payload.snakeTaskIdx;
+
+                    let assignmentSnapshot = null;
+                    const assignmentRound = Number(payload.snakeTaskRound || 0);
+                    if (payload.snakeAssignmentId && assignmentRound > 0) {
+                        assignmentSnapshot = (await db.ref(`rounds/${assignmentRound}/snake/assignments/${currentUserId}/${payload.snakeAssignmentId}`).once('value')).val() || null;
+                    }
+                    payload.snakeTaskLabelSnapshot = getSnakeTaskLabelSnapshot({
+                        ...payload,
+                        taskLabel: activeTask.taskLabel,
+                        taskIdx: activeTask.taskIdx
+                    }, assignmentSnapshot);
+                    if (payload.snakeTaskLabelSnapshot) payload.taskLabel = payload.snakeTaskLabelSnapshot;
                     payload.snakeAssignmentPart = snakeAssignmentPart;
                 }
             }
@@ -6667,6 +6711,8 @@ ${optionsText}
                     const assignmentPath = assignmentId ? `rounds/${assignmentRound}/snake/assignments/${uid}/${assignmentId}` : '';
                     if (assignmentId && assignmentPath) {
                         const assignmentBefore = (await db.ref(assignmentPath).once('value')).val() || {};
+                        const resolvedSnakeTaskIdx = Number(row.snakeTaskIdx ?? activeTask.taskIdx ?? row.taskIdx ?? assignmentBefore.taskIdx ?? assignmentBefore.taskId ?? -1);
+                        const resolvedTaskLabel = getSnakeTaskLabelSnapshot(row, assignmentBefore);
                         const submissionPart = String(row.snakeAssignmentPart || 'main');
                         const approvals = assignmentBefore.approvals || { main: false, bonus: !Number.isInteger(Number(assignmentBefore.bonusTaskIdx)) };
                         if (submissionPart === 'bonus') approvals.bonus = true; else approvals.main = true;
@@ -6688,8 +6734,10 @@ ${optionsText}
                                 userId: uid,
                                 round: assignmentRound,
                                 cell: rowCell,
-                                taskId: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
-                                taskIdx: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
+                                taskId: resolvedSnakeTaskIdx,
+                                taskIdx: resolvedSnakeTaskIdx,
+                                taskLabel: resolvedTaskLabel,
+                                taskLabelSnapshot: resolvedTaskLabel,
                                 status: 'assigned',
                                 createdAt: Date.now()
                             };
@@ -6703,7 +6751,11 @@ ${optionsText}
                                 status: 'reward_granted',
                                 acceptedStatus: String(status),
                                 lastSubmissionId: String(submissionId || ''),
-                                reviewedBy: String(currentUserId || '')
+                                reviewedBy: String(currentUserId || ''),
+                                taskId: Number(current.taskId ?? resolvedSnakeTaskIdx),
+                                taskIdx: Number(current.taskIdx ?? resolvedSnakeTaskIdx),
+                                taskLabel: String(current.taskLabel || resolvedTaskLabel || ''),
+                                taskLabelSnapshot: String(current.taskLabelSnapshot || current.taskLabel || resolvedTaskLabel || '')
                             };
                         });
                         if (rewardTx.committed && rewardGrantedNow) {
@@ -6725,10 +6777,13 @@ ${optionsText}
                                 owner: Number.isFinite(Number(row.owner)) ? Number(row.owner) : Number(snakeState.owner ?? row.charIndex ?? -1),
                                 round: Number(row.round || assignmentRound || roundData.number || 0),
                                 cell: Number(rowCell || activeCell || 0),
-                                taskIdx: Number(activeTask.taskIdx ?? row.taskIdx ?? -1),
-                                taskLabel: String(row.taskLabel || ''),
+                                taskIdx: resolvedSnakeTaskIdx,
+                                taskLabel: String(resolvedTaskLabel || ''),
+                                assignmentTaskLabel: String(resolvedTaskLabel || ''),
+                                sourceTaskLabel: String(resolvedTaskLabel || ''),
                                 mode: 'snake',
                                 assignmentId,
+                                sourceAssignmentId: assignmentId,
                                 source: 'snake_assignment',
                                 createdAt: nowTs
                             };
@@ -6736,6 +6791,11 @@ ${optionsText}
                             updates[`tickets/${nextTicket}`] = ticketPayload;
                             updates[`users/${uid}/tickets/${nextTicket}`] = ticketPayload;
                             updates[`${assignmentPath}/approvals`] = approvals;
+                            updates[`${assignmentPath}/taskLabel`] = String(assignmentBefore.taskLabel || resolvedTaskLabel || '');
+                            updates[`${assignmentPath}/taskLabelSnapshot`] = String(assignmentBefore.taskLabelSnapshot || assignmentBefore.taskLabel || resolvedTaskLabel || '');
+                            updates[`${refPath}/taskLabel`] = String(row.taskLabel || resolvedTaskLabel || '');
+                            updates[`${refPath}/snakeTaskLabelSnapshot`] = String(row.snakeTaskLabelSnapshot || resolvedTaskLabel || '');
+                            updates[`${refPath}/snakeTaskIdx`] = resolvedSnakeTaskIdx;
                             updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
                             updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
                             updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
