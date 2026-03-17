@@ -7301,6 +7301,35 @@ ${optionsText}
             return { stableWorkId, legacyPrefix, ownerUserId };
         }
 
+        function findAcceptedSubmissionByWorkId(workId) {
+            const targetId = String(workId || '').trim();
+            if (!targetId) return null;
+            const pool = getGalleryApprovedPool();
+            return pool.find((item) => {
+                const binding = getGalleryWorkReactionBinding(item);
+                const itemWorkId = String(item?.workId || item?.galleryWorkId || binding.stableWorkId || '').trim();
+                return itemWorkId === targetId;
+            }) || null;
+        }
+
+        function resolveGalleryOwnerUserId(workDoc, workId) {
+            const directOwnerId = String(workDoc?.ownerUserId || '').trim();
+            if (directOwnerId) return directOwnerId;
+            const source = findAcceptedSubmissionByWorkId(workId);
+            return resolveSubmissionOwnerUserId(source);
+        }
+
+        async function syncActiveGalleryWorkMeta(workId, ownerUserId, imageUrl) {
+            if (!fs || !workId || !ownerUserId) return;
+            const payload = { ownerUserId, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            if (imageUrl) payload.imageUrl = imageUrl;
+            try {
+                await fs.doc(`gallery_works/${workId}`).set(payload, { merge: true });
+            } catch (err) {
+                console.warn('Failed to sync gallery work meta', err);
+            }
+        }
+
 
         const GALLERY_REACTION_CONFIG = {
             clap: { cost: 0, points: 1, emoji: '👏' },
@@ -7380,7 +7409,7 @@ ${optionsText}
             const exhibitId = String(work.workId || galleryRealtimeState.activeWorkId || '').trim();
             const counts = getGalleryCountsFromWork(work);
             const img = work.imageUrl || work.afterImageData || work.imageData || '';
-            const ownerUserId = String(work.ownerUserId || '').trim();
+            const ownerUserId = resolveGalleryOwnerUserId(work, exhibitId);
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
             const disabledByRole = currentUserRole === 'admin';
@@ -7482,9 +7511,6 @@ ${optionsText}
             if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
             if (!currentUserId) return alert('Пользователь не определён.');
             if (!fs || !functionsApi) return alert('Галерея временно недоступна.');
-            const targetOwnerUserId = String(ownerUserId || '').trim();
-            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
-            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
             const cfg = GALLERY_REACTION_CONFIG[type];
             if (!cfg) return;
             if (galleryRealtimeState.inFlight) return;
@@ -7498,6 +7524,13 @@ ${optionsText}
             if (activeWorkId && workId !== activeWorkId) {
                 return alert('Работа в галерее уже сменилась, попробуй еще раз.');
             }
+
+            const targetOwnerUserId = String(ownerUserId || resolveGalleryOwnerUserId(galleryRealtimeState.activeWorkDoc, workId) || '').trim();
+            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
+            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
+
+            const activeImageUrl = String(galleryRealtimeState.activeWorkDoc?.imageUrl || galleryRealtimeState.activeWorkDoc?.afterImageData || galleryRealtimeState.activeWorkDoc?.imageData || '').trim();
+            await syncActiveGalleryWorkMeta(workId, targetOwnerUserId, activeImageUrl);
 
             const beforeCounts = applyGalleryOptimisticReaction(type);
             if (!beforeCounts) return;
