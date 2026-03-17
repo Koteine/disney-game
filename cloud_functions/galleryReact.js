@@ -50,7 +50,7 @@ exports.galleryReact = functions.https.onCall(async (data, context) => {
     ]);
 
     const activeWorkId = String(activeSnap.data()?.workId || '').trim();
-    if (activeWorkId !== workId) {
+    if (activeWorkId && activeWorkId !== workId) {
       throw new functions.https.HttpsError('failed-precondition', 'Active work changed');
     }
     if (!workSnap.exists) {
