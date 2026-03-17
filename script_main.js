@@ -7255,34 +7255,18 @@ ${optionsText}
             return String(value || '').trim().replace(/[.#$\[\]/\:]/g, '_');
         }
 
-
         function isRecentRoundResult(endedAt) {
             return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
-
         }
 
-        function startGalleryRealtime() {
-            if (!fs || galleryRealtimeState.stopActiveWork) return;
-            galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
-                const row = snap.exists ? (snap.data() || {}) : {};
-                const nextWorkId = String(row.workId || '').trim();
-                if (!nextWorkId) {
-                    galleryRealtimeState.activeWorkId = '';
-                    galleryRealtimeState.activeWorkDoc = null;
-                    renderGalleryFromState();
-                    return;
-                }
-                if (galleryRealtimeState.activeWorkId === nextWorkId) return;
-                galleryRealtimeState.activeWorkId = nextWorkId;
-                galleryRealtimeState.myReactionType = '';
-                galleryRealtimeState.pendingReactionType = '';
-                galleryRealtimeState.inFlight = false;
-                bindGalleryWorkDoc(nextWorkId);
-            }, (err) => {
-                console.error('Active gallery listener failed', err);
-            });
+        function checkLastRoundResult(roundKey) {
+            const key = String(roundKey || '').trim();
+            if (!key) return false;
+            const sessionKey = `round-result-shown-${key}`;
+            if (sessionStorage.getItem(sessionKey) === '1') return false;
+            sessionStorage.setItem(sessionKey, '1');
+            return true;
         }
-
 
         async function updateKarma(targetUserId, amount) {
             const uid = String(targetUserId || '').trim();
@@ -7295,8 +7279,11 @@ ${optionsText}
                 });
                 const fallbackSnap = await db.ref(`player_season_status/${uid}/karma_points`).once('value');
                 return Number(fallbackSnap.val()) || 0;
-
-
+            }
+            const fallbackNickname = getTelegramDisplayName();
+            await window.karmaSystem.ensureSeasonProfile(db, uid, fallbackNickname, false);
+            return window.karmaSystem.addKarmaPoints(db, uid, delta, ADMIN_ID);
+        }
 
         function getGalleryWorkReactionBinding(work) {
             const ownerUserId = resolveSubmissionOwnerUserId(work);
@@ -7516,7 +7503,6 @@ ${optionsText}
             galleryRealtimeState.pendingReactionType = '';
             renderGalleryFromState();
         }
-
 
         function renderGalleryTab() {
             startGalleryRealtime();
