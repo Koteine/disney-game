@@ -7260,6 +7260,7 @@ ${optionsText}
             return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
 
         }
+
         function startGalleryRealtime() {
             if (!fs || galleryRealtimeState.stopActiveWork) return;
             galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
@@ -7281,6 +7282,21 @@ ${optionsText}
                 console.error('Active gallery listener failed', err);
             });
         }
+
+
+        async function updateKarma(targetUserId, amount) {
+            const uid = String(targetUserId || '').trim();
+            const delta = Number(amount) || 0;
+            if (!uid) return 0;
+            if (!window.karmaSystem || typeof window.karmaSystem.addKarmaPoints !== 'function') {
+                await db.ref(`player_season_status/${uid}`).update({
+                    karma_points: firebase.database.ServerValue.increment(delta),
+                    updatedAt: Date.now()
+                });
+                const fallbackSnap = await db.ref(`player_season_status/${uid}/karma_points`).once('value');
+                return Number(fallbackSnap.val()) || 0;
+
+
 
         function getGalleryWorkReactionBinding(work) {
             const ownerUserId = resolveSubmissionOwnerUserId(work);
