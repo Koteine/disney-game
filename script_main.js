@@ -71,7 +71,7 @@
  * Подключение Firebase, Telegram WebApp, определение роли пользователя (админ/игрок) и базовые утилиты.   *
  ************************************************************************************************************/
 const JSON_URL = 'tasks.json';
-        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
+        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/", projectId: "disneyquest-acaa0" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         const fs = firebase.firestore ? firebase.firestore() : null;
@@ -7255,6 +7255,33 @@ ${optionsText}
             return String(value || '').trim().replace(/[.#$\[\]/\:]/g, '_');
         }
 
+
+        function isRecentRoundResult(endedAt) {
+            return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
+
+        }
+        function startGalleryRealtime() {
+            if (!fs || galleryRealtimeState.stopActiveWork) return;
+            galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
+                const row = snap.exists ? (snap.data() || {}) : {};
+                const nextWorkId = String(row.workId || '').trim();
+                if (!nextWorkId) {
+                    galleryRealtimeState.activeWorkId = '';
+                    galleryRealtimeState.activeWorkDoc = null;
+                    renderGalleryFromState();
+                    return;
+                }
+                if (galleryRealtimeState.activeWorkId === nextWorkId) return;
+                galleryRealtimeState.activeWorkId = nextWorkId;
+                galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.pendingReactionType = '';
+                galleryRealtimeState.inFlight = false;
+                bindGalleryWorkDoc(nextWorkId);
+            }, (err) => {
+                console.error('Active gallery listener failed', err);
+            });
+        }
+
         function getGalleryWorkReactionBinding(work) {
             const ownerUserId = resolveSubmissionOwnerUserId(work);
             const sourcePrefix = sanitizeGalleryKeyPart(work?.sourcePrefix || 'submissions');
@@ -7473,6 +7500,7 @@ ${optionsText}
             galleryRealtimeState.pendingReactionType = '';
             renderGalleryFromState();
         }
+
 
         function renderGalleryTab() {
             startGalleryRealtime();
