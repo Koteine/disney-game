@@ -7301,6 +7301,35 @@ ${optionsText}
             return { stableWorkId, legacyPrefix, ownerUserId };
         }
 
+        function findAcceptedSubmissionByWorkId(workId) {
+            const targetId = String(workId || '').trim();
+            if (!targetId) return null;
+            const pool = getGalleryApprovedPool();
+            return pool.find((item) => {
+                const binding = getGalleryWorkReactionBinding(item);
+                const itemWorkId = String(item?.workId || item?.galleryWorkId || binding.stableWorkId || '').trim();
+                return itemWorkId === targetId;
+            }) || null;
+        }
+
+        function resolveGalleryOwnerUserId(workDoc, workId) {
+            const directOwnerId = String(workDoc?.ownerUserId || '').trim();
+            if (directOwnerId) return directOwnerId;
+            const source = findAcceptedSubmissionByWorkId(workId);
+            return resolveSubmissionOwnerUserId(source);
+        }
+
+        async function syncActiveGalleryWorkMeta(workId, ownerUserId, imageUrl) {
+            if (!fs || !workId || !ownerUserId) return;
+            const payload = { ownerUserId, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            if (imageUrl) payload.imageUrl = imageUrl;
+            try {
+                await fs.doc(`gallery_works/${workId}`).set(payload, { merge: true });
+            } catch (err) {
+                console.warn('Failed to sync gallery work meta', err);
+            }
+        }
+
 
         const GALLERY_REACTION_CONFIG = {
             clap: { cost: 0, points: 1, emoji: '👏' },
@@ -7355,12 +7384,15 @@ ${optionsText}
             }
         }
 
-        function getGalleryFallbackWorkDoc() {
-            const fallback = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
+        function getGalleryFallbackWorkDoc(preferredWorkId) {
+            const preferredId = String(preferredWorkId || '').trim();
+            const preferredWork = preferredId ? findAcceptedSubmissionByWorkId(preferredId) : null;
+            const fallback = preferredWork || pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
             if (!fallback) return null;
             const binding = getGalleryWorkReactionBinding(fallback);
+            const resolvedWorkId = String(fallback.workId || fallback.galleryWorkId || binding.stableWorkId || '').trim();
             return {
-                workId: String(fallback.workId || fallback.galleryWorkId || binding.stableWorkId || '').trim(),
+                workId: preferredWork ? preferredId : resolvedWorkId,
                 ownerUserId: binding.ownerUserId,
                 imageUrl: fallback.afterImageData || fallback.imageData || '',
                 reactionCounts: { clap: 0, heart: 0, sun: 0 }
@@ -7371,21 +7403,25 @@ ${optionsText}
             const wrap = document.getElementById('gallery-content');
             if (!wrap) return;
             const runtimeWork = galleryRealtimeState.activeWorkDoc;
-            const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc();
+            const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
+            const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc(activeWorkId);
             const work = runtimeWork || fallbackWork;
             if (!work) {
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
             }
-            const exhibitId = String(work.workId || galleryRealtimeState.activeWorkId || '').trim();
+            const exhibitId = String(work.workId || activeWorkId || '').trim();
             const counts = getGalleryCountsFromWork(work);
             const img = work.imageUrl || work.afterImageData || work.imageData || '';
-            const ownerUserId = String(work.ownerUserId || '').trim();
+            const ownerUserId = resolveGalleryOwnerUserId(work, exhibitId);
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
             const disabledByRole = currentUserRole === 'admin';
-            const controlsDisabled = hasReaction || inFlight || disabledByRole;
-            const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+            const fallbackNotSynced = !runtimeWork && !!activeWorkId && exhibitId !== activeWorkId;
+            const controlsDisabled = hasReaction || inFlight || disabledByRole || fallbackNotSynced;
+            const feedbackLine = fallbackNotSynced
+                ? 'Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.'
+                : `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
@@ -7482,9 +7518,6 @@ ${optionsText}
             if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
             if (!currentUserId) return alert('Пользователь не определён.');
             if (!fs || !functionsApi) return alert('Галерея временно недоступна.');
-            const targetOwnerUserId = String(ownerUserId || '').trim();
-            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
-            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
             const cfg = GALLERY_REACTION_CONFIG[type];
             if (!cfg) return;
             if (galleryRealtimeState.inFlight) return;
@@ -7496,8 +7529,15 @@ ${optionsText}
                 return alert('Не удалось определить работу галереи. Попробуй еще раз.');
             }
             if (activeWorkId && workId !== activeWorkId) {
-                return alert('Работа в галерее уже сменилась, попробуй еще раз.');
+                return alert('Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.');
             }
+
+            const targetOwnerUserId = String(ownerUserId || resolveGalleryOwnerUserId(galleryRealtimeState.activeWorkDoc, workId) || '').trim();
+            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
+            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
+
+            const activeImageUrl = String(galleryRealtimeState.activeWorkDoc?.imageUrl || galleryRealtimeState.activeWorkDoc?.afterImageData || galleryRealtimeState.activeWorkDoc?.imageData || '').trim();
+            await syncActiveGalleryWorkMeta(workId, targetOwnerUserId, activeImageUrl);
 
             const beforeCounts = applyGalleryOptimisticReaction(type);
             if (!beforeCounts) return;
