@@ -3151,12 +3151,14 @@ ${optionsText}
                     alert('🌿 Иммунитет джунглей активирован: следующий негативный эффект будет поглощён.');
                 }
 
+                const processedEncounterPairKeys = new Set();
                 for (const other of othersOnCell) {
                     const otherUserId = String(other.userId || '').trim();
                     if (!otherUserId) continue;
                     const pairKey = window.snakeRound?.buildPairKey
                         ? window.snakeRound.buildPairKey(uid, otherUserId)
                         : [uid, otherUserId].sort((a, b) => a.localeCompare(b, 'ru')).join('__');
+                    processedEncounterPairKeys.add(pairKey);
                     const historyPath = `snake_duel_history/${roundId}/${nextPos}/${pairKey}`;
                     const historySnap = await db.ref(historyPath).once('value');
                     const rights = window.snakeRound?.evaluateEncounterRights
@@ -3333,6 +3335,91 @@ ${optionsText}
                     };
                 }
                 await db.ref().update(updates);
+
+                const freshPresenceSnap = await db.ref(`snake_presence/${roundId}/${nextPos}`).once('value');
+                const freshPresenceList = window.snakeRound?.parseCellPresence
+                    ? window.snakeRound.parseCellPresence(freshPresenceSnap.val())
+                    : [];
+                const missedOthersOnCell = freshPresenceList.filter((row) => {
+                    const otherUserId = String(row.userId || '').trim();
+                    if (!otherUserId || otherUserId === uid) return false;
+                    const pairKey = window.snakeRound?.buildPairKey
+                        ? window.snakeRound.buildPairKey(uid, otherUserId)
+                        : [uid, otherUserId].sort((a, b) => a.localeCompare(b, 'ru')).join('__');
+                    return !processedEncounterPairKeys.has(pairKey);
+                });
+                for (const other of missedOthersOnCell) {
+                    const otherUserId = String(other.userId || '').trim();
+                    if (!otherUserId) continue;
+                    const pairKey = window.snakeRound?.buildPairKey
+                        ? window.snakeRound.buildPairKey(uid, otherUserId)
+                        : [uid, otherUserId].sort((a, b) => a.localeCompare(b, 'ru')).join('__');
+                    const historyPath = `snake_duel_history/${roundId}/${nextPos}/${pairKey}`;
+                    const historySnap = await db.ref(historyPath).once('value');
+                    const rights = window.snakeRound?.evaluateEncounterRights
+                        ? window.snakeRound.evaluateEncounterRights({
+                            currentUserId: uid,
+                            currentEnteredAt: nowTs,
+                            otherUserId,
+                            otherEnteredAt: Number(other.enteredAt || 0),
+                            duelHistoryRow: historySnap.val() || null,
+                            nowTs: Date.now()
+                        })
+                        : {
+                            pairKey,
+                            canStartClash: true,
+                            blockedReason: '',
+                            completedOnCell: false,
+                            currentImmune: false,
+                            otherImmune: false,
+                            safetyWindowMs: 3600000
+                        };
+                    const encounterNowTs = Date.now();
+                    const encounterState = {
+                        pairKey,
+                        players: [uid, otherUserId].sort((a, b) => a.localeCompare(b, 'ru')),
+                        metAt: encounterNowTs,
+                        metBy: uid,
+                        round: roundId,
+                        cell: nextPos,
+                        canStartClash: !!rights.canStartClash,
+                        blockedReason: String(rights.blockedReason || ''),
+                        completedOnCell: !!rights.completedOnCell,
+                        safetyWindowMs: Number(rights.safetyWindowMs || 0),
+                        hostCellEntryAt: Number(other.enteredAt || 0),
+                        hostSafetyImmune: !!rights.otherImmune,
+                        challengerSafetyImmune: !!rights.currentImmune,
+                        updatedAt: encounterNowTs
+                    };
+                    const encounterUpdates = {
+                        [`snake_encounters/${roundId}/${nextPos}/${pairKey}`]: encounterState,
+                        [`snake_duel_history/${roundId}/${nextPos}/${pairKey}`]: historySnap.exists()
+                            ? {
+                                ...(historySnap.val() || {}),
+                                updatedAt: encounterNowTs,
+                                lastEncounterAt: encounterNowTs
+                            }
+                            : {
+                                pairKey,
+                                players: encounterState.players,
+                                round: roundId,
+                                cell: nextPos,
+                                status: 'pending',
+                                createdAt: encounterNowTs,
+                                updatedAt: encounterNowTs,
+                                lastEncounterAt: encounterNowTs
+                            }
+                    };
+                    await db.ref().update(encounterUpdates);
+                    if (encounterState.canStartClash) {
+                        await maybeCreateSnakeSynergyFromEncounter(encounterState)
+                            .then((result) => {
+                                if (result?.created) return;
+                                return maybeStartSnakeClashFromEncounter(encounterState);
+                            });
+                    }
+                }
+
                 if (Number(nextPos) === 100) {
                     await grantSnakeFinalRewardIfNeeded({
                         userId: currentUserId,
