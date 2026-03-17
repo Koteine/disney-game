@@ -7313,6 +7313,7 @@ ${optionsText}
             activeWorkId: '',
             activeWorkDoc: null,
             myReactionType: '',
+            myReactionWorkId: '',
             pendingReactionType: '',
             inFlight: false
         };
@@ -7334,6 +7335,7 @@ ${optionsText}
             galleryRealtimeState.activeWorkId = '';
             galleryRealtimeState.activeWorkDoc = null;
             galleryRealtimeState.myReactionType = '';
+            galleryRealtimeState.myReactionWorkId = '';
             galleryRealtimeState.pendingReactionType = '';
             galleryRealtimeState.inFlight = false;
             if (galleryRotationTimer) clearInterval(galleryRotationTimer);
@@ -7343,25 +7345,28 @@ ${optionsText}
             const uid = String(currentUserId || '').trim();
             if (!uid || !workId || !fs) {
                 galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.myReactionWorkId = '';
                 return;
             }
             try {
                 const snap = await fs.doc(`gallery_works/${workId}/reactions/${uid}`).get();
                 const row = snap.exists ? (snap.data() || {}) : {};
                 galleryRealtimeState.myReactionType = String(row.type || '').trim();
+                galleryRealtimeState.myReactionWorkId = workId;
             } catch (err) {
                 console.warn('Failed to load my gallery reaction', err);
                 galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.myReactionWorkId = '';
             }
         }
 
         function getGalleryFallbackWorkDoc() {
             const fallback = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
             if (!fallback) return null;
-            const ownerUserId = resolveSubmissionOwnerUserId(fallback);
+            const binding = getGalleryWorkReactionBinding(fallback);
             return {
-                workId: '',
-                ownerUserId,
+                workId: String(fallback.workId || fallback.galleryWorkId || binding.stableWorkId || '').trim(),
+                ownerUserId: binding.ownerUserId,
                 imageUrl: fallback.afterImageData || fallback.imageData || '',
                 reactionCounts: { clap: 0, heart: 0, sun: 0 }
             };
@@ -7377,18 +7382,16 @@ ${optionsText}
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
             }
-            const exhibitId = String(galleryRealtimeState.activeWorkId || '').trim();
+            const exhibitId = String(work.workId || galleryRealtimeState.activeWorkId || '').trim();
             const counts = getGalleryCountsFromWork(work);
             const img = work.imageUrl || work.afterImageData || work.imageData || '';
             const ownerUserId = String(work.ownerUserId || '').trim();
-            const hasReaction = !!galleryRealtimeState.myReactionType;
+            const hasReaction = !!galleryRealtimeState.myReactionType
+                && String(galleryRealtimeState.myReactionWorkId || '').trim() === exhibitId;
             const inFlight = !!galleryRealtimeState.inFlight;
-            const isFallbackMode = !runtimeWork;
             const disabledByRole = currentUserRole === 'admin';
-            const controlsDisabled = hasReaction || inFlight || disabledByRole || isFallbackMode;
-            const feedbackLine = isFallbackMode
-                ? 'Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.'
-                : `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+            const controlsDisabled = hasReaction || inFlight || disabledByRole;
+            const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
@@ -7416,6 +7419,10 @@ ${optionsText}
             galleryRealtimeState.stopWorkDoc = fs.doc(`gallery_works/${workId}`).onSnapshot(async (snap) => {
                 if (!snap.exists) {
                     galleryRealtimeState.activeWorkDoc = null;
+                    galleryRealtimeState.myReactionType = '';
+                    galleryRealtimeState.myReactionWorkId = '';
+                    galleryRealtimeState.pendingReactionType = '';
+                    galleryRealtimeState.inFlight = false;
                     renderGalleryFromState();
                     return;
                 }
@@ -7435,12 +7442,17 @@ ${optionsText}
                 if (!nextWorkId) {
                     galleryRealtimeState.activeWorkId = '';
                     galleryRealtimeState.activeWorkDoc = null;
+                    galleryRealtimeState.myReactionType = '';
+                    galleryRealtimeState.myReactionWorkId = '';
+                    galleryRealtimeState.pendingReactionType = '';
+                    galleryRealtimeState.inFlight = false;
                     renderGalleryFromState();
                     return;
                 }
                 if (galleryRealtimeState.activeWorkId === nextWorkId) return;
                 galleryRealtimeState.activeWorkId = nextWorkId;
                 galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.myReactionWorkId = '';
                 galleryRealtimeState.pendingReactionType = '';
                 galleryRealtimeState.inFlight = false;
                 bindGalleryWorkDoc(nextWorkId);
@@ -7460,6 +7472,7 @@ ${optionsText}
                 reactionCounts: counts
             };
             galleryRealtimeState.myReactionType = type;
+            galleryRealtimeState.myReactionWorkId = String(galleryRealtimeState.activeWorkId || work.workId || '').trim();
             galleryRealtimeState.pendingReactionType = type;
             galleryRealtimeState.inFlight = true;
             renderGalleryFromState();
@@ -7475,6 +7488,7 @@ ${optionsText}
             };
             if (galleryRealtimeState.pendingReactionType === type) {
                 galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.myReactionWorkId = '';
                 galleryRealtimeState.pendingReactionType = '';
             }
             galleryRealtimeState.inFlight = false;
@@ -7491,15 +7505,26 @@ ${optionsText}
             const cfg = GALLERY_REACTION_CONFIG[type];
             if (!cfg) return;
             if (galleryRealtimeState.inFlight) return;
-            if (galleryRealtimeState.myReactionType) return alert('Ты уже отправлял(а) реакцию этой картине.');
 
             const workId = String(exhibitId || galleryRealtimeState.activeWorkId || '').trim();
-            if (!workId || workId !== String(galleryRealtimeState.activeWorkId || '').trim()) {
+            const alreadyReactedToWork = !!galleryRealtimeState.myReactionType
+                && String(galleryRealtimeState.myReactionWorkId || '').trim() === workId;
+            if (alreadyReactedToWork) return alert('Ты уже отправлял(а) реакцию этой картине.');
+            const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
+            if (!workId) {
+                return alert('Не удалось определить работу галереи. Попробуй еще раз.');
+            }
+            if (activeWorkId && workId !== activeWorkId) {
                 return alert('Работа в галерее уже сменилась, попробуй еще раз.');
             }
 
-            const beforeCounts = applyGalleryOptimisticReaction(type);
-            if (!beforeCounts) return;
+            const hasRuntimeWork = !!galleryRealtimeState.activeWorkDoc;
+            const beforeCounts = hasRuntimeWork ? applyGalleryOptimisticReaction(type) : null;
+            if (hasRuntimeWork && !beforeCounts) return;
+            if (!hasRuntimeWork) {
+                galleryRealtimeState.inFlight = true;
+                renderGalleryFromState();
+            }
 
             try {
                 const callable = functionsApi.httpsCallable('galleryReact');
@@ -7508,6 +7533,11 @@ ${optionsText}
                 seasonProfileData.karma_points = Math.max(0, Number(payload.karmaAfter || seasonProfileData.karma_points || 0));
                 updateProfileUI();
                 updateProfileTicketBalance();
+
+                if (!hasRuntimeWork) {
+                    galleryRealtimeState.myReactionType = type;
+                    galleryRealtimeState.myReactionWorkId = workId;
+                }
 
                 const fx = document.getElementById('gallery-fx');
                 if (fx) {
@@ -7519,7 +7549,10 @@ ${optionsText}
                 launchVoteConfetti();
             } catch (err) {
                 console.warn('Gallery reaction failed', err);
-                rollbackGalleryOptimisticReaction(type, beforeCounts);
+                if (beforeCounts) rollbackGalleryOptimisticReaction(type, beforeCounts);
+                galleryRealtimeState.inFlight = false;
+                galleryRealtimeState.pendingReactionType = '';
+                renderGalleryFromState();
                 alert('Не удалось отправить реакцию. Попробуй снова.');
                 return;
             }
