@@ -71,9 +71,11 @@
  * Подключение Firebase, Telegram WebApp, определение роли пользователя (админ/игрок) и базовые утилиты.   *
  ************************************************************************************************************/
 const JSON_URL = 'tasks.json';
-        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/" };
+        const firebaseConfig = { databaseURL: "https://disneyquest-acaa0-default-rtdb.firebaseio.com/", projectId: "disneyquest-acaa0" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        const fs = firebase.firestore ? firebase.firestore() : null;
+        const functionsApi = firebase.functions ? firebase.functions() : null;
         const tg = window.Telegram.WebApp;
         const ADMIN_ID = 341995937;
         window.db = db;
@@ -2793,7 +2795,6 @@ ${optionsText}
 
         async function roll() {
             return enqueueSnakeAction('roll', async () => {
-                setSnakeCriticalUiLock('snake_roll');
             const rollTrace = (label, payload) => {
                 if (payload === undefined) {
                     console.info(`[ROLL] ${label}`);
@@ -2811,6 +2812,8 @@ ${optionsText}
             if (Number(currentUserId) === Number(ADMIN_ID)) {
                 return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
             }
+
+            setSnakeCriticalUiLock('snake_roll');
             snakeRollInFlight = true;
             let activeSnakeRollRequestId = '';
             const diceBtn = document.getElementById('dice-btn');
@@ -4819,6 +4822,8 @@ ${optionsText}
             const showAdminWindows = isAdminUser() && id === 'tab-admin';
             if (adminPlayersSection) adminPlayersSection.style.display = showAdminWindows ? '' : 'none';
             if (adminEmergencySection) adminEmergencySection.style.display = showAdminWindows ? '' : 'none';
+
+            if (id !== 'tab-gallery' && typeof stopGalleryRealtime === 'function') stopGalleryRealtime();
 
             if (id === 'tab-wheel') drawWheel();
             if (id === 'tab-works') {
@@ -7251,90 +7256,6 @@ ${optionsText}
             return String(value || '').trim().replace(/[.#$\[\]/\:]/g, '_');
         }
 
-        function getGalleryWorkReactionBinding(work) {
-            const ownerUserId = resolveSubmissionOwnerUserId(work);
-            const sourcePrefix = sanitizeGalleryKeyPart(work?.sourcePrefix || 'submissions');
-            const dbPath = sanitizeGalleryKeyPart(work?.dbPath || work?.id || 'unknown');
-            const stableWorkId = `${sourcePrefix}__${dbPath}`;
-            const legacyPrefix = `${ownerUserId || 'unknown'}_${String(work?.id || '').trim()}_`;
-            return { stableWorkId, legacyPrefix, ownerUserId };
-        }
-
-        async function getGalleryComplimentStats(exhibitId, legacyPrefix = '') {
-            const counts = { clap: 0, heart: 0, sun: 0 };
-            const id = String(exhibitId || '').trim();
-            if (!id) return counts;
-
-            const addCounts = (rawMap) => {
-                Object.values(rawMap || {}).forEach((entry) => {
-                    const type = String(entry?.type || '').trim();
-                    if (Object.prototype.hasOwnProperty.call(counts, type)) counts[type] += 1;
-                });
-            };
-
-            const snap = await db.ref(`gallery_compliments/${id}`).once('value');
-            addCounts(snap.val() || {});
-
-            const legacy = String(legacyPrefix || '').trim();
-            if (legacy) {
-                const allSnap = await db.ref('gallery_compliments').once('value');
-                const all = allSnap.val() || {};
-                Object.entries(all).forEach(([key, votes]) => {
-                    if (String(key || '') === id) return;
-                    if (!String(key || '').startsWith(legacy)) return;
-                    addCounts(votes || {});
-                });
-            }
-
-            return counts;
-        }
-
-        async function updateGalleryFeedbackLine(exhibitId, legacyPrefix = '') {
-            const feedbackEl = document.getElementById('gallery-feedback-line');
-            if (!feedbackEl) return;
-            const expectedExhibitId = String(feedbackEl.dataset.exhibitId || '').trim();
-            const requestedExhibitId = String(exhibitId || '').trim();
-            if (!requestedExhibitId || expectedExhibitId !== requestedExhibitId) return;
-            const effectiveLegacyPrefix = String(legacyPrefix || feedbackEl.dataset.legacyPrefix || '').trim();
-            const stats = await getGalleryComplimentStats(requestedExhibitId, effectiveLegacyPrefix);
-            if (String(feedbackEl.dataset.exhibitId || '').trim() !== requestedExhibitId) return;
-            feedbackEl.textContent = `Отклик за всю историю: ${stats.clap} 👏 · ${stats.heart} ❤️ · ${stats.sun} ☀️.`;
-        }
-
-        function playGalleryChime() {
-            try {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (!AudioCtx) return;
-                const ctx = new AudioCtx();
-                const now = ctx.currentTime;
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(880, now);
-                osc.frequency.exponentialRampToValueAtTime(1320, now + 0.22);
-                gain.gain.setValueAtTime(0.0001, now);
-                gain.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.5);
-            } catch (e) {
-                console.warn('chime error', e);
-            }
-        }
-
-        function launchVoteConfetti() {
-            if (typeof window.confetti !== 'function') return;
-            const duration = 3000;
-            const end = Date.now() + duration;
-            const frame = () => {
-                window.confetti({ particleCount: 40, startVelocity: 35, spread: 90, origin: { x: 0.5, y: 0.5 } });
-                if (Date.now() < end) requestAnimationFrame(frame);
-            };
-            frame();
-        }
-
         function isRecentRoundResult(endedAt) {
             return Number(endedAt || 0) > 0 && (Date.now() - Number(endedAt || 0)) < 60000;
         }
@@ -7347,7 +7268,6 @@ ${optionsText}
             sessionStorage.setItem(sessionKey, '1');
             return true;
         }
-
 
         async function updateKarma(targetUserId, amount) {
             const uid = String(targetUserId || '').trim();
@@ -7366,86 +7286,230 @@ ${optionsText}
             return window.karmaSystem.addKarmaPoints(db, uid, delta, ADMIN_ID);
         }
 
-        async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
-            if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
-            if (!currentUserId) return alert('Пользователь не определён.');
-            const targetOwnerUserId = String(ownerUserId || '').trim();
-            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
-            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
-            const map = { clap: { cost: 0, points: 1, emoji: '👏' }, heart: { cost: 1, points: 3, emoji: '❤️' }, sun: { cost: 2, points: 5, emoji: '🌞' } };
-            const cfg = map[type];
-            if (!cfg) return;
-
-            const limitTx = await db.ref(`gallery_compliments/${exhibitId}/${currentUserId}`).transaction(v => v ? undefined : { type, at: Date.now(), points: cfg.points });
-            if (!limitTx.committed) return alert('Ты уже отправлял(а) комплимент этой картине.');
-
-            const paid = await spendTicketsTransaction(cfg.cost);
-            if (!paid) {
-                await db.ref(`gallery_compliments/${exhibitId}/${currentUserId}`).remove();
-                return alert('Недостаточно билетиков для этого комплимента.');
-            }
-
-            const nextKarma = await updateKarma(currentUserId, cfg.points || 0);
-            if (String(currentUserId) !== String(ADMIN_ID)) {
-                seasonProfileData.karma_points = Math.max(0, Number(nextKarma) || 0);
-                updateProfileUI();
-            }
-            await db.ref(`player_season_status/${currentUserId}`).update({
-                updatedAt: Date.now(),
-                lastGalleryComplimentAt: Date.now(),
-                lastGalleryComplimentType: String(type || ''),
-                lastGalleryComplimentExhibitId: String(exhibitId || '')
-            });
-            if (currentUserRole === 'admin') {
-                console.info(`[KARMA][ADMIN] Комплимент ${cfg.emoji}: userId=${currentUserId}, delta=${cfg.points}, total=${nextKarma}`);
-            }
-            const fx = document.getElementById('gallery-fx');
-            if (fx) {
-                fx.textContent = cfg.emoji.repeat(6);
-                fx.className = `gallery-fx active ${type}`;
-                setTimeout(() => { fx.className = 'gallery-fx'; fx.textContent = ''; }, 1200);
-            }
-            playGalleryChime();
-            launchVoteConfetti();
-            alert('Комплимент отправлен!');
-            updateProfileTicketBalance();
-            renderGalleryTab();
+        function getGalleryWorkReactionBinding(work) {
+            const ownerUserId = resolveSubmissionOwnerUserId(work);
+            const sourcePrefix = sanitizeGalleryKeyPart(work?.sourcePrefix || 'submissions');
+            const dbPath = sanitizeGalleryKeyPart(work?.dbPath || work?.id || 'unknown');
+            const stableWorkId = `${sourcePrefix}__${dbPath}`;
+            const legacyPrefix = `${ownerUserId || 'unknown'}_${String(work?.id || '').trim()}_`;
+            return { stableWorkId, legacyPrefix, ownerUserId };
         }
 
-        function renderGalleryTab() {
-            const wrap = document.getElementById('gallery-content');
-            if (!wrap) return;
-            const approvedPool = getGalleryApprovedPool();
-            const picked = pickExhibitWorks(approvedPool, 1)[0] || null;
-            if (!picked) {
-                wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Твое место в истории пустует... Будь первым, чью работу увидят все!</p><button class="admin-btn" onclick="switchTab('tab-works', document.querySelector('.nav-item[onclick*=\"tab-works\"]'))" style="margin:0; width:100%;">Перейти к заданиям</button></div>`;
+
+        const GALLERY_REACTION_CONFIG = {
+            clap: { cost: 0, points: 1, emoji: '👏' },
+            heart: { cost: 1, points: 3, emoji: '❤️' },
+            sun: { cost: 2, points: 5, emoji: '🌞' }
+        };
+        const galleryRealtimeState = {
+            stopActiveWork: null,
+            stopWorkDoc: null,
+            activeWorkId: '',
+            activeWorkDoc: null,
+            myReactionType: '',
+            pendingReactionType: '',
+            inFlight: false
+        };
+
+        function getGalleryCountsFromWork(workDoc) {
+            const reactions = workDoc?.reactionCounts || {};
+            return {
+                clap: Number(reactions.clap || 0),
+                heart: Number(reactions.heart || 0),
+                sun: Number(reactions.sun || 0)
+            };
+        }
+
+        function stopGalleryRealtime() {
+            if (typeof galleryRealtimeState.stopWorkDoc === 'function') galleryRealtimeState.stopWorkDoc();
+            if (typeof galleryRealtimeState.stopActiveWork === 'function') galleryRealtimeState.stopActiveWork();
+            galleryRealtimeState.stopActiveWork = null;
+            galleryRealtimeState.stopWorkDoc = null;
+            galleryRealtimeState.activeWorkId = '';
+            galleryRealtimeState.activeWorkDoc = null;
+            galleryRealtimeState.myReactionType = '';
+            galleryRealtimeState.pendingReactionType = '';
+            galleryRealtimeState.inFlight = false;
+            if (galleryRotationTimer) clearInterval(galleryRotationTimer);
+        }
+
+        async function loadMyReactionForActiveWork(workId) {
+            const uid = String(currentUserId || '').trim();
+            if (!uid || !workId || !fs) {
+                galleryRealtimeState.myReactionType = '';
                 return;
             }
-            const { stableWorkId: exhibitId, legacyPrefix, ownerUserId } = getGalleryWorkReactionBinding(picked);
-            const img = picked.afterImageData || picked.imageData;
+            try {
+                const snap = await fs.doc(`gallery_works/${workId}/reactions/${uid}`).get();
+                const row = snap.exists ? (snap.data() || {}) : {};
+                galleryRealtimeState.myReactionType = String(row.type || '').trim();
+            } catch (err) {
+                console.warn('Failed to load my gallery reaction', err);
+                galleryRealtimeState.myReactionType = '';
+            }
+        }
+
+        function renderGalleryFromState() {
+            const wrap = document.getElementById('gallery-content');
+            if (!wrap) return;
+            const work = galleryRealtimeState.activeWorkDoc;
+            if (!work) {
+                wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
+                return;
+            }
+            const exhibitId = String(galleryRealtimeState.activeWorkId || '').trim();
+            const counts = getGalleryCountsFromWork(work);
+            const img = work.imageUrl || work.afterImageData || work.imageData || '';
+            const ownerUserId = String(work.ownerUserId || '').trim();
+            const hasReaction = !!galleryRealtimeState.myReactionType;
+            const inFlight = !!galleryRealtimeState.inFlight;
+            const disabledByRole = currentUserRole === 'admin';
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
                     <img src="${img}" class="gallery-image" alt="Выставленная работа">
-                    <div id="gallery-feedback-line" data-exhibit-id="${exhibitId}" data-legacy-prefix="${legacyPrefix}" style="font-size:12px; margin-top:6px;">Отклик за всю историю: 0 👏 · 0 ❤️ · 0 ☀️.</div>
+                    <div id="gallery-feedback-line" style="font-size:12px; margin-top:6px;">Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.</div>
                     <div class="gallery-compliments" style="margin-top:8px;">
                         <div class="compliment-option">
-                            <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
+                            <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${(hasReaction || inFlight || disabledByRole) ? '0.5' : '1'};" ${(hasReaction || inFlight || disabledByRole) ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
                             <small>Бесплатно (+1 Карма)</small>
                         </div>
                         <div class="compliment-option">
-                            <button class="admin-btn compliment-btn heart" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️</button>
+                            <button class="admin-btn compliment-btn heart" style="margin:0; opacity:${(hasReaction || inFlight || disabledByRole) ? '0.5' : '1'};" ${(hasReaction || inFlight || disabledByRole) ? 'disabled' : ''} onclick="sendGalleryCompliment('heart','${exhibitId}','${ownerUserId}')">❤️</button>
                             <small>1 Билет (+3 Карма)</small>
                         </div>
                         <div class="compliment-option">
-                            <button class="admin-btn compliment-btn sun" style="margin:0; opacity:${currentUserRole === 'admin' ? '0.5' : '1'};" ${currentUserRole === 'admin' ? 'disabled' : ''} onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞</button>
+                            <button class="admin-btn compliment-btn sun" style="margin:0; opacity:${(hasReaction || inFlight || disabledByRole) ? '0.5' : '1'};" ${(hasReaction || inFlight || disabledByRole) ? 'disabled' : ''} onclick="sendGalleryCompliment('sun','${exhibitId}','${ownerUserId}')">🌞</button>
                             <small>2 Билета (+5 Карма)</small>
                         </div>
                     </div>
                 </div>`;
-            updateGalleryFeedbackLine(exhibitId, legacyPrefix);
         }
 
+        function bindGalleryWorkDoc(workId) {
+            if (!fs || !workId) return;
+            if (typeof galleryRealtimeState.stopWorkDoc === 'function') galleryRealtimeState.stopWorkDoc();
+            galleryRealtimeState.stopWorkDoc = fs.doc(`gallery_works/${workId}`).onSnapshot(async (snap) => {
+                if (!snap.exists) {
+                    galleryRealtimeState.activeWorkDoc = null;
+                    renderGalleryFromState();
+                    return;
+                }
+                galleryRealtimeState.activeWorkDoc = snap.data() || {};
+                await loadMyReactionForActiveWork(workId);
+                renderGalleryFromState();
+            }, (err) => {
+                console.error('Gallery work listener failed', err);
+            });
+        }
+
+        function startGalleryRealtime() {
+            if (!fs || galleryRealtimeState.stopActiveWork) return;
+            galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
+                const row = snap.exists ? (snap.data() || {}) : {};
+                const nextWorkId = String(row.workId || '').trim();
+                if (!nextWorkId) {
+                    galleryRealtimeState.activeWorkId = '';
+                    galleryRealtimeState.activeWorkDoc = null;
+                    renderGalleryFromState();
+                    return;
+                }
+                if (galleryRealtimeState.activeWorkId === nextWorkId) return;
+                galleryRealtimeState.activeWorkId = nextWorkId;
+                galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.pendingReactionType = '';
+                galleryRealtimeState.inFlight = false;
+                bindGalleryWorkDoc(nextWorkId);
+            }, (err) => {
+                console.error('Active gallery listener failed', err);
+            });
+        }
+
+        function applyGalleryOptimisticReaction(type) {
+            const work = galleryRealtimeState.activeWorkDoc;
+            if (!work || galleryRealtimeState.myReactionType) return null;
+            const counts = getGalleryCountsFromWork(work);
+            const before = { ...counts };
+            counts[type] = Number(counts[type] || 0) + 1;
+            galleryRealtimeState.activeWorkDoc = {
+                ...(work || {}),
+                reactionCounts: counts
+            };
+            galleryRealtimeState.myReactionType = type;
+            galleryRealtimeState.pendingReactionType = type;
+            galleryRealtimeState.inFlight = true;
+            renderGalleryFromState();
+            return before;
+        }
+
+        function rollbackGalleryOptimisticReaction(type, beforeCounts) {
+            const work = galleryRealtimeState.activeWorkDoc;
+            if (!work || !beforeCounts) return;
+            galleryRealtimeState.activeWorkDoc = {
+                ...(work || {}),
+                reactionCounts: { ...beforeCounts }
+            };
+            if (galleryRealtimeState.pendingReactionType === type) {
+                galleryRealtimeState.myReactionType = '';
+                galleryRealtimeState.pendingReactionType = '';
+            }
+            galleryRealtimeState.inFlight = false;
+            renderGalleryFromState();
+        }
+
+        async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
+            if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
+            if (!currentUserId) return alert('Пользователь не определён.');
+            if (!fs || !functionsApi) return alert('Галерея временно недоступна.');
+            const targetOwnerUserId = String(ownerUserId || '').trim();
+            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
+            if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
+            const cfg = GALLERY_REACTION_CONFIG[type];
+            if (!cfg) return;
+            if (galleryRealtimeState.inFlight) return;
+            if (galleryRealtimeState.myReactionType) return alert('Ты уже отправлял(а) реакцию этой картине.');
+
+            const workId = String(exhibitId || galleryRealtimeState.activeWorkId || '').trim();
+            if (!workId || workId !== String(galleryRealtimeState.activeWorkId || '').trim()) {
+                return alert('Работа в галерее уже сменилась, попробуй еще раз.');
+            }
+
+            const beforeCounts = applyGalleryOptimisticReaction(type);
+            if (!beforeCounts) return;
+
+            try {
+                const callable = functionsApi.httpsCallable('galleryReact');
+                const result = await callable({ workId, reactionType: type });
+                const payload = result?.data || {};
+                seasonProfileData.karma_points = Math.max(0, Number(payload.karmaAfter || seasonProfileData.karma_points || 0));
+                updateProfileUI();
+                updateProfileTicketBalance();
+
+                const fx = document.getElementById('gallery-fx');
+                if (fx) {
+                    fx.textContent = cfg.emoji.repeat(6);
+                    fx.className = `gallery-fx active ${type}`;
+                    setTimeout(() => { fx.className = 'gallery-fx'; fx.textContent = ''; }, 1200);
+                }
+                playGalleryChime();
+                launchVoteConfetti();
+            } catch (err) {
+                console.warn('Gallery reaction failed', err);
+                rollbackGalleryOptimisticReaction(type, beforeCounts);
+                alert('Не удалось отправить реакцию. Попробуй снова.');
+                return;
+            }
+
+            galleryRealtimeState.inFlight = false;
+            galleryRealtimeState.pendingReactionType = '';
+            renderGalleryFromState();
+        }
+
+        function renderGalleryTab() {
+            startGalleryRealtime();
+            renderGalleryFromState();
+            startGalleryRotationCountdown();
+        }
         function adminRenderKarmaSearchResults() {
             if (currentUserRole !== 'admin') return;
             const q = String(document.getElementById('admin-karma-search')?.value || '').trim().toLowerCase();
