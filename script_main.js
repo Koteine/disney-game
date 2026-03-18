@@ -225,6 +225,7 @@ const JSON_URL = 'tasks.json';
         let snakeClashesRef = null;
         let activeDuels = [];
         let adminSnakeOverviewState = { fetchedAt: 0, fetching: false, round: 0, mode: '' };
+        let submissionsAutoApproveInFlight = false;
 
         const SNAKE_SHOP_ITEMS = {
             greatPythonScale: { emoji: '🛡️', name: 'Чешуя Великого Полоза', price: 10, desc: 'Автоматически нейтрализует негативный snake-эффект и сгорает.' },
@@ -236,6 +237,8 @@ const JSON_URL = 'tasks.json';
         };
         const SNAKE_SHOP_OPENINGS_UTC = [9, 15, 21];
         const SNAKE_SHOP_WINDOW_MS = 30 * 60 * 1000;
+        const USER_GLOBAL_USED_TASKS_PATH_SUFFIX = 'used_tasks_global';
+        const SUBMISSION_AUTO_APPROVE_MS = 3 * 60 * 60 * 1000;
         let snakeActionQueueTail = Promise.resolve();
         let snakeUiEventQueue = [];
         let snakeUiEventActive = null;
@@ -1539,6 +1542,8 @@ const JSON_URL = 'tasks.json';
             const wrap = document.getElementById('snake-shop-controls');
             const statusEl = document.getElementById('snake-shop-status');
             const previewEl = document.getElementById('snake-backpack-preview');
+            const shopBtn = document.getElementById('snake-shop-open-btn');
+            const backpackBtn = document.getElementById('snake-backpack-open-btn');
             const isSnakeMode = resolveRoundFieldMode(currentRoundData) === 'snake';
             const isPlayer = myIndex !== -1 && Number(currentUserId) !== Number(ADMIN_ID);
             if (!wrap) return;
@@ -1548,6 +1553,8 @@ const JSON_URL = 'tasks.json';
             }
             wrap.style.display = 'flex';
             const state = getSnakeShopWindowState();
+            if (shopBtn) shopBtn.style.display = state.isOpen ? 'block' : 'none';
+            if (backpackBtn) backpackBtn.style.display = 'block';
             if (statusEl) {
                 statusEl.textContent = state.isOpen
                     ? `Лавка открыта в окне ${state.windowId || ''} (МСК)`
@@ -1572,43 +1579,49 @@ const JSON_URL = 'tasks.json';
 
         async function snakePurchaseItem(itemKey, viaSmuggler = false) {
             return enqueueSnakeAction(`snake_purchase_${itemKey}`, async () => {
-            const item = SNAKE_SHOP_ITEMS[itemKey];
-            if (!item) return alert('Неизвестный предмет.');
-            if (!getSnakeShopWindowState().isOpen && !viaSmuggler) return alert('Лавка сейчас закрыта.');
-            if (viaSmuggler) {
-                const smug = (await db.ref('snake_smuggler/current').once('value')).val() || {};
-                const allowed = Number(smug.expiresAt || 0) > Date.now() && !!smug?.eligible?.[String(currentUserId || '')];
-                if (!allowed) return alert('Контрабандист сейчас недоступен для тебя.');
-            }
-            const uid = String(currentUserId || '').trim();
-            if (!uid) return;
-            const invRef = db.ref(`whitelist/${uid}/inventory`);
-            const invTx = await invRef.transaction((row) => {
-                const next = (row && typeof row === 'object') ? { ...row } : {};
-                const count = Number(next[itemKey] || 0);
-                if (count >= 3) return;
-                next[itemKey] = count + 1;
-                return next;
-            });
-            if (!invTx.committed) return alert('Лимит этого предмета уже достигнут (макс. 3).');
-            const karmaRef = db.ref(`player_season_status/${uid}/karma_points`);
-            const karmaTx = await karmaRef.transaction((value) => {
-                const current = Number(value || 0);
-                const price = calcSnakeShopPrice(itemKey, !!viaSmuggler);
-                if (current < price) return;
-                return current - price;
-            });
-            if (!karmaTx.committed) {
-                await invRef.transaction((row) => {
-                    const next = (row && typeof row === 'object') ? { ...row } : {};
-                    next[itemKey] = Math.max(0, Number(next[itemKey] || 0) - 1);
-                    return next;
-                });
-                return alert('Недостаточно кармы для покупки.');
-            }
-            await db.ref(`player_season_status/${uid}/updatedAt`).set(Date.now());
-            await postNews(`🐍 ${players[myIndex].n} купил(а) в «Шепоте Клыка»: ${item.emoji} ${item.name}.`);
-            alert(`Покупка успешна: ${item.name}`);
+                try {
+                    const item = SNAKE_SHOP_ITEMS[itemKey];
+                    if (!item) return alert('Неизвестный предмет.');
+                    if (!getSnakeShopWindowState().isOpen && !viaSmuggler) return alert('Лавка сейчас закрыта.');
+                    if (viaSmuggler) {
+                        const smug = (await db.ref('snake_smuggler/current').once('value')).val() || {};
+                        const allowed = Number(smug.expiresAt || 0) > Date.now() && !!smug?.eligible?.[String(currentUserId || '')];
+                        if (!allowed) return alert('Контрабандист сейчас недоступен для тебя.');
+                    }
+                    const uid = String(currentUserId || '').trim();
+                    if (!uid) return alert('Пользователь не определён.');
+                    const invRef = db.ref(`whitelist/${uid}/inventory`);
+                    const invTx = await invRef.transaction((row) => {
+                        const next = (row && typeof row === 'object') ? { ...row } : {};
+                        const count = Number(next[itemKey] || 0);
+                        if (count >= 3) return;
+                        next[itemKey] = count + 1;
+                        return next;
+                    });
+                    if (!invTx.committed) return alert('Лимит этого предмета уже достигнут (макс. 3).');
+                    const karmaRef = db.ref(`player_season_status/${uid}/karma_points`);
+                    const karmaTx = await karmaRef.transaction((value) => {
+                        const current = Number(value || 0);
+                        const price = calcSnakeShopPrice(itemKey, !!viaSmuggler);
+                        if (current < price) return;
+                        return current - price;
+                    });
+                    if (!karmaTx.committed) {
+                        await invRef.transaction((row) => {
+                            const next = (row && typeof row === 'object') ? { ...row } : {};
+                            next[itemKey] = Math.max(0, Number(next[itemKey] || 0) - 1);
+                            return next;
+                        });
+                        return alert('Недостаточно кармы для покупки.');
+                    }
+                    await db.ref(`player_season_status/${uid}/updatedAt`).set(Date.now());
+                    const buyerName = players[myIndex]?.n || getTelegramDisplayName() || `ID ${uid}`;
+                    await postNews(`🐍 ${buyerName} купил(а) в «Шепоте Клыка»: ${item.emoji} ${item.name}.`);
+                    alert(`Покупка успешна: ${item.name}`);
+                } catch (err) {
+                    console.error('[SNAKE SHOP][ERROR] purchase failed', err);
+                    alert(`Покупка не выполнена: ${err?.message || 'неизвестная ошибка'}`);
+                }
             });
         }
 
@@ -1628,32 +1641,32 @@ const JSON_URL = 'tasks.json';
                 rank: 2,
                 show: (done) => {
                     document.getElementById('mTitle').textContent = '🐍 Лавка «Шепот Клыка»';
-                    document.getElementById('mText').innerHTML = `<div style="font-size:12px; color:#555;">${state.isOpen ? 'Лавка открыта (30 минут).' : 'Лавка закрыта. Приходи в одно из 3 открытий в сутки.'}</div><div class="snake-shop-grid">${cards}</div><button id="snake-shop-close-inline" class="admin-btn" style="margin-top:8px; width:100%;">Закрыть</button>`;
+                    document.getElementById('mText').innerHTML = `<div style="font-size:12px; color:#555;">${state.isOpen ? 'Лавка открыта (30 минут).' : 'Лавка закрыта. Приходи в одно из 3 открытий в сутки.'}</div><div class="snake-shop-grid">${cards}</div>`;
                     document.getElementById('modal').style.display = 'block';
                     document.getElementById('overlay').style.display = 'block';
-                    document.getElementById('snake-shop-close-inline')?.addEventListener('click', () => {
-                        closeModal();
-                    }, { once: true });
                 }
             });
         }
 
         function openSnakeBackpackModal() {
-            const body = ['greatPythonScale', 'fateBone', 'windBreath', 'rottenRadish', 'doubleBurdenScroll', 'thiefArcane'].map((key) => {
-                const item = SNAKE_SHOP_ITEMS[key];
-                return `<div class="snake-shop-card"><div class="snake-shop-card-title">${item.emoji} ${item.name}</div><div class="snake-shop-card-meta">Количество: ${Number(myInventory[key] || 0)}</div><div class="snake-shop-card-desc">${item.desc}</div></div>`;
-            }).join('');
+            const visibleItems = Object.entries(myInventory || {})
+                .map(([key, count]) => ({ key, count: Number(count || 0) }))
+                .filter(({ count }) => count > 0)
+                .sort((a, b) => String(a.key).localeCompare(String(b.key)));
+            const body = visibleItems.length
+                ? visibleItems.map(({ key, count }) => {
+                    const meta = itemTypes?.[key] || SNAKE_SHOP_ITEMS[key] || {};
+                    return `<div class="snake-shop-card"><div class="snake-shop-card-title">${meta.emoji || '🎁'} ${meta.name || key}</div><div class="snake-shop-card-meta">Количество: ${count}</div></div>`;
+                }).join('')
+                : '<div class="snake-shop-card"><div class="snake-shop-card-meta">Рюкзак пуст.</div></div>';
             enqueueSnakeUiEvent({
                 key: 'snake_backpack_modal',
                 rank: 2,
                 show: (done) => {
                     document.getElementById('mTitle').textContent = '🎒 Рюкзак змейки';
-                    document.getElementById('mText').innerHTML = `<div style="font-size:12px; color:#555; margin-bottom:8px;">Предметы работают только в режиме «Змейка».</div>${body}${renderSnakeTrapActionsInBackpack()}<button id="snake-backpack-close-inline" class="admin-btn" style="margin-top:8px; width:100%;">Закрыть</button>`;
+                    document.getElementById('mText').innerHTML = `${body}${renderSnakeTrapActionsInBackpack()}`;
                     document.getElementById('modal').style.display = 'block';
                     document.getElementById('overlay').style.display = 'block';
-                    document.getElementById('snake-backpack-close-inline')?.addEventListener('click', () => {
-                        closeModal();
-                    }, { once: true });
                 }
             });
         }
@@ -2595,20 +2608,42 @@ ${optionsText}
             }, {});
         }
 
-        function pickSnakeTaskForPlayer(snakeState, roundNum) {
+        function normalizeGlobalUsedTaskIds(rawUsedTaskIds) {
+            if (Array.isArray(rawUsedTaskIds)) {
+                return rawUsedTaskIds.reduce((acc, taskId) => {
+                    const normalizedTaskId = Number(taskId);
+                    if (!Number.isInteger(normalizedTaskId) || normalizedTaskId < 0) return acc;
+                    acc[normalizedTaskId] = true;
+                    return acc;
+                }, {});
+            }
+            return normalizeSnakeUsedTaskIds(rawUsedTaskIds);
+        }
+
+        function pickSnakeTaskForPlayer(snakeState, roundNum, globalUsedTaskIdsRaw) {
             const previousRound = Number(snakeState?.taskPoolRound || 0);
             const activeRound = Number(roundNum || 0);
             const shouldResetPool = previousRound !== activeRound;
             const usedTaskIds = shouldResetPool ? {} : normalizeSnakeUsedTaskIds(snakeState?.usedTaskIds);
+            const globalUsedTaskIds = normalizeGlobalUsedTaskIds(globalUsedTaskIdsRaw || snakeState?.globalUsedTaskIds);
             const allTaskIds = tasks.map((_, i) => i);
-            const uniquePool = allTaskIds.filter((idx) => !usedTaskIds[idx]);
-            const selectionPool = uniquePool.length ? uniquePool : allTaskIds;
-            const taskIdx = selectionPool.length ? selectionPool[Math.floor(Math.random() * selectionPool.length)] : 0;
+            const uniquePool = allTaskIds.filter((idx) => !globalUsedTaskIds[idx]);
+            const taskIdx = uniquePool.length ? uniquePool[Math.floor(Math.random() * uniquePool.length)] : -1;
+            if (taskIdx < 0) {
+                return {
+                    taskIdx: -1,
+                    usedTaskIds,
+                    globalUsedTaskIds,
+                    taskPoolRound: activeRound,
+                    exhaustedUniquePool: true
+                };
+            }
             return {
                 taskIdx,
-                usedTaskIds: uniquePool.length ? { ...usedTaskIds, [taskIdx]: true } : { [taskIdx]: true },
+                usedTaskIds: { ...usedTaskIds, [taskIdx]: true },
+                globalUsedTaskIds: { ...globalUsedTaskIds, [taskIdx]: true },
                 taskPoolRound: activeRound,
-                exhaustedUniquePool: !uniquePool.length
+                exhaustedUniquePool: false
             };
         }
 
@@ -2991,6 +3026,9 @@ ${optionsText}
                 }
 
                 const roundIdForTrap = Number(currentRound.number || 0);
+                const globalUsedTasksSnap = await db.ref(`whitelist/${currentUserId}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`).once('value');
+                let globalUsedTaskIds = normalizeGlobalUsedTaskIds(globalUsedTasksSnap.val() || snakeState?.globalUsedTaskIds);
+
                 const trapPath = `snake_traps/${roundIdForTrap}/${nextPos}`;
                 const trapTx = await db.ref(trapPath).transaction((row) => {
                     if (!row || !row.armed) return row;
@@ -3015,9 +3053,11 @@ ${optionsText}
                         await markSnakeIncident(String(trapRow.ownerId || ''), { type: 'trap_radish_triggered', actorName: players[myIndex]?.n || '', text: `На твою Редиску наступил(а) ${players[myIndex]?.n || 'игрок'}.` });
                     } else if (trapType === 'double_burden') {
                         appliedNegativeEffectThisRoll = true;
-                        const bonusPick = pickSnakeTaskForPlayer(snakeState, currentRound.number);
+                        const bonusPick = pickSnakeTaskForPlayer(snakeState, currentRound.number, globalUsedTaskIds);
                         doubleBurdenBonusTaskIdx = Number(bonusPick.taskIdx || 0);
-                        snakeState = { ...snakeState, usedTaskIds: bonusPick.usedTaskIds };
+                        if (Number(bonusPick.taskIdx) < 0) return alert('Пул заданий исчерпан для этого игрока в текущей игре.');
+                        globalUsedTaskIds = bonusPick.globalUsedTaskIds;
+                        snakeState = { ...snakeState, usedTaskIds: bonusPick.usedTaskIds, globalUsedTaskIds: bonusPick.globalUsedTaskIds };
                         alert('📜 Ловушка «Двойное Бремя»: получено дополнительное задание.');
                         await markSnakeIncident(String(trapRow.ownerId || ''), { type: 'trap_scroll_triggered', actorName: players[myIndex]?.n || '', text: `Твой Свиток сработал на ${players[myIndex]?.n || 'игроке'}.` });
                     }
@@ -3061,7 +3101,8 @@ ${optionsText}
                 };
                 updates[`rounds/${roundId}/snake/occupancy/${nextPos}/${uid}`] = true;
 
-                const taskPick = pickSnakeTaskForPlayer(snakeState, currentRound.number);
+                const taskPick = pickSnakeTaskForPlayer(snakeState, currentRound.number, globalUsedTaskIds);
+                if (Number(taskPick.taskIdx) < 0) return alert('Пул заданий исчерпан для этого игрока в текущей игре.');
                 const taskIdx = Number(taskPick.taskIdx || 0);
                 const taskLabelSnapshot = String(tasks[taskIdx]?.text || 'Обычное задание');
                 const assignmentId = `${roundId}_${uid}_${nextPos}_${taskIdx}_${nowTs}`;
@@ -3098,6 +3139,7 @@ ${optionsText}
                     usedTaskIds: taskPick.usedTaskIds,
                     taskPoolRound: Number(taskPick.taskPoolRound || currentRound.number),
                     uniqueTaskPoolExhausted: !!taskPick.exhaustedUniquePool,
+                    globalUsedTaskIds: taskPick.globalUsedTaskIds,
                     awaitingApproval: true,
                     invertNextRoll: !!effect.invertNextRoll,
                     lockedBySphinx: !!effect.lockSphinx,
@@ -3299,6 +3341,7 @@ ${optionsText}
 
                 rollTrace('about to persist snake state');
                 updates[`whitelist/${currentUserId}/snakeState`] = nextSnakeState;
+                updates[`whitelist/${currentUserId}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`] = taskPick.globalUsedTaskIds;
                 updates[`whitelist/${currentUserId}/last_round`] = currentRound.number;
                 rollTrace('about to create assignment', {
                     assignmentId,
@@ -3452,8 +3495,12 @@ ${optionsText}
             const roundSnap = await db.ref('current_round').once('value'), rData = roundSnap.val();
             let free = []; for(let i=0; i<50; i++) if(!board[i]) free.push(i);
             const userSnap = await db.ref(`whitelist/${currentUserId}/used_tasks`).once('value');
-            let used = userSnap.val() || [], avail = tasks.map((_, i) => i).filter(i => !used.includes(i));
-            if (!avail.length || !free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
+            const globalUsedSnap = await db.ref(`whitelist/${currentUserId}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`).once('value');
+            let used = userSnap.val() || [];
+            const globalUsed = normalizeGlobalUsedTaskIds(globalUsedSnap.val() || used);
+            const avail = tasks.map((_, i) => i).filter(i => !globalUsed[i]);
+            if (!free.length || (roundEndTime - Date.now() <= 0)) return alert("Мест нет!");
+            if (!avail.length) return alert('Пул заданий исчерпан для этого игрока в текущей игре.');
 
             const cellIdx = free[Math.floor(Math.random()*free.length)];
             let isMagic = rData?.magicCell === cellIdx;
@@ -3566,7 +3613,14 @@ ${optionsText}
                 await activateInkSaboteur(cellIdx, { autoPick: true });
                 await postNews(`${players[myIndex].n} активировал(а) «Клякса-саботаж»`);
             }
-            if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) { used.push(taskIdx); await db.ref(`whitelist/${currentUserId}/used_tasks`).set(used); }
+            if(!isGold && !isTrap && !isMagic && !isMagnet && taskIdx >= 0) {
+                used.push(taskIdx);
+                globalUsed[taskIdx] = true;
+                await db.ref().update({
+                    [`whitelist/${currentUserId}/used_tasks`]: used,
+                    [`whitelist/${currentUserId}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`]: globalUsed
+                });
+            }
             await db.ref(`whitelist/${currentUserId}/last_round`).set(currentRoundNum);
             const actualCell = (await db.ref('board/'+cellIdx).once('value')).val() || cellData;
             showCell(cellIdx, actualCell);
@@ -4400,6 +4454,7 @@ ${optionsText}
             await db.ref('whitelist/' + id).set({
                 charIndex,
                 used_tasks: [],
+                used_tasks_global: {},
                 last_round: 0
             });
             document.getElementById('new-user-id').value = "";
@@ -4597,6 +4652,7 @@ ${optionsText}
 
             updates[`whitelist/${userId}/last_round`] = 0;
             updates[`whitelist/${userId}/used_tasks`] = [];
+            updates[`whitelist/${userId}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`] = {};
             await db.ref().update(updates);
             await postNews(`⏮️ Администратор переставил(а) игрока ${players[user.charIndex].n} на старт.`);
             alert('Готово! Игрок переставлен на старт.');
@@ -4786,6 +4842,7 @@ ${optionsText}
                 updates[`whitelist/${uid}/magnifier_used_round`] = 0;
                 updates[`whitelist/${uid}/last_round`] = 0;
                 updates[`whitelist/${uid}/used_tasks`] = [];
+                updates[`whitelist/${uid}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`] = {};
                 updates[`whitelist/${uid}/isEliminated`] = false;
                 updates[`whitelist/${uid}/eliminatedAt`] = null;
                 updates[`whitelist/${uid}/eliminatedAtRound`] = null;
@@ -5995,6 +6052,7 @@ ${optionsText}
                 allSubmissions = Object.values(submissionsById).sort((a, b) => (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0));
                 renderSubmissions();
                 fillSubmissionTaskOptions();
+                autoApproveStaleSubmissions().catch((err) => console.error('autoApproveStaleSubmissions failed', err));
             };
 
             if (submissionsRef) submissionsRef.off();
@@ -6062,8 +6120,14 @@ ${optionsText}
             return '';
         }
 
-        function getSubmissionStatusInfo(status) {
-            if (status === 'accepted') return { text: 'Принято', className: 'status-accepted' };
+        function getSubmissionStatusInfo(status, row = null) {
+            const data = row || {};
+            if (status === 'accepted') {
+                if (Number(data.autoApprovedAt || 0) > 0 && data.requiresAdminReview) {
+                    return { text: 'Auto (ожидает review)', className: 'status-accepted' };
+                }
+                return { text: 'Принято', className: 'status-accepted' };
+            }
             if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
             return { text: 'На проверке', className: 'status-pending' };
         }
@@ -6150,7 +6214,7 @@ ${optionsText}
             const filtered = visible;
             const pendingForReview = isAdmin
                 ? allSubmissions
-                    .filter(item => String(item.status || 'pending') === 'pending')
+                    .filter(item => String(item.status || 'pending') === 'pending' || !!item.requiresAdminReview)
                     .sort((a, b) => (a.round || 0) - (b.round || 0) || (a.cellIdx || 0) - (b.cellIdx || 0))
                 : [];
 
@@ -6197,12 +6261,12 @@ ${optionsText}
                                         <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Отклонить</button>
                                     </div>
                                 </div>`;
-                        }).join('') : '<div style="font-size:12px; color:#777; margin-top:8px;">Нет работ со статусом «На проверке».</div>'}
+                        }).join('') : '<div style="font-size:12px; color:#777; margin-top:8px;">Нет работ, ожидающих review.</div>'}
                     </div>
                 </div>` : '';
 
             list.innerHTML = pendingBlockHtml + filtered.map(item => {
-                const status = getSubmissionStatusInfo(item.status);
+                const status = getSubmissionStatusInfo(item.status, item);
                 const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
                 const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
                 const uploadedAtText = uploadedAt ? new Date(uploadedAt).toLocaleString('ru-RU') : '—';
@@ -6250,6 +6314,30 @@ ${optionsText}
                     </div>
                 `;
             }).join('');
+        }
+
+        async function autoApproveStaleSubmissions() {
+            if (submissionsAutoApproveInFlight) return;
+            const now = Date.now();
+            const staleRows = (allSubmissions || []).filter((item) => {
+                if (!item) return false;
+                if (String(item.status || 'pending') !== 'pending') return false;
+                if (Number(item.autoApprovedAt || 0) > 0) return false;
+                const createdAt = Number(item.createdAt || item.updatedAt || 0);
+                if (!createdAt) return false;
+                return (now - createdAt) >= SUBMISSION_AUTO_APPROVE_MS;
+            });
+            if (!staleRows.length) return;
+            submissionsAutoApproveInFlight = true;
+            try {
+                for (const row of staleRows) {
+                    await setSubmissionStatus(row.id, row.sourcePrefix || 'submissions', row.dbPath || row.id, 'accepted', { auto: true, bypassAdmin: true, silent: true });
+                }
+            } catch (err) {
+                console.error('[AUTO-APPROVE][ERROR]', err);
+            } finally {
+                submissionsAutoApproveInFlight = false;
+            }
         }
 
         function toggleCollapse(bodyId, headerEl) {
@@ -6680,23 +6768,39 @@ ${optionsText}
             alert('Работа загружена! Статус: На проверке.');
         }
 
-        async function setSubmissionStatus(submissionId, sourcePrefix, dbPath, status) {
+        async function setSubmissionStatus(submissionId, sourcePrefix, dbPath, status, options = {}) {
 
-            if (Number(currentUserId) !== Number(ADMIN_ID)) return;
+            const opts = (options && typeof options === 'object') ? options : {};
+            const isAutoApproval = !!opts.auto;
+            const bypassAdmin = !!opts.bypassAdmin;
+            const silent = !!opts.silent;
+            if (!bypassAdmin && Number(currentUserId) !== Number(ADMIN_ID)) return;
             if (!['accepted', 'rejected'].includes(status)) return;
             const refPath = sourcePrefix === 'works' ? `works/${dbPath || submissionId}` : `submissions/${dbPath || submissionId}`;
+            const nowTs = Date.now();
             const patch = {
                 status,
-                reviewedBy: currentUserId,
-                updatedAt: Date.now()
+                reviewedBy: isAutoApproval ? 'auto' : currentUserId,
+                updatedAt: nowTs,
+                finalModerationStatus: status
             };
             if (status === 'rejected') {
-                const reason = prompt('Укажи причину отказа (игрок увидит это сообщение):', '');
+                const reason = isAutoApproval ? 'Auto-review rejected' : prompt('Укажи причину отказа (игрок увидит это сообщение):', '');
                 if (reason === null) return;
-                patch.reviewComment = reason.trim();
+                patch.reviewComment = String(reason || '').trim();
+                patch.requiresAdminReview = false;
             }
             if (status === 'accepted') {
                 patch.reviewComment = '';
+                if (isAutoApproval) {
+                    patch.autoApprovedAt = nowTs;
+                    patch.requiresAdminReview = true;
+                    patch.autoApprovalLabel = 'Auto';
+                } else {
+                    patch.requiresAdminReview = false;
+                    patch.manualReviewedAt = nowTs;
+                    patch.autoApprovalLabel = 'Принято';
+                }
             }
             await db.ref(refPath).update(patch);
             if (status === 'accepted') {
@@ -6903,6 +7007,9 @@ ${optionsText}
                         await db.ref().update(updates);
                     }
                 }
+            }
+            if (!silent) {
+                alert(status === 'accepted' ? 'Статус работы обновлён: Принято.' : 'Статус работы обновлён: Не принято.');
             }
         }
 
@@ -7307,8 +7414,16 @@ ${optionsText}
             const pool = getGalleryApprovedPool();
             return pool.find((item) => {
                 const binding = getGalleryWorkReactionBinding(item);
-                const itemWorkId = String(item?.workId || item?.galleryWorkId || binding.stableWorkId || '').trim();
-                return itemWorkId === targetId;
+                const directIds = [
+                    item?.workId,
+                    item?.galleryWorkId,
+                    binding.stableWorkId,
+                    item?.id,
+                    item?.dbPath
+                ].map((v) => String(v || '').trim()).filter(Boolean);
+                if (directIds.includes(targetId)) return true;
+                if (binding.legacyPrefix && targetId.startsWith(binding.legacyPrefix)) return true;
+                return false;
             }) || null;
         }
 
@@ -7347,11 +7462,11 @@ ${optionsText}
         };
 
         function getGalleryCountsFromWork(workDoc) {
-            const reactions = workDoc?.reactionCounts || {};
+            const reactions = workDoc?.reactionCounts || workDoc?.reactions || {};
             return {
-                clap: Number(reactions.clap || 0),
-                heart: Number(reactions.heart || 0),
-                sun: Number(reactions.sun || 0)
+                clap: Number(reactions.clap || workDoc?.clapCount || 0),
+                heart: Number(reactions.heart || workDoc?.heartCount || 0),
+                sun: Number(reactions.sun || workDoc?.sunCount || 0)
             };
         }
 
@@ -7395,8 +7510,33 @@ ${optionsText}
                 workId: preferredWork ? preferredId : resolvedWorkId,
                 ownerUserId: binding.ownerUserId,
                 imageUrl: fallback.afterImageData || fallback.imageData || '',
+                afterImageData: fallback.afterImageData || '',
+                imageData: fallback.imageData || '',
+                taskLabel: String(fallback.taskLabel || fallback.snakeTaskLabelSnapshot || ''),
                 reactionCounts: { clap: 0, heart: 0, sun: 0 }
             };
+        }
+
+        function resolveGalleryCardWork(runtimeWork, activeWorkId) {
+            const exhibitId = String(runtimeWork?.workId || activeWorkId || '').trim();
+            const source = findAcceptedSubmissionByWorkId(exhibitId);
+            const sourceBinding = source ? getGalleryWorkReactionBinding(source) : null;
+            const fallbackImage = String(source?.afterImageData || source?.imageData || '').trim();
+            const fallbackOwnerUserId = String(sourceBinding?.ownerUserId || '').trim();
+            const merged = {
+                ...(runtimeWork || {}),
+                workId: exhibitId,
+                ownerUserId: String(runtimeWork?.ownerUserId || fallbackOwnerUserId || '').trim(),
+                imageUrl: String(runtimeWork?.imageUrl || runtimeWork?.afterImageData || runtimeWork?.imageData || fallbackImage || '').trim(),
+                afterImageData: String(runtimeWork?.afterImageData || source?.afterImageData || '').trim(),
+                imageData: String(runtimeWork?.imageData || source?.imageData || '').trim(),
+                taskLabel: String(runtimeWork?.taskLabel || source?.taskLabel || source?.snakeTaskLabelSnapshot || '').trim(),
+                assignmentTaskLabel: String(runtimeWork?.assignmentTaskLabel || source?.assignmentTaskLabel || '').trim(),
+                reactionCounts: runtimeWork?.reactionCounts || {}
+            };
+            const imageResolved = !!String(merged.imageUrl || merged.afterImageData || merged.imageData || '').trim();
+            console.log('[GALLERY] card loaded', { exhibitId, hasRuntimeWork: !!runtimeWork, hasSourceFallback: !!source, imageResolved });
+            return merged;
         }
 
         function renderGalleryFromState() {
@@ -7405,7 +7545,7 @@ ${optionsText}
             const runtimeWork = galleryRealtimeState.activeWorkDoc;
             const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
             const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc(activeWorkId);
-            const work = runtimeWork || fallbackWork;
+            const work = runtimeWork ? resolveGalleryCardWork(runtimeWork, activeWorkId) : fallbackWork;
             if (!work) {
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
@@ -7413,20 +7553,24 @@ ${optionsText}
             const exhibitId = String(work.workId || activeWorkId || '').trim();
             const counts = getGalleryCountsFromWork(work);
             const img = work.imageUrl || work.afterImageData || work.imageData || '';
+            console.log('[GALLERY] image ref resolved', { exhibitId, hasImage: !!String(img || '').trim() });
             const ownerUserId = resolveGalleryOwnerUserId(work, exhibitId);
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
             const disabledByRole = currentUserRole === 'admin';
             const fallbackNotSynced = !runtimeWork && !!activeWorkId && exhibitId !== activeWorkId;
             const controlsDisabled = hasReaction || inFlight || disabledByRole || fallbackNotSynced;
-            const feedbackLine = fallbackNotSynced
-                ? 'Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.'
-                : `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+            const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
+            const syncHint = fallbackNotSynced ? '<div style="font-size:11px; color:#8d6e63; margin-top:4px;">Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.</div>' : '';
+            const imageMarkup = img
+                ? `<img src="${img}" class="gallery-image" alt="Выставленная работа">`
+                : '<div class="gallery-frame-empty"></div><div style="font-size:12px; color:#8d6e63; margin-top:6px;">Изображение работы ещё загружается.</div>';
             wrap.innerHTML = `
                 <div id="gallery-fx" class="gallery-fx"></div>
                 <div class="gallery-pedestal">
-                    <img src="${img}" class="gallery-image" alt="Выставленная работа">
+                    ${imageMarkup}
                     <div id="gallery-feedback-line" style="font-size:12px; margin-top:6px;">${feedbackLine}</div>
+                    ${syncHint}
                     <div class="gallery-compliments" style="margin-top:8px;">
                         <div class="compliment-option">
                             <button class="admin-btn compliment-btn clap" style="margin:0; opacity:${controlsDisabled ? '0.5' : '1'};" ${controlsDisabled ? 'disabled' : ''} onclick="sendGalleryCompliment('clap','${exhibitId}','${ownerUserId}')">👏</button>
@@ -7515,25 +7659,38 @@ ${optionsText}
         }
 
         async function sendGalleryCompliment(type, exhibitId, ownerUserId) {
+            console.log('[GALLERY REACT] click received', { type, exhibitId, ownerUserId });
             if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
             if (!currentUserId) return alert('Пользователь не определён.');
             if (!fs || !functionsApi) return alert('Галерея временно недоступна.');
             const cfg = GALLERY_REACTION_CONFIG[type];
             if (!cfg) return;
-            if (galleryRealtimeState.inFlight) return;
-            if (galleryRealtimeState.myReactionType) return alert('Ты уже отправлял(а) реакцию этой картине.');
+            if (galleryRealtimeState.inFlight) {
+                console.log('[GALLERY REACT] guard blocked = inFlight');
+                return;
+            }
+            if (galleryRealtimeState.myReactionType) {
+                console.log('[GALLERY REACT] guard blocked = alreadyReacted');
+                return alert('Ты уже отправлял(а) реакцию этой картине.');
+            }
 
             const workId = String(exhibitId || galleryRealtimeState.activeWorkId || '').trim();
             const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
             if (!workId) {
+                console.log('[GALLERY REACT] guard blocked = missingWorkId');
                 return alert('Не удалось определить работу галереи. Попробуй еще раз.');
             }
             if (activeWorkId && workId !== activeWorkId) {
+                console.log('[GALLERY REACT] guard blocked = fallbackNotSynced', { workId, activeWorkId });
                 return alert('Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.');
             }
 
             const targetOwnerUserId = String(ownerUserId || resolveGalleryOwnerUserId(galleryRealtimeState.activeWorkDoc, workId) || '').trim();
-            if (!targetOwnerUserId) return alert('Не удалось определить автора работы.');
+            console.log('[GALLERY] reaction target id resolved', { workId, targetOwnerUserId });
+            if (!targetOwnerUserId) {
+                console.log('[GALLERY REACT] guard blocked = missingOwner');
+                return alert('Не удалось определить автора работы.');
+            }
             if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
 
             const activeImageUrl = String(galleryRealtimeState.activeWorkDoc?.imageUrl || galleryRealtimeState.activeWorkDoc?.afterImageData || galleryRealtimeState.activeWorkDoc?.imageData || '').trim();
@@ -7543,8 +7700,10 @@ ${optionsText}
             if (!beforeCounts) return;
 
             try {
+                console.log('[GALLERY REACT] about to write', { workId, reactionType: type });
                 const callable = functionsApi.httpsCallable('galleryReact');
                 const result = await callable({ workId, reactionType: type });
+                console.log('[GALLERY REACT] write success', { workId, reactionType: type });
                 const payload = result?.data || {};
                 seasonProfileData.karma_points = Math.max(0, Number(payload.karmaAfter || seasonProfileData.karma_points || 0));
                 updateProfileUI();
@@ -7559,6 +7718,7 @@ ${optionsText}
                 playGalleryChime();
                 launchVoteConfetti();
             } catch (err) {
+                console.error('[GALLERY REACT][ERROR]', err);
                 console.warn('Gallery reaction failed', err);
                 rollbackGalleryOptimisticReaction(type, beforeCounts);
                 alert('Не удалось отправить реакцию. Попробуй снова.');
@@ -7628,6 +7788,10 @@ ${optionsText}
         window.toggleProfileTicketHistory = toggleProfileTicketHistory;
 
         // END works.js
+
+        setInterval(() => {
+            autoApproveStaleSubmissions().catch((err) => console.error('autoApproveStaleSubmissions interval failed', err));
+        }, 60 * 1000);
 
         window.Telegram.WebApp.ready();
         tg.expand();
