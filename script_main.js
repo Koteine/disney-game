@@ -235,6 +235,10 @@ const JSON_URL = 'tasks.json';
             doubleBurdenScroll: { emoji: '📜', name: 'Свиток «Двойное Бремя»', price: 20, desc: 'Ловушка: добавляет бонусное snake-задание до двойного одобрения.' },
             thiefArcane: { emoji: '🗡️', name: 'Воровской Аркан', price: 65, desc: 'Ставка 1 своего билета и попытка украсть 1 билет у snake-жертвы.' }
         };
+        const SNAKE_TRAP_ITEMS = [
+            { itemKey: 'rottenRadish', trapType: 'rotten_radish', emoji: '🥕', name: 'Гнилая редиска' },
+            { itemKey: 'doubleBurdenScroll', trapType: 'double_burden', emoji: '📜', name: 'Свиток «Двойное Бремя»' }
+        ];
         const SNAKE_SHOP_OPENINGS_UTC = [9, 15, 21];
         const SNAKE_SHOP_WINDOW_MS = 30 * 60 * 1000;
         const USER_GLOBAL_USED_TASKS_PATH_SUFFIX = 'used_tasks_global';
@@ -1693,53 +1697,68 @@ const JSON_URL = 'tasks.json';
             return Number(round.number || 0);
         }
 
-        async function placeSnakeTrapFromInventory(trapType) {
+        function getAvailableSnakeTrapItems(inv = myInventory) {
+            return SNAKE_TRAP_ITEMS.filter((item) => Number(inv[item.itemKey] || 0) > 0);
+        }
+
+        async function placeSnakeTrapOnCell(trapType, cellPos) {
             return enqueueSnakeAction(`snake_trap_${trapType}`, async () => {
-            const uid = String(currentUserId || '').trim();
-            if (!uid) return;
-            const roundNum = await getCurrentSnakeRoundNumSafe();
-            if (!roundNum) return alert('Ловушки доступны только в snake-раунде.');
-            const snakeState = (await db.ref(`whitelist/${uid}/snakeState`).once('value')).val() || {};
-            const position = Number(snakeState.position || 1);
-            const raw = prompt('Укажи номер клетки для ловушки (в радиусе 10):', String(Math.min(99, position + 1)));
-            if (raw === null) return;
-            const cell = Number(raw);
-            if (!Number.isInteger(cell) || cell < 2 || cell > 99) return alert('Можно ставить только на клетки 2..99.');
-            if (Math.abs(cell - position) > 10) return alert('Клетка должна быть в радиусе 10 от твоей позиции.');
-            const trapPath = `snake_traps/${roundNum}/${cell}`;
-            const trapRef = db.ref(trapPath);
-            const tx = await trapRef.transaction((row) => {
-                const now=Date.now();
-                if (row && Number(row.expiresAt || 0) > now && row.armed) return;
-                return {
-                    type: trapType,
-                    ownerId: uid,
-                    round: roundNum,
-                    cell,
-                    createdAt: Date.now(),
-                    armed: true,
-                    triggeredBy: '',
-                    triggeredAt: 0,
-                    expiresAt: Date.now() + (24 * 60 * 60 * 1000)
-                };
-            });
-            if (!tx.committed) return alert('На этой клетке уже есть ловушка.');
-            const itemKey = trapType === 'rotten_radish' ? 'rottenRadish' : 'doubleBurdenScroll';
-            const consumed = await tryConsumeSnakeInventoryItem(itemKey);
-            if (!consumed) {
-                await trapRef.remove();
-                return alert('Предмет уже закончился в рюкзаке.');
-            }
-            await postNews(`🕳️ ${players[myIndex].n} установил(а) ловушку в джунглях.`);
-            alert('Ловушка установлена.');
+                const uid = String(currentUserId || '').trim();
+                if (!uid) return;
+                const roundNum = await getCurrentSnakeRoundNumSafe();
+                if (!roundNum) return alert('Ловушки доступны только в snake-раунде.');
+                const trapMeta = SNAKE_TRAP_ITEMS.find((item) => item.trapType === trapType);
+                if (!trapMeta) return alert('Неизвестный тип ловушки.');
+                const confirmed = confirm(`Оставить ловушку «${trapMeta.name}» на клетке №${Number(cellPos || 0)}?`);
+                if (!confirmed) return;
+
+                const snakeState = (await db.ref(`whitelist/${uid}/snakeState`).once('value')).val() || {};
+                const position = Number(snakeState.position || 1);
+                const cell = Number(cellPos || 0);
+                if (!Number.isInteger(cell) || cell < 2 || cell > 99) return alert('Можно ставить только на клетки 2..99.');
+                if (Math.abs(cell - position) > 10) return alert('Клетка должна быть в радиусе 10 от твоей позиции.');
+
+                const trapPath = `snake_traps/${roundNum}/${cell}`;
+                const trapRef = db.ref(trapPath);
+                const tx = await trapRef.transaction((row) => {
+                    const now = Date.now();
+                    if (row && Number(row.expiresAt || 0) > now && row.armed) return;
+                    return {
+                        type: trapType,
+                        ownerId: uid,
+                        round: roundNum,
+                        cell,
+                        createdAt: Date.now(),
+                        armed: true,
+                        triggeredBy: '',
+                        triggeredAt: 0,
+                        expiresAt: Date.now() + (24 * 60 * 60 * 1000)
+                    };
+                });
+                if (!tx.committed) return alert('На этой клетке уже есть ловушка.');
+
+                const consumed = await tryConsumeSnakeInventoryItem(trapMeta.itemKey);
+                if (!consumed) {
+                    await trapRef.remove();
+                    return alert('Предмет уже закончился в рюкзаке.');
+                }
+                await postNews(`🕳️ ${players[myIndex].n} установил(а) ловушку в джунглях.`);
+                alert('Ловушка установлена.');
+                closeModal();
             });
         }
 
         function renderSnakeTrapActionsInBackpack() {
-            const radish = Number(myInventory.rottenRadish || 0);
-            const scroll = Number(myInventory.doubleBurdenScroll || 0);
             const arcane = Number(myInventory.thiefArcane || 0);
-            return `<div class="snake-shop-grid"><div class="snake-shop-card"><div class="snake-shop-card-title">🥕 Гнилая редиска</div><div class="snake-shop-card-meta">В рюкзаке: ${radish}</div><button class="admin-btn" style="margin:0; width:100%;" ${radish > 0 ? '' : 'disabled'} onclick="placeSnakeTrapFromInventory('rotten_radish')">Поставить ловушку</button></div><div class="snake-shop-card"><div class="snake-shop-card-title">📜 Свиток «Двойное Бремя»</div><div class="snake-shop-card-meta">В рюкзаке: ${scroll}</div><button class="admin-btn" style="margin:0; width:100%;" ${scroll > 0 ? '' : 'disabled'} onclick="placeSnakeTrapFromInventory('double_burden')">Поставить ловушку</button></div><div class="snake-shop-card"><div class="snake-shop-card-title">🗡️ Воровской Аркан</div><div class="snake-shop-card-meta">В рюкзаке: ${arcane}</div><button class="admin-btn" style="margin:0; width:100%;" ${arcane > 0 ? '' : 'disabled'} onclick="startThiefArcaneFromBackpack()">Запустить взлом</button></div></div>`;
+            const trapAvailable = SNAKE_TRAP_ITEMS.some((item) => Number(myInventory[item.itemKey] || 0) > 0);
+            const trapHint = trapAvailable
+                ? '<div class="snake-shop-card"><div class="snake-shop-card-title">🕳️ Ловушки</div><div class="snake-shop-card-meta">Ставятся с поля: нажмите на клетку в радиусе 10 и выберите «Оставить ловушку».</div></div>'
+                : '';
+            const arcaneCard = arcane > 0
+                ? `<div class="snake-shop-card"><div class="snake-shop-card-title">🗡️ Воровской Аркан</div><div class="snake-shop-card-meta">В рюкзаке: ${arcane}</div><button class="admin-btn" style="margin:0; width:100%;" onclick="startThiefArcaneFromBackpack()">Запустить взлом</button></div>`
+                : '';
+            if (!trapHint && !arcaneCard) return '';
+            return `<div class="snake-shop-grid">${trapHint}${arcaneCard}</div>`;
         }
 
 
@@ -3733,6 +3752,30 @@ ${optionsText}
                 }
             }
 
+            const availableTrapItems = getAvailableSnakeTrapItems(myInventory);
+            const isSnakeRound = resolveRoundFieldMode(roundData) === 'snake';
+            const myPosition = Number(mySnakeState.position || 1);
+            const canCheckTrapPlacement = !isAdminObserver && isSnakeRound && availableTrapItems.length > 0;
+            let trapActionHtml = '';
+            if (canCheckTrapPlacement) {
+                const targetCellValid = Number.isInteger(pos) && pos >= 2 && pos <= 99;
+                const inRadius = Math.abs(pos - myPosition) <= 10;
+                const trapCellSnap = targetCellValid ? await db.ref(`snake_traps/${roundNum}/${pos}`).once('value') : null;
+                const trapCellRow = trapCellSnap?.val() || null;
+                const trapAlreadyPlaced = !!(trapCellRow && trapCellRow.armed && Number(trapCellRow.expiresAt || 0) > Date.now());
+                if (targetCellValid && inRadius && !trapAlreadyPlaced) {
+                    const trapButtons = availableTrapItems
+                        .map((item) => `<button class="admin-btn" style="margin:6px 0 0; width:100%;" onclick="placeSnakeTrapOnCell('${item.trapType}', ${pos})">Оставить ловушку · ${item.emoji} ${item.name}</button>`)
+                        .join('');
+                    trapActionHtml = `<div style="margin-top:10px; padding:10px; border:1px solid #d7ccc8; border-radius:10px; background:#fffaf3;"><b>🕳️ Установка ловушки</b><div style="font-size:12px; color:#6d4c41; margin-top:4px;">Клетка валидна для установки. Выберите ловушку из доступных предметов.</div>${trapButtons}</div>`;
+                } else {
+                    const reason = !targetCellValid
+                        ? 'Ловушки нельзя ставить на клетки 1 и 100.'
+                        : (!inRadius ? 'Клетка вне радиуса 10 от вашей позиции.' : 'На клетке уже стоит активная ловушка.');
+                    trapActionHtml = `<div style="margin-top:10px; padding:10px; border:1px solid #ef9a9a; border-radius:10px; background:#fff5f5; color:#c62828; font-size:12px;">🕳️ Ловушку здесь поставить нельзя: ${reason}</div>`;
+                }
+            }
+
             document.getElementById('mTitle').innerText = `🐍 Клетка №${pos}`;
             document.getElementById('mText').innerHTML = `
                 <div style="text-align:left; line-height:1.5;">
@@ -3740,6 +3783,7 @@ ${optionsText}
                     <div style="margin-top:8px;"><b>Список:</b><br>${membersHtml}</div>
                     ${cooldownHint}
                     ${ownTaskHintHtml}
+                    ${trapActionHtml}
                 </div>
             `;
             document.getElementById('modal').style.display = 'block';
@@ -7434,18 +7478,6 @@ ${optionsText}
             return resolveSubmissionOwnerUserId(source);
         }
 
-        async function syncActiveGalleryWorkMeta(workId, ownerUserId, imageUrl) {
-            if (!fs || !workId || !ownerUserId) return;
-            const payload = { ownerUserId, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-            if (imageUrl) payload.imageUrl = imageUrl;
-            try {
-                await fs.doc(`gallery_works/${workId}`).set(payload, { merge: true });
-            } catch (err) {
-                console.warn('Failed to sync gallery work meta', err);
-            }
-        }
-
-
         const GALLERY_REACTION_CONFIG = {
             clap: { cost: 0, points: 1, emoji: '👏' },
             heart: { cost: 1, points: 3, emoji: '❤️' },
@@ -7454,8 +7486,10 @@ ${optionsText}
         const galleryRealtimeState = {
             stopActiveWork: null,
             stopWorkDoc: null,
+            stopCompliments: null,
             activeWorkId: '',
             activeWorkDoc: null,
+            complimentsByWork: {},
             myReactionType: '',
             pendingReactionType: '',
             inFlight: false
@@ -7463,6 +7497,14 @@ ${optionsText}
 
         function getGalleryCountsFromWork(workDoc) {
             const reactions = workDoc?.reactionCounts || workDoc?.reactions || {};
+            const compliments = (workDoc?.compliments && typeof workDoc.compliments === 'object') ? workDoc.compliments : null;
+            if (compliments && Object.keys(compliments).length > 0) {
+                return Object.values(compliments).reduce((acc, row) => {
+                    const t = String(row?.type || '').trim();
+                    if (t === 'clap' || t === 'heart' || t === 'sun') acc[t] += 1;
+                    return acc;
+                }, { clap: 0, heart: 0, sun: 0 });
+            }
             return {
                 clap: Number(reactions.clap || workDoc?.clapCount || 0),
                 heart: Number(reactions.heart || workDoc?.heartCount || 0),
@@ -7473,10 +7515,13 @@ ${optionsText}
         function stopGalleryRealtime() {
             if (typeof galleryRealtimeState.stopWorkDoc === 'function') galleryRealtimeState.stopWorkDoc();
             if (typeof galleryRealtimeState.stopActiveWork === 'function') galleryRealtimeState.stopActiveWork();
+            if (typeof galleryRealtimeState.stopCompliments === 'function') galleryRealtimeState.stopCompliments();
             galleryRealtimeState.stopActiveWork = null;
             galleryRealtimeState.stopWorkDoc = null;
+            galleryRealtimeState.stopCompliments = null;
             galleryRealtimeState.activeWorkId = '';
             galleryRealtimeState.activeWorkDoc = null;
+            galleryRealtimeState.complimentsByWork = {};
             galleryRealtimeState.myReactionType = '';
             galleryRealtimeState.pendingReactionType = '';
             galleryRealtimeState.inFlight = false;
@@ -7485,13 +7530,13 @@ ${optionsText}
 
         async function loadMyReactionForActiveWork(workId) {
             const uid = String(currentUserId || '').trim();
-            if (!uid || !workId || !fs) {
+            if (!uid || !workId) {
                 galleryRealtimeState.myReactionType = '';
                 return;
             }
             try {
-                const snap = await fs.doc(`gallery_works/${workId}/reactions/${uid}`).get();
-                const row = snap.exists ? (snap.data() || {}) : {};
+                const snap = await db.ref(`gallery_compliments/${workId}/${uid}`).once('value');
+                const row = snap.val() || {};
                 galleryRealtimeState.myReactionType = String(row.type || '').trim();
             } catch (err) {
                 console.warn('Failed to load my gallery reaction', err);
@@ -7532,7 +7577,8 @@ ${optionsText}
                 imageData: String(runtimeWork?.imageData || source?.imageData || '').trim(),
                 taskLabel: String(runtimeWork?.taskLabel || source?.taskLabel || source?.snakeTaskLabelSnapshot || '').trim(),
                 assignmentTaskLabel: String(runtimeWork?.assignmentTaskLabel || source?.assignmentTaskLabel || '').trim(),
-                reactionCounts: runtimeWork?.reactionCounts || {}
+                reactionCounts: runtimeWork?.reactionCounts || {},
+                compliments: galleryRealtimeState.complimentsByWork[exhibitId] || {}
             };
             const imageResolved = !!String(merged.imageUrl || merged.afterImageData || merged.imageData || '').trim();
             console.log('[GALLERY] card loaded', { exhibitId, hasRuntimeWork: !!runtimeWork, hasSourceFallback: !!source, imageResolved });
@@ -7545,7 +7591,7 @@ ${optionsText}
             const runtimeWork = galleryRealtimeState.activeWorkDoc;
             const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
             const fallbackWork = runtimeWork ? null : getGalleryFallbackWorkDoc(activeWorkId);
-            const work = runtimeWork ? resolveGalleryCardWork(runtimeWork, activeWorkId) : fallbackWork;
+            const work = runtimeWork ? resolveGalleryCardWork(runtimeWork, activeWorkId) : (fallbackWork ? { ...fallbackWork, compliments: galleryRealtimeState.complimentsByWork[String(fallbackWork.workId || activeWorkId || '').trim()] || {} } : null);
             if (!work) {
                 wrap.innerHTML = `<div class="gallery-pedestal empty"><div class="gallery-frame-empty"></div><p>Активная работа скоро появится.</p></div>`;
                 return;
@@ -7558,10 +7604,9 @@ ${optionsText}
             const hasReaction = !!galleryRealtimeState.myReactionType;
             const inFlight = !!galleryRealtimeState.inFlight;
             const disabledByRole = currentUserRole === 'admin';
-            const fallbackNotSynced = !runtimeWork && !!activeWorkId && exhibitId !== activeWorkId;
-            const controlsDisabled = hasReaction || inFlight || disabledByRole || fallbackNotSynced;
+            const controlsDisabled = hasReaction || inFlight || disabledByRole;
             const feedbackLine = `Отклик: ${counts.clap} 👏 · ${counts.heart} ❤️ · ${counts.sun} ☀️.`;
-            const syncHint = fallbackNotSynced ? '<div style="font-size:11px; color:#8d6e63; margin-top:4px;">Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.</div>' : '';
+            const syncHint = '';
             const imageMarkup = img
                 ? `<img src="${img}" class="gallery-image" alt="Выставленная работа">`
                 : '<div class="gallery-frame-empty"></div><div style="font-size:12px; color:#8d6e63; margin-top:6px;">Изображение работы ещё загружается.</div>';
@@ -7588,27 +7633,32 @@ ${optionsText}
                 </div>`;
         }
         function bindGalleryWorkDoc(workId) {
-            if (!fs || !workId) return;
-            if (typeof galleryRealtimeState.stopWorkDoc === 'function') galleryRealtimeState.stopWorkDoc();
-            galleryRealtimeState.stopWorkDoc = fs.doc(`gallery_works/${workId}`).onSnapshot(async (snap) => {
-                if (!snap.exists) {
-                    galleryRealtimeState.activeWorkDoc = null;
-                    renderGalleryFromState();
-                    return;
+            const source = findAcceptedSubmissionByWorkId(workId);
+            galleryRealtimeState.activeWorkDoc = source
+                ? {
+                    workId,
+                    ownerUserId: resolveSubmissionOwnerUserId(source),
+                    imageUrl: String(source.afterImageData || source.imageData || '').trim(),
+                    afterImageData: String(source.afterImageData || '').trim(),
+                    imageData: String(source.imageData || '').trim(),
+                    taskLabel: String(source.taskLabel || source.snakeTaskLabelSnapshot || '').trim(),
+                    assignmentTaskLabel: String(source.assignmentTaskLabel || '').trim()
                 }
-                galleryRealtimeState.activeWorkDoc = snap.data() || {};
-                await loadMyReactionForActiveWork(workId);
-                renderGalleryFromState();
-            }, (err) => {
-                console.error('Gallery work listener failed', err);
-            });
+                : null;
+            loadMyReactionForActiveWork(workId).then(() => renderGalleryFromState());
         }
 
         function startGalleryRealtime() {
-            if (!fs || galleryRealtimeState.stopActiveWork) return;
-            galleryRealtimeState.stopActiveWork = fs.doc('gallery_runtime/active').onSnapshot((snap) => {
-                const row = snap.exists ? (snap.data() || {}) : {};
-                const nextWorkId = String(row.workId || '').trim();
+            if (galleryRealtimeState.stopActiveWork) return;
+            const resolveFallbackWorkId = () => {
+                const picked = pickExhibitWorks(getGalleryApprovedPool(), 1)[0] || null;
+                if (!picked) return '';
+                const binding = getGalleryWorkReactionBinding(picked);
+                return String(picked.workId || picked.galleryWorkId || binding.stableWorkId || picked.id || '').trim();
+            };
+            galleryRealtimeState.stopActiveWork = db.ref('gallery_runtime/active').on('value', (snap) => {
+                const row = snap.val() || {};
+                const nextWorkId = String(row.workId || resolveFallbackWorkId()).trim();
                 if (!nextWorkId) {
                     galleryRealtimeState.activeWorkId = '';
                     galleryRealtimeState.activeWorkDoc = null;
@@ -7621,9 +7671,23 @@ ${optionsText}
                 galleryRealtimeState.pendingReactionType = '';
                 galleryRealtimeState.inFlight = false;
                 bindGalleryWorkDoc(nextWorkId);
+                renderGalleryFromState();
             }, (err) => {
                 console.error('Active gallery listener failed', err);
             });
+            galleryRealtimeState.stopActiveWork = () => db.ref('gallery_runtime/active').off('value');
+
+            const complimentsRef = db.ref('gallery_compliments');
+            complimentsRef.on('value', (snap) => {
+                galleryRealtimeState.complimentsByWork = snap.val() || {};
+                const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
+                if (activeWorkId) {
+                    const myRow = galleryRealtimeState.complimentsByWork?.[activeWorkId]?.[String(currentUserId || '')];
+                    galleryRealtimeState.myReactionType = String(myRow?.type || galleryRealtimeState.myReactionType || '').trim();
+                }
+                renderGalleryFromState();
+            });
+            galleryRealtimeState.stopCompliments = () => complimentsRef.off('value');
         }
 
         function applyGalleryOptimisticReaction(type) {
@@ -7662,7 +7726,7 @@ ${optionsText}
             console.log('[GALLERY REACT] click received', { type, exhibitId, ownerUserId });
             if (String(currentUserId) === String(ADMIN_ID)) return alert('Админ не может участвовать в голосовании');
             if (!currentUserId) return alert('Пользователь не определён.');
-            if (!fs || !functionsApi) return alert('Галерея временно недоступна.');
+            if (!db) return alert('Галерея временно недоступна.');
             const cfg = GALLERY_REACTION_CONFIG[type];
             if (!cfg) return;
             if (galleryRealtimeState.inFlight) {
@@ -7675,14 +7739,9 @@ ${optionsText}
             }
 
             const workId = String(exhibitId || galleryRealtimeState.activeWorkId || '').trim();
-            const activeWorkId = String(galleryRealtimeState.activeWorkId || '').trim();
             if (!workId) {
                 console.log('[GALLERY REACT] guard blocked = missingWorkId');
                 return alert('Не удалось определить работу галереи. Попробуй еще раз.');
-            }
-            if (activeWorkId && workId !== activeWorkId) {
-                console.log('[GALLERY REACT] guard blocked = fallbackNotSynced', { workId, activeWorkId });
-                return alert('Показ из принятой галереи. Реакции станут доступны после синхронизации активной работы.');
             }
 
             const targetOwnerUserId = String(ownerUserId || resolveGalleryOwnerUserId(galleryRealtimeState.activeWorkDoc, workId) || '').trim();
@@ -7693,19 +7752,28 @@ ${optionsText}
             }
             if (targetOwnerUserId === String(currentUserId)) return alert('Нельзя хвалить самого себя.');
 
-            const activeImageUrl = String(galleryRealtimeState.activeWorkDoc?.imageUrl || galleryRealtimeState.activeWorkDoc?.afterImageData || galleryRealtimeState.activeWorkDoc?.imageData || '').trim();
-            await syncActiveGalleryWorkMeta(workId, targetOwnerUserId, activeImageUrl);
-
             const beforeCounts = applyGalleryOptimisticReaction(type);
             if (!beforeCounts) return;
 
             try {
-                console.log('[GALLERY REACT] about to write', { workId, reactionType: type });
-                const callable = functionsApi.httpsCallable('galleryReact');
-                const result = await callable({ workId, reactionType: type });
-                console.log('[GALLERY REACT] write success', { workId, reactionType: type });
-                const payload = result?.data || {};
-                seasonProfileData.karma_points = Math.max(0, Number(payload.karmaAfter || seasonProfileData.karma_points || 0));
+                if (cfg.cost > 0) {
+                    const ticketSpent = await spendTicketsTransaction(cfg.cost);
+                    if (!ticketSpent) throw new Error('Недостаточно билетов');
+                }
+                const reactionRef = db.ref(`gallery_compliments/${workId}/${currentUserId}`);
+                const tx = await reactionRef.transaction((row) => {
+                    if (row && String(row.type || '').trim()) return;
+                    return {
+                        type,
+                        fromUserId: String(currentUserId || ''),
+                        toUserId: targetOwnerUserId,
+                        at: Date.now()
+                    };
+                });
+                if (!tx.committed) throw new Error('Уже есть реакция');
+
+                const karmaAfter = await updateKarma(String(currentUserId || ''), Number(cfg.points || 0));
+                seasonProfileData.karma_points = Math.max(0, Number(karmaAfter || seasonProfileData.karma_points || 0));
                 updateProfileUI();
                 updateProfileTicketBalance();
 
@@ -7721,7 +7789,7 @@ ${optionsText}
                 console.error('[GALLERY REACT][ERROR]', err);
                 console.warn('Gallery reaction failed', err);
                 rollbackGalleryOptimisticReaction(type, beforeCounts);
-                alert('Не удалось отправить реакцию. Попробуй снова.');
+                alert(err?.message === 'Недостаточно билетов' ? 'Не удалось отправить реакцию: не хватает билетов.' : 'Не удалось отправить реакцию. Попробуй снова.');
                 return;
             }
 
@@ -7782,7 +7850,7 @@ ${optionsText}
         window.openSnakeShopModal = openSnakeShopModal;
         window.openSnakeBackpackModal = openSnakeBackpackModal;
         window.snakePurchaseItem = snakePurchaseItem;
-        window.placeSnakeTrapFromInventory = placeSnakeTrapFromInventory;
+        window.placeSnakeTrapOnCell = placeSnakeTrapOnCell;
         window.startThiefArcaneFromBackpack = startThiefArcaneFromBackpack;
         window.toggleIncidentLogPanel = toggleIncidentLogPanel;
         window.toggleProfileTicketHistory = toggleProfileTicketHistory;
