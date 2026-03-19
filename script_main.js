@@ -4008,6 +4008,76 @@ ${optionsText}
                 .sort((a, b) => Number(a.num) - Number(b.num));
         }
 
+        async function getWinnerUserIdsForCurrentRaffleCycle() {
+            const historySnap = await db.ref('winners_history').once('value');
+            const winnerIds = new Set();
+            historySnap.forEach((item) => {
+                const userId = String(item.val()?.userId || '').trim();
+                if (userId) winnerIds.add(userId);
+            });
+            return winnerIds;
+        }
+
+        async function collectPostWinTicketExclusionUpdates({ winnerUserId, winnerTicketNum, drawId }) {
+            const uid = String(winnerUserId || '').trim();
+            const winnerNum = String(winnerTicketNum || '').trim();
+            if (!uid || !winnerNum) return {};
+
+            const [boardSnap, archiveSnap, ticketsSnap] = await Promise.all([
+                db.ref('board').once('value'),
+                db.ref('tickets_archive').once('value'),
+                db.ref('tickets').once('value')
+            ]);
+
+            const updates = {};
+            const stamp = Date.now();
+            const reason = 'excluded_after_owner_win';
+
+            boardSnap.forEach((item) => {
+                const row = item.val() || {};
+                const ticketNum = String(row.ticketNum || row.num || row.ticket || item.key || '').trim();
+                if (!/^\d+$/.test(ticketNum)) return;
+                if (ticketNum === winnerNum) return;
+                if (String(row.userId || '') !== uid) return;
+                if (row.excluded) return;
+                updates[`board/${item.key}/excluded`] = true;
+                updates[`board/${item.key}/raffleExcludedAfterOwnerWin`] = true;
+                updates[`board/${item.key}/raffleExclusionReason`] = reason;
+                updates[`board/${item.key}/raffleExcludedAtDrawId`] = Number(drawId) || 0;
+                updates[`board/${item.key}/raffleExcludedAt`] = stamp;
+            });
+
+            archiveSnap.forEach((item) => {
+                const row = item.val() || {};
+                const ticketNum = String(row.ticketNum || row.num || row.ticket || item.key || '').trim();
+                if (!/^\d+$/.test(ticketNum)) return;
+                if (ticketNum === winnerNum) return;
+                if (String(row.userId || '') !== uid) return;
+                if (row.excluded) return;
+                updates[`tickets_archive/${item.key}/excluded`] = true;
+                updates[`tickets_archive/${item.key}/raffleExcludedAfterOwnerWin`] = true;
+                updates[`tickets_archive/${item.key}/raffleExclusionReason`] = reason;
+                updates[`tickets_archive/${item.key}/raffleExcludedAtDrawId`] = Number(drawId) || 0;
+                updates[`tickets_archive/${item.key}/raffleExcludedAt`] = stamp;
+            });
+
+            ticketsSnap.forEach((item) => {
+                const row = item.val() || {};
+                const ticketNum = String(row.ticketNum || row.num || item.key || '').trim();
+                if (!/^\d+$/.test(ticketNum)) return;
+                if (ticketNum === winnerNum) return;
+                if (String(row.userId || '') !== uid) return;
+                if (row.excluded) return;
+                updates[`tickets/${item.key}/excluded`] = true;
+                updates[`tickets/${item.key}/raffleExcludedAfterOwnerWin`] = true;
+                updates[`tickets/${item.key}/raffleExclusionReason`] = reason;
+                updates[`tickets/${item.key}/raffleExcludedAtDrawId`] = Number(drawId) || 0;
+                updates[`tickets/${item.key}/raffleExcludedAt`] = stamp;
+            });
+
+            return updates;
+        }
+
         function createMagicCardMarkup(ticket, isWinner) {
             const card = document.createElement('div');
             card.className = 'magic-card';
@@ -4222,12 +4292,21 @@ ${optionsText}
 
         async function adminPickWinnerNow() {
             if (currentUserId !== ADMIN_ID) return;
-            const tickets = await getTicketsFromFirebaseDrawPool();
-            if (!tickets.length) {
+            const [tickets, winnerIds] = await Promise.all([
+                getTicketsFromFirebaseDrawPool(),
+                getWinnerUserIdsForCurrentRaffleCycle()
+            ]);
+            const availableTickets = tickets.filter(ticket => !winnerIds.has(String(ticket.userId || '').trim()));
+            const drawPool = availableTickets.length ? availableTickets : tickets;
+            if (!availableTickets.length && tickets.length) {
+                alert('Все владельцы активных билетов уже выигрывали в текущем розыгрыше.');
+                return;
+            }
+            if (!drawPool.length) {
                 alert('В папке /tickets Firebase нет активных билетов.');
                 return;
             }
-            const keys = Object.keys(tickets.reduce((acc, ticket) => {
+            const keys = Object.keys(drawPool.reduce((acc, ticket) => {
                 acc[String(ticket.num)] = true;
                 return acc;
             }, {}));
@@ -4355,15 +4434,30 @@ ${optionsText}
                             const winnerTicket = String(finalState.winnerId || '');
                             const winner = tickets.find(t => String(t.num) === winnerTicket) || { num: winnerTicket, name: 'Игрок', userId: null };
                             const doneAt = Number(finalState.completedAt) || Date.now();
-                            await db.ref('current_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' });
-                            await db.ref('last_winner').set({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' });
-                            await db.ref('winners_history').push({ ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' });
-                            await db.ref('wheel_history').push({
+                            const winnerUserId = String(winner.userId || '').trim();
+                            const drawId = Number(finalState.startTime) || doneAt;
+                            const postWinUpdates = winnerUserId
+                                ? await collectPostWinTicketExclusionUpdates({
+                                    winnerUserId,
+                                    winnerTicketNum: String(winner.num),
+                                    drawId
+                                })
+                                : {};
+                            const winnerHistoryKey = db.ref('winners_history').push().key;
+                            const wheelHistoryKey = db.ref('wheel_history').push().key;
+                            const updates = {
+                                current_winner: { ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' },
+                                last_winner: { ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' },
+                                [`winners_history/${winnerHistoryKey}`]: { ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' },
+                                [`wheel_history/${wheelHistoryKey}`]: {
                                 drawId: Number(finalState.startTime) || doneAt,
                                 ticket: String(winner.num),
                                 winnerName: winner.name,
                                 createdAt: doneAt
-                            });
+                                },
+                                ...postWinUpdates
+                            };
+                            await db.ref().update(updates);
                         }
                     }
                     return;

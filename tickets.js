@@ -77,7 +77,7 @@ window.__initTicketsModule = function __initTicketsModule() {
                             ticketNum: Number(row.ticketNum || row.num || num),
                             isArchived: false,
                             isSnakeTicket: true,
-                            excluded: false,
+                            excluded: Boolean(row.excluded),
                             cellIdx: Number(row.cell || 0) > 0 ? Number(row.cell) - 1 : -1
                         };
                     });
