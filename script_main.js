@@ -819,12 +819,66 @@ const JSON_URL = 'tasks.json';
             }, 1600);
         }
 
-        function setAuthorizedView(isAuthorized) {
+        function getUserAccessMeta(userRow) {
+            const row = (userRow && typeof userRow === 'object') ? userRow : null;
+            const normalizedStatus = String(row?.status || '').trim().toLowerCase();
+            const hasPlayableSlot = Number.isInteger(Number(row?.charIndex)) && Number(row?.charIndex) >= 0;
+            const isStatusApproved = ['active', 'approved'].includes(normalizedStatus);
+            const isExplicitlyBlocked = ['pending', 'banned', 'blocked', 'excluded', 'rejected', 'disabled'].includes(normalizedStatus)
+                || !!row?.isParticipationBlocked
+                || !!row?.isEliminated
+                || !!row?.banned;
+            const isLegacyApproved = !normalizedStatus && hasPlayableSlot && !isExplicitlyBlocked;
+            return {
+                hasAccess: isStatusApproved || isLegacyApproved,
+                status: normalizedStatus,
+                isLegacyApproved,
+                isExplicitlyBlocked,
+                hasPlayableSlot
+            };
+        }
+
+        function setAuthorizedView(isAuthorized, options = {}) {
             const gameUi = document.getElementById('game-ui');
             const unauthorizedScreen = document.getElementById('unauthorized-screen');
+            const welcomeUserId = document.getElementById('welcome-user-id');
+            const welcomeStatusText = document.getElementById('welcome-status-text');
+            const welcomeInstruction = document.getElementById('welcome-access-instruction');
+            const navBar = document.querySelector('.nav-bar');
+            const navItems = Array.from(document.querySelectorAll('.nav-item'));
+            const tabContents = Array.from(document.querySelectorAll('.tab-content'));
             if (!gameUi || !unauthorizedScreen) return;
+
+            document.body.dataset.accessState = isAuthorized ? 'authorized' : 'pending';
             gameUi.style.display = isAuthorized ? 'block' : 'none';
             unauthorizedScreen.style.display = isAuthorized ? 'none' : 'block';
+            if (navBar) navBar.style.display = isAuthorized ? 'flex' : 'none';
+            navItems.forEach((item) => {
+                if (!isAuthorized) item.classList.remove('active');
+            });
+            tabContents.forEach((tab, idx) => {
+                if (!isAuthorized) {
+                    tab.style.display = 'none';
+                    tab.classList.toggle('tab-active', idx === 0);
+                } else {
+                    tab.style.display = '';
+                }
+            });
+
+            if (!isAuthorized) {
+                const safeTelegramId = escapeHtml(String(options.userId || currentUserId || 'Не определён'));
+                if (welcomeStatusText) welcomeStatusText.textContent = 'Ваша заявка на участие рассматривается.';
+                if (welcomeUserId) {
+                    welcomeUserId.innerHTML = `<b>Telegram ID:</b> <code>${safeTelegramId}</code>`;
+                }
+                if (welcomeInstruction) {
+                    welcomeInstruction.textContent = 'Передайте этот ID администратору для активации доступа.';
+                }
+                return;
+            }
+
+            const activeTab = document.querySelector('.tab-content.tab-active') || document.getElementById('tab-game');
+            if (activeTab) activeTab.style.display = '';
         }
 
 
@@ -4868,6 +4922,7 @@ ${optionsText}
             const charIndex = pickRandom(freeIndexes);
             await db.ref('whitelist/' + id).set({
                 charIndex,
+                status: 'active',
                 used_tasks: [],
                 used_tasks_global: {},
                 last_round: 0
@@ -5989,6 +6044,8 @@ ${optionsText}
         }
 
         function switchTab(id, el) {
+            if (document.body.dataset.accessState !== 'authorized') return;
+
             const isAdminTab = id === 'tab-admin';
             if (isAdminTab && !isAdminUser()) {
                 const gameNavBtn = document.querySelector('.nav-item[onclick*="tab-game"]');
@@ -6965,31 +7022,46 @@ ${optionsText}
                 ensureDateTimeInputDefault('round-start-at');
                 document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                 updateWorksTabForRole(true);
-                setAuthorizedView(true);
+                setAuthorizedView(true, { userId: currentUserId, reason: 'active' });
             } else {
                 if (navAdminBtn) navAdminBtn.style.display = 'none';
                 if (wheelAdminWrap) wheelAdminWrap.innerHTML = '';
+                updateWorksTabForRole(false);
+                setAuthorizedView(false, { userId: currentUserId, reason: 'pending' });
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
                 const currentIsAdmin = isAdminUser();
-                if (s.exists()) {
-                    myIndex = s.val().charIndex;
+                const userRow = s.val() || null;
+                const accessMeta = getUserAccessMeta(userRow);
+
+                if (currentIsAdmin) {
+                    if (accessMeta.hasAccess) {
+                        myIndex = Number(userRow?.charIndex);
+                        const playerName = players[myIndex]?.n || 'Игрок';
+                        const playerColor = charColors[myIndex] || '#6a1b9a';
+                        document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор + игрок</b><br><span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    } else {
+                        myIndex = -1;
+                        document.getElementById('player-identity').innerHTML = `Ты: <b>Администратор</b><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    }
+                    updateWorksTabForRole(true);
+                    setAuthorizedView(true, { userId: currentUserId, reason: 'active' });
+                    return;
+                }
+
+                if (accessMeta.hasAccess && s.exists()) {
+                    myIndex = Number(userRow?.charIndex);
                     const playerName = players[myIndex]?.n || 'Игрок';
                     const playerColor = charColors[myIndex] || '#6a1b9a';
-                    document.getElementById('player-identity').innerHTML = currentIsAdmin
-                        ? `Ты: <b>Администратор + игрок</b><br><span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`
-                        : `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
-                    updateWorksTabForRole(currentIsAdmin);
-                    setAuthorizedView(true);
+                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    updateWorksTabForRole(false);
+                    setAuthorizedView(true, { userId: currentUserId, reason: accessMeta.status || (accessMeta.isLegacyApproved ? 'legacy_active' : 'active') });
                     return;
                 }
 
                 myIndex = -1;
-                if (!currentIsAdmin) {
-                    updateWorksTabForRole(false);
-                    document.getElementById('welcome-user-id').innerHTML = `<b>Твой Telegram ID:</b> <code>${currentUserId || 'Не определён'}</code>`;
-                    setAuthorizedView(false);
-                }
+                updateWorksTabForRole(false);
+                setAuthorizedView(false, { userId: currentUserId, reason: accessMeta.status || (accessMeta.isExplicitlyBlocked ? 'banned' : 'pending') });
             });
         }
 
