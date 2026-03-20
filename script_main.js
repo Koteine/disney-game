@@ -3658,13 +3658,8 @@ ${optionsText}
                 await postNews(`${players[myIndex].n} попал(а) на особую клетку`);
             }
 
-            let tStr = '';
-            if (!isMiniGame && !isWordSketch) {
-                const awarded = await claimSequentialTickets(isGold ? 2 : 1);
-                if (!awarded) return alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
-                tStr = awarded[0];
-                if (isGold) tStr += " и " + awarded[1];
-            }
+            const rewardTicketCount = (!isMiniGame && !isWordSketch) ? (isGold ? 2 : 1) : 0;
+            let tStr = buildPendingTicketLabel(rewardTicketCount);
 
             const pendingItemTicket = (itemType === 'inkSaboteur') ? tStr : '';
             if (itemType === 'inkSaboteur') tStr = '';
@@ -3749,7 +3744,7 @@ ${optionsText}
                 await postNews(`${players[myIndex].n} наш(ла) предмет «${itemTypes[itemType]?.name || itemType}»`);
             }
 
-            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, magicSoloTaskIdx, magicLinkPartnerUserId, magicLinkPartnerName, magicLinkActive, isMagicSolo: false, trapText, round: currentRoundNum, excluded: false };
+            const cellData = { owner: myIndex, userId: currentUserId, taskIdx, ticket: (isMiniGame || isWordSketch) ? '' : tStr, rewardTicketCount, approvalKarma: getLegacyTaskApprovalKarma({ isGold, isTrap, isMagic, itemType }), isGold, isTrap, isMagic, isMiniGame, isWordSketch, isInkChallenge: false, isWandBlessing: false, wandOptionLabel: '', itemType, inkPendingTicket: pendingItemTicket, inkUsed: false, miniGameTiles: isMiniGame ? createShuffledMiniGameTiles(5) : null, miniGameWon: false, miniGameFailed: false, miniGameCodeWord: "", wordSketchAnswer: isWordSketch ? pickRandomWordSketchWord() : '', wordSketchGuess: '', wordSketchAttempts: [], wordSketchAttemptCount: 0, wordSketchGuessed: false, wordSketchFailed: false, magicLinkId, magicSoloTaskIdx, magicLinkPartnerUserId, magicLinkPartnerName, magicLinkActive, isMagicSolo: false, trapText, round: currentRoundNum, excluded: false };
             await db.ref('board/'+cellIdx).set(cellData);
             if (itemType === 'inkSaboteur') {
                 await activateInkSaboteur(cellIdx, { autoPick: true });
@@ -7457,6 +7452,9 @@ ${optionsText}
 
         function getSubmissionStatusInfo(status, row = null) {
             const data = row || {};
+            if (status === 'approved' || status === 'reward_granted') {
+                return { text: 'Одобрено', className: 'status-accepted' };
+            }
             if (status === 'accepted') {
                 if (Number(data.autoApprovedAt || 0) > 0 && data.requiresAdminReview) {
                     return { text: 'Auto (ожидает review)', className: 'status-accepted' };
@@ -7465,6 +7463,21 @@ ${optionsText}
             }
             if (status === 'rejected') return { text: 'Не принято', className: 'status-rejected' };
             return { text: 'На проверке', className: 'status-pending' };
+        }
+
+        function buildPendingTicketLabel(ticketCount = 1) {
+            const count = Math.max(0, Number(ticketCount) || 0);
+            if (count <= 0) return '';
+            if (count === 1) return 'после проверки';
+            if (count === 2) return 'два билета после проверки';
+            return 'билеты после проверки';
+        }
+
+        function getLegacyTaskApprovalKarma(cell = {}) {
+            if (!cell || typeof cell !== 'object') return 5;
+            if (cell.isGold) return 10;
+            if (cell.isTrap || cell.isMagic || cell.isInkChallenge || cell.isWandBlessing) return 7;
+            return 5;
         }
 
 
@@ -7570,6 +7583,10 @@ ${optionsText}
                 const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
                 const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
                 const uploadedAtText = uploadedAt ? new Date(uploadedAt).toLocaleString('ru-RU') : '—';
+                const issuedTicket = String(item.awardedTicketNum || item.ticketIssuedLabel || '').trim()
+                    || ((String(item.status || '') === 'approved' || String(item.status || '') === 'reward_granted')
+                        ? String(item.ticket || '').trim()
+                        : '');
                 const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${playerName}</b> · TG ID: ${item.userId || '—'}</div>` : '';
                 const beforeBodyId = `sub-before-${item.id}`;
                 const afterBodyId = `sub-after-${item.id}`;
@@ -7579,9 +7596,12 @@ ${optionsText}
                         ${playerLine}
                         <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
                             <div><b>Раунд ${item.round || '—'}, клетка №${(item.cellIdx ?? -1) + 1}</b></div>
-                            <span class="status-chip ${status.className}">${status.text}</span>
+                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                                ${issuedTicket ? `<span class="status-chip status-accepted" title="Выданный билет">🎟 ${issuedTicket}</span>` : ''}
+                                <span class="status-chip ${status.className}">${status.text}</span>
+                            </div>
                         </div>
-                        <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${item.ticket || '—'}</div>
+                        <div style="font-size:12px; margin-top:6px; color:#555;">🎟 Билет: ${issuedTicket || item.ticket || '—'}</div>
                         <div style="font-size:12px; margin-top:4px; color:#555;">🕒 Загружено: ${uploadedAtText}</div>
                         <div style="font-size:12px; margin-top:4px; color:#444; line-height:1.4;">${getSnakeTaskLabelSnapshot(item) || item.taskLabel || 'Описание задания отсутствует'}</div>
                         ${(item.status === 'rejected' && (item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote)) ? `<div style="font-size:12px; margin-top:6px; color:#b71c1c;">Причина отказа: ${item.reviewComment || item.rejectReason || item.adminComment || item.reviewNote}</div>` : ''}
@@ -8030,6 +8050,9 @@ ${optionsText}
                 cellIdx: chosenCellIdx,
                 round: cell.round,
                 ticket: cell.ticket,
+                rewardTicketCount: extractTicketNumbers(cell.ticket).length ? 0 : Math.max(0, Number(cell.rewardTicketCount || (cell.isGold ? 2 : 1)) || 0),
+                approvalKarma: Math.max(0, Number(cell.approvalKarma || getLegacyTaskApprovalKarma(cell)) || 0),
+                galleryStatus: 'pending',
                 taskLabel: getTaskLabelByCell(cell),
                 beforeImageData,
                 afterImageData,
@@ -8226,6 +8249,12 @@ ${optionsText}
                             updates[`${refPath}/taskLabel`] = String(row.taskLabel || resolvedTaskLabel || '');
                             updates[`${refPath}/snakeTaskLabelSnapshot`] = String(row.snakeTaskLabelSnapshot || resolvedTaskLabel || '');
                             updates[`${refPath}/snakeTaskIdx`] = resolvedSnakeTaskIdx;
+                            updates[`${refPath}/status`] = 'approved';
+                            updates[`${refPath}/galleryStatus`] = 'approved';
+                            updates[`${refPath}/approvedAt`] = nowTs;
+                            updates[`${refPath}/ticket`] = String(nextTicket);
+                            updates[`${refPath}/awardedTicketNum`] = String(nextTicket);
+                            updates[`${refPath}/ticketIssuedAt`] = nowTs;
                             updates[`whitelist/${uid}/snakeState/awaitingApproval`] = false;
                             updates[`whitelist/${uid}/snakeState/lockedBySphinx`] = isSphinxTask ? false : !!activeTask.lockedBySphinx;
                             updates[`whitelist/${uid}/snakeState/activeTask/isSphinxTrial`] = false;
@@ -8245,7 +8274,7 @@ ${optionsText}
                             updates[`${assignmentPath}/status`] = 'approved';
                             updates[`${assignmentPath}/approvedAt`] = nowTs;
                             updates[`system_notifications/${uid}/${nowTs}_snake_ticket`] = {
-                                text: `Твоя работа принята! Твой номер в розыгрыше: #${nextTicket}`,
+                                text: `Работа принята! Ваш номер билета: ${nextTicket}`,
                                 type: 'snake_ticket',
                                 createdAt: nowTs,
                                 expiresAt: nowTs + (7 * 24 * 3600 * 1000)
@@ -8296,6 +8325,110 @@ ${optionsText}
                                 };
                                 await db.ref().update(synergyUpdates);
                             }
+                        }
+                    }
+                } else if (uid) {
+                    let rewardGrantedNow = false;
+                    const rewardTx = await db.ref(refPath).transaction((submissionRow) => {
+                        const current = (submissionRow && typeof submissionRow === 'object') ? submissionRow : {};
+                        if (current.rewardGranted) return;
+                        rewardGrantedNow = true;
+                        return {
+                            ...current,
+                            rewardGranted: true,
+                            rewardGrantedAt: Date.now(),
+                            status: 'approved',
+                            galleryStatus: 'approved',
+                            approvedAt: Date.now(),
+                            acceptedStatus: String(status),
+                            reviewedBy: String(currentUserId || current.reviewedBy || '')
+                        };
+                    });
+                    if (rewardTx.committed && rewardGrantedNow) {
+                        const approvedRow = rewardTx.snapshot.val() || row;
+                        const requestedTicketCount = Math.max(0, Number(approvedRow.rewardTicketCount || 0) || 0);
+                        const karmaToGrant = Math.max(0, Number(approvedRow.approvalKarma || 0) || 0);
+                        let awardedNumbers = extractTicketNumbers(approvedRow.ticket);
+                        if (!awardedNumbers.length && requestedTicketCount > 0) {
+                            const claimed = await claimSequentialTickets(requestedTicketCount);
+                            if (!claimed?.length) {
+                                if (!silent) alert(`Лимит билетиков (${MAX_TICKETS}) уже достигнут в этой игре.`);
+                                return;
+                            }
+                            awardedNumbers = claimed.map((num) => String(num));
+                        }
+
+                        const awardTs = Date.now();
+                        const awardedTicketValue = awardedNumbers.join(' и ');
+                        const boardCellIdx = Number(approvedRow.cellIdx);
+                        const ownerCharIndex = Number.isFinite(Number(approvedRow.owner))
+                            ? Number(approvedRow.owner)
+                            : Number((await db.ref(`whitelist/${uid}/charIndex`).once('value')).val() || -1);
+                        const roundNo = Number(approvedRow.round || roundData.number || 0);
+                        const cellNo = Number(boardCellIdx) + 1;
+                        const taskLabel = String(approvedRow.taskLabel || getTaskLabelByCell(approvedRow) || '');
+                        const updates = {};
+
+                        awardedNumbers.forEach((ticketNum) => {
+                            const ticketPayload = {
+                                num: Number(ticketNum),
+                                ticketNum: Number(ticketNum),
+                                ticket: String(ticketNum),
+                                userId: uid,
+                                owner: ownerCharIndex,
+                                round: roundNo,
+                                cell: cellNo,
+                                cellIdx: boardCellIdx,
+                                taskIdx: Number(approvedRow.taskIdx ?? approvedRow.sourceTaskId ?? -1),
+                                taskLabel,
+                                sourceTaskLabel: taskLabel,
+                                mode: String(approvedRow.mode || 'classic'),
+                                source: 'submission_approval',
+                                submissionId: String(submissionId || ''),
+                                createdAt: awardTs
+                            };
+                            updates[`tickets/${ticketNum}`] = ticketPayload;
+                            updates[`users/${uid}/tickets/${ticketNum}`] = ticketPayload;
+                        });
+
+                        if (awardedTicketValue) {
+                            const archiveKey = db.ref('tickets_archive').push().key;
+                            updates[`tickets_archive/${archiveKey}`] = {
+                                owner: ownerCharIndex,
+                                userId: Number(uid),
+                                ticket: awardedTicketValue,
+                                taskIdx: Number(approvedRow.taskIdx ?? approvedRow.sourceTaskId ?? -1),
+                                round: roundNo,
+                                cell: cellNo,
+                                cellIdx: boardCellIdx,
+                                taskLabel,
+                                archivedAt: awardTs,
+                                excluded: false,
+                                source: 'submission_approval'
+                            };
+                            updates[`${refPath}/ticket`] = awardedTicketValue;
+                            updates[`${refPath}/awardedTicketNum`] = awardedTicketValue;
+                            updates[`${refPath}/ticketIssuedAt`] = awardTs;
+                            if (Number.isInteger(boardCellIdx) && boardCellIdx >= 0) {
+                                updates[`board/${boardCellIdx}/ticket`] = awardedTicketValue;
+                            }
+                        }
+
+                        updates[`${refPath}/status`] = 'approved';
+                        updates[`${refPath}/galleryStatus`] = 'approved';
+                        updates[`${refPath}/approvedAt`] = awardTs;
+                        updates[`${refPath}/rewardGrantedAt`] = awardTs;
+                        updates[`system_notifications/${uid}/${awardTs}_submission_approved`] = {
+                            text: awardedTicketValue
+                                ? `Работа принята! Ваш номер билета: ${awardedTicketValue}`
+                                : 'Работа принята!',
+                            type: 'submission_approved',
+                            createdAt: awardTs,
+                            expiresAt: awardTs + (7 * 24 * 3600 * 1000)
+                        };
+                        await db.ref().update(updates);
+                        if (karmaToGrant > 0) {
+                            await updateKarma(uid, karmaToGrant);
                         }
                     }
                 }

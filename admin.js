@@ -338,20 +338,30 @@ const formatMoscowDateTime = (...args) => (
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             if (!confirm('Сбросить зависшие мини-ивенты импульса и дуэлей каллиграфов?')) return;
 
-            const [duelsSnap, notificationsSnap, seasonSnap] = await Promise.all([
+            const [duelsSnap, notificationsSnap, seasonSnap, usersSnap] = await Promise.all([
               db.ref('calligraphy_duels').once('value'),
               db.ref('system_notifications').once('value'),
-              db.ref('player_season_status').once('value')
+              db.ref('player_season_status').once('value'),
+              db.ref('users').once('value')
             ]);
 
             const updates = {};
             const now = Date.now();
+            const duelNotificationTypes = new Set([
+              'calligraphy_duel_invite',
+              'calligraphy_duel_wait_notice',
+              'calligraphy_duel_timeout',
+              'calligraphy_duel_declined',
+              'calligraphy_duel_result'
+            ]);
 
             duelsSnap.forEach((snap) => {
               const duel = snap.val() || {};
               const status = String(duel.status || '');
-              if (!['pending', 'active', 'resolving', 'declined', 'expired'].includes(status)) return;
-              updates[`calligraphy_duels/${snap.key}/status`] = 'reset';
+              if (['resolved', 'declined'].includes(status)) return;
+              updates[`calligraphy_duels/${snap.key}/status`] = 'expired';
+              updates[`calligraphy_duels/${snap.key}/expiredAt`] = now;
+              updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
               updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
               updates[`calligraphy_duels/${snap.key}/resetBy`] = String(currentUserId || '');
             });
@@ -359,7 +369,7 @@ const formatMoscowDateTime = (...args) => (
             notificationsSnap.forEach((userSnap) => {
               userSnap.forEach((notifSnap) => {
                 const notif = notifSnap.val() || {};
-                if (!String(notif.type || '').startsWith('calligraphy_duel_')) return;
+                if (!duelNotificationTypes.has(String(notif.type || ''))) return;
                 updates[`system_notifications/${userSnap.key}/${notifSnap.key}`] = null;
               });
             });
@@ -369,14 +379,17 @@ const formatMoscowDateTime = (...args) => (
               updates[`player_season_status/${userSnap.key}/updatedAt`] = now;
             });
 
-            if (!Object.keys(updates).length) {
-              alert('Активных данных импульса не найдено: сбрасывать нечего.');
-              return;
-            }
+            usersSnap.forEach((userSnap) => {
+              updates[`users/${userSnap.key}/last_impulse_time`] = 0;
+            });
 
-            await db.ref().update(updates);
-            await postNews('🧹 Администратор сбросил(а) мини-ивенты импульса/дуэлей.');
-            alert('Готово: зависшая механика импульса очищена.');
+            await Promise.all([
+              db.ref().update(updates),
+              postNews('🧹 Администратор сбросил(а) мини-ивенты импульса и дуэли «Тотемы».')
+            ]);
+            window.closeCalligraphyDuelUI?.();
+            window.closeTotemGameOverlay?.();
+            alert('Мини-ивенты и дуэли Тотемов успешно сброшены. Кулдауны обнулены');
           }
 
           async function resetAllInventories() {
