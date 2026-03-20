@@ -703,6 +703,16 @@ const formatMoscowDateTime = (...args) => (
             if (btn.dataset.loading === '1') return;
             if (btn.disabled) btn.disabled = false;
             btn.removeAttribute('disabled');
+
+          }
+
+          function ensureMiniResetButtonActive() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn) return;
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading === '1') return;
+            if (btn.disabled) btn.disabled = false;
+            btn.removeAttribute('disabled');
           }
 
           async function initAdminPage() {
