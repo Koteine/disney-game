@@ -365,11 +365,13 @@ const formatMoscowDateTime = (...args) => (
             }
 
             try {
-              const [duelsSnap, notificationsSnap, seasonSnap, usersSnap] = await Promise.all([
+              const [duelsSnap, snakeClashesSnap, notificationsSnap, seasonSnap, usersSnap, whitelistSnap] = await Promise.all([
                 database.ref('calligraphy_duels').once('value'),
+                database.ref('snake_clashes').once('value'),
                 database.ref('system_notifications').once('value'),
                 database.ref('player_season_status').once('value'),
-                database.ref('users').once('value')
+                database.ref('users').once('value'),
+                database.ref('whitelist').once('value')
               ]);
 
               const updates = {};
@@ -379,7 +381,11 @@ const formatMoscowDateTime = (...args) => (
                 'calligraphy_duel_wait_notice',
                 'calligraphy_duel_timeout',
                 'calligraphy_duel_declined',
-                'calligraphy_duel_result'
+                'calligraphy_duel_result',
+                'snake_clash_start',
+                'snake_clash_result_win',
+                'snake_clash_result_loss',
+                'snake_clash_draw'
               ]);
 
               duelsSnap.forEach((snap) => {
@@ -392,6 +398,21 @@ const formatMoscowDateTime = (...args) => (
                 updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
                 updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
                 updates[`calligraphy_duels/${snap.key}/resetBy`] = String(currentUserId || '');
+              });
+
+              snakeClashesSnap.forEach((roundSnap) => {
+                roundSnap.forEach((cellSnap) => {
+                  cellSnap.forEach((pairSnap) => {
+                    const clash = pairSnap.val() || {};
+                    if (String(clash.status || '') !== 'active') return;
+                    const basePath = `snake_clashes/${roundSnap.key}/${cellSnap.key}/${pairSnap.key}`;
+                    updates[`${basePath}/status`] = 'expired';
+                    updates[`${basePath}/expiredAt`] = now;
+                    updates[`${basePath}/expiredByReset`] = true;
+                    updates[`${basePath}/resetAt`] = now;
+                    updates[`${basePath}/resetBy`] = String(currentUserId || '');
+                  });
+                });
               });
 
               notificationsSnap.forEach((userSnap) => {
@@ -409,6 +430,10 @@ const formatMoscowDateTime = (...args) => (
 
               usersSnap.forEach((userSnap) => {
                 updates[`users/${userSnap.key}/last_impulse_time`] = 0;
+              });
+
+              whitelistSnap.forEach((userSnap) => {
+                updates[`whitelist/${userSnap.key}/last_impulse_time`] = 0;
               });
 
               await database.ref().update(updates);
