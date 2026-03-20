@@ -56,6 +56,10 @@
             return dy > 0 ? 'down' : 'up';
         }
 
+        function sleep(ms) {
+            return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+        }
+
         async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded, __queued = false) {
             if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
                 return alert(window.getAdminGameplayBlockedLabel?.() || 'Недоступно в режиме администратора');
@@ -312,12 +316,27 @@
             const timer = document.getElementById('duel-timer');
             const refNode = document.getElementById('duel-reference');
             const canvas = document.getElementById('duel-canvas');
+            const canvasWrap = refNode?.parentElement || null;
             const closeBtn = document.getElementById('duel-close-btn');
-            if (!title || !subtitle || !countdown || !timer || !refNode || !canvas || !closeBtn) {
+            if (!title || !subtitle || !countdown || !timer || !refNode || !canvas || !canvasWrap || !closeBtn) {
                 return { aborted: true, reason: 'ui_missing' };
             }
             canvas.style.display = 'none';
             closeBtn.style.display = 'none';
+            canvasWrap.style.minHeight = '260px';
+            canvasWrap.style.background = 'linear-gradient(180deg, #fff 0%, #faf5ff 100%)';
+            refNode.style.position = 'relative';
+            refNode.style.inset = 'auto';
+            refNode.style.pointerEvents = 'auto';
+            refNode.style.display = 'flex';
+            refNode.style.flexDirection = 'column';
+            refNode.style.justifyContent = 'center';
+            refNode.style.alignItems = 'stretch';
+            refNode.style.padding = '18px 16px';
+            refNode.style.fontSize = '16px';
+            refNode.style.color = '#4a148c';
+            refNode.style.background = 'transparent';
+            refNode.style.minHeight = '260px';
             title.textContent = `🐍 Тотемы · ${role === 'attacker' ? 'Печать' : 'Защита'}`;
 
             const totemNames = {
@@ -325,51 +344,296 @@
                 tail: '🦂 Хвост Кобры',
                 eye: '👁️ Глаз Питона'
             };
+            const swipeLabels = {
+                up: '⬆️ Вверх',
+                down: '⬇️ Вниз',
+                left: '⬅️ Влево',
+                right: '➡️ Вправо'
+            };
+            const swipeGlyph = {
+                up: '⬆️',
+                down: '⬇️',
+                left: '⬅️',
+                right: '➡️'
+            };
 
             const mode = String(challenge?.mode || 'jungle_rhythm');
             let errors = 0;
             let progress = 0;
-            let startedAt = getServerNowMs();
+            let startedAt = 0;
             const pattern = Array.isArray(challenge?.pattern) ? challenge.pattern : [];
             if (!pattern.length) return { aborted: true, reason: 'empty_pattern' };
-
-            const overlayButtonsHtml = `<div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:8px;">
-                <button class="admin-btn" data-totem="head" style="margin:0;">🐍 Голова Змеи</button>
-                <button class="admin-btn" data-totem="tail" style="margin:0;">🦂 Хвост Кобры</button>
-                <button class="admin-btn" data-totem="eye" style="margin:0;">👁️ Глаз Питона</button>
-            </div>`;
 
             subtitle.textContent = mode === 'jungle_rhythm'
                 ? 'Режим: Ритм Джунглей'
                 : (mode === 'poison_cipher' ? 'Режим: Ядовитый Шифр' : 'Режим: Чешуя');
             countdown.textContent = `${pattern.length}`;
             timer.textContent = 'Подготовка...';
-
-            if (mode === 'poison_cipher') {
-                const showMs = role === 'defender' ? Number(challenge.defenderShowMs || 1700) : Number(challenge.attackerShowMs || 2200);
-                refNode.innerHTML = `<div style="font-size:16px; margin-bottom:6px;">Запомни символы:</div><div style="font-size:28px; letter-spacing:8px;">${(challenge.symbols || []).join(' ')}</div>`;
-                await new Promise((r) => setTimeout(r, showMs));
-                refNode.innerHTML = `<div style="font-size:14px; margin-bottom:6px;">Нажимай тотемы по возрастанию букв/цифр</div><div style="font-size:12px; color:#666;">${(challenge.order || []).join(' → ')}</div>${overlayButtonsHtml}`;
-            } else if (mode === 'shedding') {
-                const swipes = Array.isArray(challenge.swipes) ? challenge.swipes : [];
-                refNode.innerHTML = `<div style="font-size:14px; margin-bottom:6px;">Свайпай по направлению для каждого шага.</div><div style="font-size:12px; color:#666;">${swipes.join(' · ')}</div>${overlayButtonsHtml}`;
-            } else {
-                refNode.innerHTML = `<div style="font-size:14px; margin-bottom:6px;">Повтори ритм тотемов:</div><div style="font-size:12px; color:#666;">${pattern.map((p) => totemNames[p] || p).join(' → ')}</div>${overlayButtonsHtml}`;
-            }
+            refNode.innerHTML = '';
 
             const wrap = refNode;
-            const buttons = Array.from(wrap.querySelectorAll('[data-totem]'));
+            const createInfoBlock = (labelText, valueText, valueStyles = '') => {
+                const block = document.createElement('div');
+                block.style.marginBottom = '12px';
+                block.innerHTML = `<div style="font-size:14px; color:#6a1b9a; margin-bottom:6px;">${labelText}</div><div style="${valueStyles}">${valueText}</div>`;
+                return block;
+            };
+            const statusNode = document.createElement('div');
+            statusNode.style.fontSize = '13px';
+            statusNode.style.color = '#7b1fa2';
+            statusNode.style.marginBottom = '12px';
+            statusNode.style.minHeight = '18px';
+            const inputHost = document.createElement('div');
+            inputHost.style.display = 'flex';
+            inputHost.style.flexDirection = 'column';
+            inputHost.style.gap = '10px';
+            wrap.appendChild(statusNode);
+            wrap.appendChild(inputHost);
+
+            const setStatus = (text) => {
+                statusNode.textContent = String(text || '');
+            };
+            const setRemaining = () => {
+                const total = mode === 'poison_cipher'
+                    ? (Array.isArray(challenge.order) ? challenge.order.length : pattern.length)
+                    : (mode === 'shedding' ? (Array.isArray(challenge.swipes) ? challenge.swipes.length : pattern.length) : pattern.length);
+                countdown.textContent = `${Math.max(0, total - progress)}`;
+            };
+            setRemaining();
+
+            const cleanupHandlers = [];
+            const registerCleanup = (fn) => {
+                if (typeof fn === 'function') cleanupHandlers.push(fn);
+            };
+
+            const totemButtons = {};
+            const createTotemButtons = () => {
+                const grid = document.createElement('div');
+                grid.style.display = 'grid';
+                grid.style.gridTemplateColumns = '1fr';
+                grid.style.gap = '8px';
+                ['head', 'tail', 'eye'].forEach((totemKey) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'admin-btn';
+                    btn.type = 'button';
+                    btn.dataset.totem = totemKey;
+                    btn.textContent = totemNames[totemKey];
+                    btn.style.margin = '0';
+                    btn.style.transition = 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease';
+                    btn.style.background = '#7e57c2';
+                    btn.style.boxShadow = '0 4px 14px rgba(126,87,194,0.18)';
+                    grid.appendChild(btn);
+                    totemButtons[totemKey] = btn;
+                });
+                return grid;
+            };
+            const setTotemButtonsDisabled = (disabled) => {
+                Object.values(totemButtons).forEach((btn) => {
+                    btn.disabled = !!disabled;
+                    btn.style.opacity = disabled ? '0.72' : '1';
+                });
+            };
+            const flashTotemButton = async (totemKey, durationMs = 420) => {
+                const btn = totemButtons[totemKey];
+                if (!btn) return;
+                const prevTransform = btn.style.transform;
+                const prevFilter = btn.style.filter;
+                const prevShadow = btn.style.boxShadow;
+                btn.style.transform = 'scale(1.04)';
+                btn.style.filter = 'brightness(1.15)';
+                btn.style.boxShadow = '0 0 0 3px rgba(236,64,122,0.22), 0 12px 26px rgba(236,64,122,0.28)';
+                await sleep(durationMs);
+                btn.style.transform = prevTransform;
+                btn.style.filter = prevFilter;
+                btn.style.boxShadow = prevShadow;
+            };
+
+            const renderJungleRhythm = async () => {
+                const rhythm = Array.isArray(challenge.rhythm) ? challenge.rhythm : pattern.map(() => 450);
+                inputHost.innerHTML = '';
+                inputHost.appendChild(createInfoBlock(
+                    'Смотри внимательно',
+                    'Тотемы сейчас покажут последовательность. Затем повтори её в том же порядке.',
+                    'font-size:13px; color:#666; line-height:1.45;'
+                ));
+                const grid = createTotemButtons();
+                inputHost.appendChild(grid);
+                setTotemButtonsDisabled(true);
+                setStatus('Запоминай последовательность тотемов...');
+                for (let i = 0; i < pattern.length; i += 1) {
+                    countdown.textContent = `${i + 1}/${pattern.length}`;
+                    await flashTotemButton(pattern[i], rhythm[i]);
+                    await sleep(160);
+                }
+                setRemaining();
+                setTotemButtonsDisabled(false);
+                setStatus('Теперь повтори тотемы по памяти.');
+            };
+
+            const renderPoisonCipher = async () => {
+                const symbols = Array.isArray(challenge.symbols) ? challenge.symbols : [];
+                const order = Array.isArray(challenge.order) ? challenge.order : [...symbols].sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+                const showMs = role === 'defender' ? Number(challenge.defenderShowMs || 1700) : Number(challenge.attackerShowMs || 2200);
+                inputHost.innerHTML = '';
+                inputHost.appendChild(createInfoBlock(
+                    'Запомни символы',
+                    symbols.join(' '),
+                    'font-size:28px; letter-spacing:8px; color:#4a148c; font-weight:800;'
+                ));
+                setStatus(`На запоминание: ${(showMs / 1000).toFixed(1)} сек.`);
+                await sleep(showMs);
+                inputHost.innerHTML = '';
+                inputHost.appendChild(createInfoBlock(
+                    'Собери код',
+                    'Нажимай символы по возрастанию букв и цифр.',
+                    'font-size:13px; color:#666; line-height:1.45;'
+                ));
+                const orderHint = document.createElement('div');
+                orderHint.style.fontSize = '12px';
+                orderHint.style.color = '#7b1fa2';
+                orderHint.style.marginBottom = '4px';
+                orderHint.textContent = `Следующий: ${order[0] || '—'}`;
+                inputHost.appendChild(orderHint);
+                const grid = document.createElement('div');
+                grid.style.display = 'grid';
+                grid.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+                grid.style.gap = '8px';
+                const shuffledSymbols = symbols
+                    .map((symbol, index) => ({ symbol, index, sort: Math.random() }))
+                    .sort((a, b) => a.sort - b.sort);
+                shuffledSymbols.forEach(({ symbol, index }) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'admin-btn';
+                    btn.type = 'button';
+                    btn.dataset.symbol = String(symbol);
+                    btn.dataset.symbolIndex = String(index);
+                    btn.textContent = String(symbol);
+                    btn.style.margin = '0';
+                    btn.style.fontSize = '20px';
+                    btn.style.background = '#6a1b9a';
+                    grid.appendChild(btn);
+                });
+                inputHost.appendChild(grid);
+                setStatus('Теперь собери шифр как можно быстрее.');
+                return { order, orderHint, symbolButtons: Array.from(grid.querySelectorAll('[data-symbol]')) };
+            };
+
+            const renderShedding = async () => {
+                const swipes = Array.isArray(challenge.swipes) ? challenge.swipes : [];
+                inputHost.innerHTML = '';
+                inputHost.appendChild(createInfoBlock(
+                    'Смотри на жесты',
+                    'Сначала игра покажет последовательность свайпов, затем повтори её на площадке ниже.',
+                    'font-size:13px; color:#666; line-height:1.45;'
+                ));
+                const previewRow = document.createElement('div');
+                previewRow.style.display = 'grid';
+                previewRow.style.gridTemplateColumns = `repeat(${Math.max(2, Math.min(swipes.length, 4))}, minmax(0, 1fr))`;
+                previewRow.style.gap = '8px';
+                inputHost.appendChild(previewRow);
+                const previewCards = swipes.map((dir) => {
+                    const card = document.createElement('div');
+                    card.style.border = '2px solid #e1bee7';
+                    card.style.borderRadius = '12px';
+                    card.style.padding = '14px 8px';
+                    card.style.background = '#fff';
+                    card.style.color = '#6a1b9a';
+                    card.style.fontWeight = '700';
+                    card.style.transition = 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease';
+                    card.style.textAlign = 'center';
+                    card.innerHTML = `<div style="font-size:28px;">${swipeGlyph[dir] || '⬜'}</div><div style="font-size:12px; margin-top:4px;">${swipeLabels[dir] || dir}</div>`;
+                    previewRow.appendChild(card);
+                    return card;
+                });
+                setStatus('Запоминай направления свайпов...');
+                for (let i = 0; i < previewCards.length; i += 1) {
+                    const card = previewCards[i];
+                    countdown.textContent = `${i + 1}/${previewCards.length}`;
+                    card.style.background = '#f3e5f5';
+                    card.style.transform = 'scale(1.04)';
+                    card.style.boxShadow = '0 10px 24px rgba(106,27,154,0.18)';
+                    await sleep(500);
+                    card.style.background = '#fff';
+                    card.style.transform = 'scale(1)';
+                    card.style.boxShadow = 'none';
+                    await sleep(140);
+                }
+                inputHost.innerHTML = '';
+                inputHost.appendChild(createInfoBlock(
+                    'Повтори жесты',
+                    'Свайпай по большой зоне или жми стрелки ниже.',
+                    'font-size:13px; color:#666; line-height:1.45;'
+                ));
+                const nextHint = document.createElement('div');
+                nextHint.style.fontSize = '12px';
+                nextHint.style.color = '#7b1fa2';
+                nextHint.style.marginBottom = '4px';
+                nextHint.textContent = `Следующий жест: ${swipeLabels[swipes[0]] || '—'}`;
+                inputHost.appendChild(nextHint);
+                const swipePad = document.createElement('div');
+                swipePad.style.height = '120px';
+                swipePad.style.border = '2px dashed #ce93d8';
+                swipePad.style.borderRadius = '16px';
+                swipePad.style.display = 'flex';
+                swipePad.style.alignItems = 'center';
+                swipePad.style.justifyContent = 'center';
+                swipePad.style.fontWeight = '700';
+                swipePad.style.color = '#6a1b9a';
+                swipePad.style.background = 'rgba(243,229,245,0.65)';
+                swipePad.style.userSelect = 'none';
+                swipePad.textContent = 'Свайп здесь';
+                inputHost.appendChild(swipePad);
+                const fallbackGrid = document.createElement('div');
+                fallbackGrid.style.display = 'grid';
+                fallbackGrid.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+                fallbackGrid.style.gap = '8px';
+                ['up', 'down', 'left', 'right'].forEach((dir) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'admin-btn';
+                    btn.type = 'button';
+                    btn.dataset.swipeDir = dir;
+                    btn.textContent = `${swipeGlyph[dir]} ${swipeLabels[dir]}`;
+                    btn.style.margin = '0';
+                    btn.style.background = '#6a1b9a';
+                    fallbackGrid.appendChild(btn);
+                });
+                inputHost.appendChild(fallbackGrid);
+                setRemaining();
+                setStatus('Теперь повтори последовательность свайпов.');
+                return {
+                    swipes,
+                    nextHint,
+                    swipePad,
+                    fallbackButtons: Array.from(fallbackGrid.querySelectorAll('[data-swipe-dir]'))
+                };
+            };
+
+            let poisonUi = null;
+            let sheddingUi = null;
+            if (mode === 'poison_cipher') {
+                poisonUi = await renderPoisonCipher();
+            } else if (mode === 'shedding') {
+                sheddingUi = await renderShedding();
+            } else {
+                await renderJungleRhythm();
+            }
+
             let swipeStart = null;
             let done = false;
             const limit = Number(challenge.timeLimitMs || 20000);
+            startedAt = getServerNowMs();
 
             const finishPromise = new Promise((resolve) => {
                 const finish = (aborted = false) => {
                     if (done) return;
                     done = true;
-                    buttons.forEach((btn) => btn.disabled = true);
-                    wrap.removeEventListener('touchstart', onTouchStart);
-                    wrap.removeEventListener('touchend', onTouchEnd);
+                    Object.values(totemButtons).forEach((btn) => {
+                        btn.disabled = true;
+                        btn.style.opacity = '0.72';
+                    });
+                    cleanupHandlers.forEach((fn) => {
+                        try { fn(); } catch (_) {}
+                    });
                     const timeMs = Math.max(1, getServerNowMs() - startedAt);
                     const score = Math.max(0, 10000 - timeMs - (errors * 1200));
                     resolve({
@@ -388,22 +652,52 @@
                 const onTotem = (totem) => {
                     if (done) return;
                     const expected = pattern[progress];
-                    let ok = false;
-                    if (mode === 'poison_cipher') {
-                        const expectedSymbol = (challenge.order || [])[progress];
-                        const expectedTotem = (challenge.symbols || []).findIndex((s) => s === expectedSymbol);
-                        const expectedKey = pattern[Math.max(0, expectedTotem)] || expected;
-                        ok = String(totem) === String(expectedKey);
-                    } else {
-                        ok = String(totem) === String(expected);
-                    }
+                    const ok = String(totem) === String(expected);
                     if (ok) {
                         progress += 1;
-                        countdown.textContent = `${pattern.length - progress}`;
+                        setRemaining();
+                        setStatus('Верно! Продолжай.');
                     } else {
                         errors += 1;
+                        setStatus('Промах. Попробуй следующий шаг.');
                     }
                     if (progress >= pattern.length) finish(false);
+                };
+
+                const onPoisonSymbol = (symbol, buttonEl) => {
+                    if (done) return;
+                    const order = poisonUi?.order || [];
+                    const expectedSymbol = String(order[progress] || '');
+                    if (String(symbol) === expectedSymbol) {
+                        progress += 1;
+                        if (buttonEl) {
+                            buttonEl.disabled = true;
+                            buttonEl.style.opacity = '0.45';
+                        }
+                        poisonUi.orderHint.textContent = `Следующий: ${order[progress] || 'готово'}`;
+                        setRemaining();
+                        setStatus('Отлично, шифр собирается правильно.');
+                    } else {
+                        errors += 1;
+                        setStatus(`Неверно. Сейчас нужен символ ${expectedSymbol || '—'}.`);
+                    }
+                    if (progress >= order.length) finish(false);
+                };
+
+                const onSheddingInput = (dir) => {
+                    if (done || mode !== 'shedding') return;
+                    const swipes = sheddingUi?.swipes || [];
+                    const expectedDir = String(swipes[progress] || '');
+                    if (String(dir) === expectedDir) {
+                        progress += 1;
+                        sheddingUi.nextHint.textContent = `Следующий жест: ${swipeLabels[swipes[progress]] || 'готово'}`;
+                        setRemaining();
+                        setStatus('Хорошо, жест распознан.');
+                    } else {
+                        errors += 1;
+                        setStatus(`Промах. Ожидалось: ${swipeLabels[expectedDir] || expectedDir || '—'}.`);
+                    }
+                    if (progress >= swipes.length) finish(false);
                 };
 
                 const onTouchStart = (evt) => {
@@ -417,21 +711,44 @@
                     if (!t || !swipeStart) return;
                     const dir = normalizeSwipe(t.clientX - swipeStart.x, t.clientY - swipeStart.y);
                     swipeStart = null;
-                    const expectedDir = (challenge.swipes || [])[progress] || '';
-                    if (dir && dir === expectedDir) {
-                        progress += 1;
-                        countdown.textContent = `${pattern.length - progress}`;
-                    } else {
-                        errors += 1;
-                    }
-                    if (progress >= pattern.length) finish(false);
+                    if (dir) onSheddingInput(dir);
                 };
 
-                buttons.forEach((btn) => {
-                    btn.addEventListener('click', () => onTotem(String(btn.getAttribute('data-totem') || '')));
+                Object.values(totemButtons).forEach((btn) => {
+                    const handler = () => onTotem(String(btn.getAttribute('data-totem') || ''));
+                    btn.addEventListener('click', handler);
+                    registerCleanup(() => btn.removeEventListener('click', handler));
                 });
-                wrap.addEventListener('touchstart', onTouchStart, { passive: true });
-                wrap.addEventListener('touchend', onTouchEnd, { passive: true });
+                (poisonUi?.symbolButtons || []).forEach((btn) => {
+                    const handler = () => onPoisonSymbol(String(btn.getAttribute('data-symbol') || ''), btn);
+                    btn.addEventListener('click', handler);
+                    registerCleanup(() => btn.removeEventListener('click', handler));
+                });
+                if (sheddingUi?.swipePad) {
+                    sheddingUi.swipePad.addEventListener('touchstart', onTouchStart, { passive: true });
+                    sheddingUi.swipePad.addEventListener('touchend', onTouchEnd, { passive: true });
+                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('touchstart', onTouchStart));
+                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('touchend', onTouchEnd));
+                    let mouseStart = null;
+                    const onMouseDown = (evt) => {
+                        mouseStart = { x: evt.clientX, y: evt.clientY };
+                    };
+                    const onMouseUp = (evt) => {
+                        if (!mouseStart) return;
+                        const dir = normalizeSwipe(evt.clientX - mouseStart.x, evt.clientY - mouseStart.y);
+                        mouseStart = null;
+                        if (dir) onSheddingInput(dir);
+                    };
+                    sheddingUi.swipePad.addEventListener('mousedown', onMouseDown);
+                    sheddingUi.swipePad.addEventListener('mouseup', onMouseUp);
+                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('mousedown', onMouseDown));
+                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('mouseup', onMouseUp));
+                }
+                (sheddingUi?.fallbackButtons || []).forEach((btn) => {
+                    const handler = () => onSheddingInput(String(btn.getAttribute('data-swipe-dir') || ''));
+                    btn.addEventListener('click', handler);
+                    registerCleanup(() => btn.removeEventListener('click', handler));
+                });
 
                 const timerId = setInterval(() => {
                     if (done) {
@@ -445,6 +762,7 @@
                         finish(false);
                     }
                 }, 100);
+                registerCleanup(() => clearInterval(timerId));
             });
 
             const result = await finishPromise;
@@ -503,9 +821,31 @@
             const overlay = document.getElementById('duel-overlay');
             const canvas = document.getElementById('duel-canvas');
             const closeBtn = document.getElementById('duel-close-btn');
+            const refNode = document.getElementById('duel-reference');
+            const canvasWrap = refNode?.parentElement || null;
             if (overlay) overlay.style.display = 'none';
             if (canvas) canvas.style.display = '';
             if (closeBtn) closeBtn.style.display = '';
+            if (canvasWrap) {
+                canvasWrap.style.minHeight = '';
+                canvasWrap.style.background = '';
+            }
+            if (refNode) {
+                refNode.innerHTML = '永';
+                refNode.className = 'duel-hanzi';
+                refNode.style.position = '';
+                refNode.style.inset = '';
+                refNode.style.pointerEvents = '';
+                refNode.style.display = '';
+                refNode.style.flexDirection = '';
+                refNode.style.justifyContent = '';
+                refNode.style.alignItems = '';
+                refNode.style.padding = '';
+                refNode.style.fontSize = '';
+                refNode.style.color = '';
+                refNode.style.background = '';
+                refNode.style.minHeight = '';
+            }
             activeDuelKey = null;
             window.setSnakeCriticalUiLock?.('');
         }

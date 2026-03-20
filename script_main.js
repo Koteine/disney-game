@@ -1460,8 +1460,7 @@ const JSON_URL = 'tasks.json';
                 teleport: 'admin-emergency-teleport-body',
                 items: 'admin-emergency-items-body',
                 archive: 'admin-emergency-archive-body',
-                karma: 'admin-emergency-karma-body',
-                resetEvents: 'admin-emergency-reset-events-body'
+                karma: 'admin-emergency-karma-body'
             };
             const targetId = map[sectionName];
             if (!targetId) return;
@@ -4129,9 +4128,9 @@ ${optionsText}
         function normalizeRaffleWinnerRecord(rawWinner, fallback = {}) {
             if (!rawWinner && !fallback) return null;
             const source = rawWinner && typeof rawWinner === 'object' ? rawWinner : {};
-            const ticket = String(source.ticket || source.ticketNum || source.num || source.winnerId || fallback.ticket || fallback.ticketNum || fallback.num || fallback.winnerId || '').trim();
-            const winnerName = String(source.winnerName || source.name || source.playerName || fallback.winnerName || fallback.name || fallback.playerName || '').trim();
-            const userId = String(source.userId || fallback.userId || '').trim();
+            const ticket = String(source.ticket || source.ticketNumber || source.ticketNum || source.num || source.winnerId || fallback.ticket || fallback.ticketNumber || fallback.ticketNum || fallback.num || fallback.winnerId || '').trim();
+            const winnerName = String(source.winnerName || source.ownerName || source.name || source.playerName || fallback.winnerName || fallback.ownerName || fallback.name || fallback.playerName || '').trim();
+            const userId = String(source.userId || source.winnerUserId || fallback.userId || fallback.winnerUserId || '').trim();
             if (!ticket && !winnerName && !userId) return null;
             return {
                 ticket,
@@ -4141,6 +4140,13 @@ ${optionsText}
                 source: String(source.source || fallback.source || 'raffle_state_sync'),
                 drawId: Number(source.drawId || fallback.drawId || 0) || 0
             };
+        }
+
+        function formatRaffleWinnerHistoryLine(winner, historyIndex) {
+            const normalized = normalizeRaffleWinnerRecord(winner);
+            if (!normalized) return '';
+            const safeIndex = Math.max(1, Number(historyIndex) || 1);
+            return `${safeIndex}. ${normalized.winnerName} (Билет ${normalized.ticket})`;
         }
 
         function getRaffleWinnersFromState(drawState, tickets = []) {
@@ -4184,7 +4190,7 @@ ${optionsText}
                 const normalized = normalizeRaffleWinnerRecord({
                     ticket,
                     winnerName: drawState?.winnerName || ticketInfo?.name || '',
-                    userId: ticketInfo?.userId || null,
+                    userId: drawState?.winnerUserId || ticketInfo?.userId || null,
                     drawId: Number(drawState?.startTime || drawState?.createdAt || 0) || 0,
                     createdAt: Number(drawState?.completedAt || drawState?.createdAt || 0) || 0,
                     source: 'raffle_state_sync'
@@ -4233,6 +4239,36 @@ ${optionsText}
                 if (userId) winnerIds.add(userId);
             });
             return winnerIds;
+        }
+
+        function buildUniqueRaffleDrawPool(tickets, winnerUserIds = new Set()) {
+            const seenUsers = new Set();
+            return (Array.isArray(tickets) ? tickets : []).filter((ticket) => {
+                const uid = String(ticket?.userId || '').trim();
+                if (!uid || winnerUserIds.has(uid) || seenUsers.has(uid)) return false;
+                seenUsers.add(uid);
+                return true;
+            });
+        }
+
+        function pickUniqueRaffleWinnerTicket(tickets, winnerUserIds = new Set()) {
+            const pool = buildUniqueRaffleDrawPool(tickets, winnerUserIds);
+            if (!pool.length) return null;
+
+            const triedIndexes = new Set();
+            while (triedIndexes.size < pool.length) {
+                const randomIdx = Math.floor(Math.random() * pool.length);
+                if (triedIndexes.has(randomIdx)) continue;
+                triedIndexes.add(randomIdx);
+                const candidate = pool[randomIdx];
+                const uid = String(candidate?.userId || '').trim();
+                if (uid && !winnerUserIds.has(uid)) return candidate;
+            }
+
+            return pool.find((ticket) => {
+                const uid = String(ticket?.userId || '').trim();
+                return uid && !winnerUserIds.has(uid);
+            }) || null;
         }
 
         async function collectPostWinTicketExclusionUpdates({ winnerUserId, winnerTicketNum, drawId }) {
@@ -4582,26 +4618,26 @@ ${optionsText}
                 getTicketsFromFirebaseDrawPool(),
                 getWinnerUserIdsForCurrentRaffleCycle()
             ]);
-            const availableTickets = tickets.filter(ticket => !winnerIds.has(String(ticket.userId || '').trim()));
-            const drawPool = availableTickets.length ? availableTickets : tickets;
-            if (!availableTickets.length && tickets.length) {
+            const winnerTicket = pickUniqueRaffleWinnerTicket(tickets, winnerIds);
+            if (!winnerTicket && tickets.length) {
                 alert('Все владельцы активных билетов уже выигрывали в текущем розыгрыше.');
                 return;
             }
-            if (!drawPool.length) {
+            if (!tickets.length) {
                 alert('В папке /tickets Firebase нет активных билетов.');
                 return;
             }
-            const keys = Object.keys(drawPool.reduce((acc, ticket) => {
-                acc[String(ticket.num)] = true;
-                return acc;
-            }, {}));
-            const randomIdx = Math.floor(Math.random() * keys.length);
-            const winnerId = String(keys[randomIdx]);
+            const winnerId = String(winnerTicket?.num || winnerTicket?.ticketNum || winnerTicket?.ticket || '').trim();
+            if (!winnerId) {
+                alert('Не удалось определить номер победившего билета.');
+                return;
+            }
             await db.ref('raffle_state').set({
                 status: 'started',
                 startTime: firebase.database.ServerValue.TIMESTAMP,
                 winnerId,
+                winnerName: String(winnerTicket?.name || winnerTicket?.ownerName || 'Игрок'),
+                winnerUserId: String(winnerTicket?.userId || ''),
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
                 createdBy: currentUserId
             });
@@ -4633,23 +4669,19 @@ ${optionsText}
             const preview = document.getElementById('winner-history-preview');
             const list = document.getElementById('winner-history-list');
             if (!preview || !list) return;
+            list.innerHTML = '';
             if (!winnerHistoryItems.length) {
                 preview.innerText = 'Пока победителей нет.';
-                list.innerHTML = '';
                 return;
             }
-            const latest = winnerHistoryItems[0] || {};
-            const latestWinners = getWinnerRecordsFromHistoryEntry(latest);
-            const latestSummary = latestWinners.length
-                ? latestWinners.map((winner) => `№${winner.ticket} · ${escapeHtml(winner.winnerName)}`).join(', ')
-                : 'Победители не найдены';
-            preview.innerHTML = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · ${latestSummary}`;
+            const latest = winnerHistoryItems[winnerHistoryItems.length - 1] || {};
+            const latestLine = String(latest.historyLine || formatRaffleWinnerHistoryLine(latest, winnerHistoryItems.length)).trim();
+            preview.innerHTML = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · ${escapeHtml(latestLine || 'Победители не найдены')}`;
+
             list.innerHTML = winnerHistoryItems.map((item, idx) => {
-                const winners = getWinnerRecordsFromHistoryEntry(item);
-                const winnersMarkup = winners.length
-                    ? `<div>${winners.map((winner) => `🎟 ${escapeHtml(winner.ticket)} · 👑 ${escapeHtml(winner.winnerName)}`).join('<br>')}</div>`
-                    : '<div>Победители не найдены</div>';
-                return `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · розыгрыш #${escapeHtml(String(item.drawId || idx + 1))}<br>${winnersMarkup}</div>`;
+                const historyLine = String(item.historyLine || formatRaffleWinnerHistoryLine(item, idx + 1)).trim();
+                const drawLabel = item.drawId ? ` · розыгрыш #${escapeHtml(String(item.drawId))}` : '';
+                return `<div class="news-item">${escapeHtml(historyLine)}<br><span style="font-size:12px; color:#777;">${new Date(item.createdAt || 0).toLocaleString('ru-RU')}${drawLabel}</span></div>`;
             }).join('');
         }
 
@@ -4699,13 +4731,25 @@ ${optionsText}
             });
 
             if (winnerHistoryRef) winnerHistoryRef.off();
-            winnerHistoryRef = db.ref('wheel_history').limitToLast(100);
+            winnerHistoryRef = db.ref('winners_history').limitToLast(100);
             winnerHistoryRef.on('value', snap => {
                 const items = [];
-                snap.forEach(item => items.push(item.val() || {}));
+                snap.forEach((item) => {
+                    const row = item.val() || {};
+                    const normalized = normalizeRaffleWinnerRecord(row, row);
+                    if (!normalized) return;
+                    items.push({
+                        ...normalized,
+                        historyLine: String(row.historyLine || '').trim(),
+                        historyNumber: Number(row.historyNumber || 0) || 0
+                    });
+                });
                 winnerHistoryItems = items
-                    .filter((item) => getWinnerRecordsFromHistoryEntry(item).length)
-                    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+                    .sort((a, b) => {
+                        const orderDelta = Number(a.historyNumber || 0) - Number(b.historyNumber || 0);
+                        if (orderDelta !== 0) return orderDelta;
+                        return Number(a.createdAt || 0) - Number(b.createdAt || 0);
+                    });
                 renderWinnerHistory();
             });
 
@@ -4732,6 +4776,8 @@ ${optionsText}
                             const drawId = Number(finalState.startTime) || doneAt;
                             const winners = getRaffleWinnersFromState(finalState, tickets).map((winner) => ({
                                 ...winner,
+                                ticket: String(winner.ticket || winner.ticketNumber || ''),
+                                winnerName: String(winner.winnerName || winner.ownerName || 'Игрок'),
                                 createdAt: doneAt,
                                 drawId,
                                 source: 'raffle_state_sync'
@@ -4747,6 +4793,8 @@ ${optionsText}
                                     drawId
                                 })));
                             const mergedPostWinUpdates = postWinUpdatesList.reduce((acc, item) => Object.assign(acc, item || {}), {});
+                            const existingHistoryCountSnap = await db.ref('winners_history').once('value');
+                            let historyNumber = Number(existingHistoryCountSnap.numChildren()) || 0;
                             const updates = {
                                 current_winner: { ticket: String(primaryWinner.ticket), winnerName: primaryWinner.winnerName, userId: primaryWinner.userId || null, createdAt: doneAt, source: 'raffle_state_sync', drawId },
                                 last_winner: { ticket: String(primaryWinner.ticket), winnerName: primaryWinner.winnerName, userId: primaryWinner.userId || null, createdAt: doneAt, source: 'raffle_state_sync', drawId },
@@ -4754,15 +4802,21 @@ ${optionsText}
                             };
 
                             const seenWinnerEntries = new Set();
+                            const appendedHistoryLines = [];
                             winners.forEach((winner) => {
                                 const dedupeKey = `${drawId}::${winner.ticket}::${winner.userId || ''}`;
                                 if (seenWinnerEntries.has(dedupeKey)) return;
                                 seenWinnerEntries.add(dedupeKey);
+                                historyNumber += 1;
+                                const historyLine = formatRaffleWinnerHistoryLine(winner, historyNumber);
+                                appendedHistoryLines.push(historyLine);
                                 const winnerHistoryKey = db.ref('winners_history').push().key;
                                 updates[`winners_history/${winnerHistoryKey}`] = {
                                     ticket: String(winner.ticket),
                                     winnerName: winner.winnerName,
                                     userId: winner.userId || null,
+                                    historyNumber,
+                                    historyLine,
                                     createdAt: doneAt,
                                     drawId,
                                     source: 'raffle_state_sync'
@@ -4780,6 +4834,7 @@ ${optionsText}
                                     drawId,
                                     source: 'raffle_state_sync'
                                 })),
+                                historyLines: appendedHistoryLines,
                                 createdAt: doneAt,
                                 source: 'raffle_state_sync'
                             };

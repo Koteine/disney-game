@@ -336,7 +336,7 @@ const formatMoscowDateTime = (...args) => (
 
           async function adminResetMiniEvents() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            if (!confirm('Сбросить зависшие мини-ивенты импульса и дуэлей каллиграфов?')) return;
+            if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
 
             const [duelsSnap, notificationsSnap, seasonSnap, usersSnap] = await Promise.all([
               db.ref('calligraphy_duels').once('value'),
@@ -385,11 +385,11 @@ const formatMoscowDateTime = (...args) => (
 
             await Promise.all([
               db.ref().update(updates),
-              postNews('🧹 Администратор сбросил(а) мини-ивенты импульса и дуэли «Тотемы».')
+              postNews('🧹 Администратор сбросил(а) мини-ивенты и дуэли «Тотемы».')
             ]);
             window.closeCalligraphyDuelUI?.();
             window.closeTotemGameOverlay?.();
-            alert('Мини-ивенты и дуэли Тотемов успешно сброшены. Кулдауны обнулены');
+            alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
           }
 
           async function resetAllInventories() {
