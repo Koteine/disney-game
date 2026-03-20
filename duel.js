@@ -625,6 +625,11 @@
             wrap.appendChild(card);
         }
 
+        function removeCalligraphyInviteCard(duelKey) {
+            const cardId = `duel-invite-${String(duelKey || '').trim()}`;
+            document.getElementById(cardId)?.remove();
+        }
+
         function clearCalligraphyDuelRowListeners() {
             Object.values(duelRowListeners).forEach((entry) => {
                 if (!entry?.ref || !entry?.handler) return;
@@ -640,19 +645,27 @@
                 const row = duelSnap.val() || {};
                 const me = String(currentUserId);
                 if (!row || row.gameType !== 'totems') return;
+                const status = String(row.status || '');
 
-                if (!['resolved', 'declined', 'expired'].includes(String(row.status || ''))
+                if (!['resolved', 'declined', 'expired'].includes(status)
                     && Number(row.expiresAt || 0) > 0
                     && Number(row.expiresAt || 0) <= getServerNowMs()) {
                     expirePendingCalligraphyDuel(duelSnap.key).catch((err) => console.error('totem timeout failed', err));
                     return;
                 }
 
-                if (String(row.status || '') === 'defender_pending' && String(row.opponentId || '') === me && !row.defenderCompleted && activeDuelKey !== duelSnap.key) {
+                if (['declined', 'expired', 'reset'].includes(status)) {
+                    removeCalligraphyInviteCard(duelSnap.key);
+                    if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
+                    return;
+                }
+
+                if (status === 'defender_pending' && String(row.opponentId || '') === me && !row.defenderCompleted && activeDuelKey !== duelSnap.key) {
                     openCalligraphyDuelUI(duelSnap.key, row, 'defender').catch((err) => console.error('open defender totems failed', err));
                 }
 
-                if (String(row.status || '') === 'resolved') {
+                if (status === 'resolved') {
+                    removeCalligraphyInviteCard(duelSnap.key);
                     if (activeDuelKey === duelSnap.key) closeCalligraphyDuelUI();
                     if (row.resultAcknowledged?.[me]) {
                         duelResultShownByKey[duelSnap.key] = true;
@@ -706,6 +719,7 @@
         window.acceptCalligraphyDuel = acceptCalligraphyDuel;
         window.openCalligraphyDuelUI = openCalligraphyDuelUI;
         window.closeCalligraphyDuelUI = closeCalligraphyDuelUI;
+        window.closeTotemGameOverlay = closeCalligraphyDuelUI;
         window.subscribeToCalligraphyDuelInvites = subscribeToCalligraphyDuelInvites;
         window.postCalligraphyDuelStartedNewsIfNeeded = postCalligraphyDuelStartedNewsIfNeeded;
         window.showOutgoingDuelStatusNotification = showOutgoingDuelStatusNotification;
