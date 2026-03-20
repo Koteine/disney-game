@@ -75,7 +75,7 @@
             const now = getServerNowMs();
             const lastImpulse = Number(season.last_impulse_time) || 0;
             const diff = now - lastImpulse;
-            const cooldownMs = 24 * 60 * 60 * 1000;
+            const cooldownMs = Number(ctx().IMPULSE_COOLDOWN_MS || (24 * 60 * 60 * 1000));
             if (diff < cooldownMs) {
                 const remain = cooldownMs - diff;
                 const hh = String(Math.floor(remain / 3600000)).padStart(2, '0');

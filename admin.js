@@ -1,10 +1,18 @@
 // Вынесенные админские функции
 
-const isAdminUser = (...args) => (
-  typeof window.isAdminUser === 'function' && window.isAdminUser !== isAdminUser
-    ? window.isAdminUser(...args)
-    : false
-);
+const isAdminUser = (...args) => {
+  if (typeof window.isAdminUser === 'function' && window.isAdminUser !== isAdminUser) {
+    return window.isAdminUser(...args);
+  }
+  const fallbackUserId = Number(
+    window.currentUserId
+    || currentUserId
+    || window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+    || 0
+  );
+  const fallbackAdminId = Number(window.ADMIN_ID || ADMIN_ID || 0);
+  return fallbackUserId > 0 && fallbackUserId === fallbackAdminId;
+};
 async function waitForDbReadySafe() {
   if (typeof window.waitForDbReady === 'function') {
     return window.waitForDbReady();
@@ -337,12 +345,14 @@ const formatMoscowDateTime = (...args) => (
           async function adminResetMiniEvents() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
+            const database = await waitForDbReadySafe().catch(() => null);
+            if (!database) return alert('База данных недоступна.');
 
             const [duelsSnap, notificationsSnap, seasonSnap, usersSnap] = await Promise.all([
-              db.ref('calligraphy_duels').once('value'),
-              db.ref('system_notifications').once('value'),
-              db.ref('player_season_status').once('value'),
-              db.ref('users').once('value')
+              database.ref('calligraphy_duels').once('value'),
+              database.ref('system_notifications').once('value'),
+              database.ref('player_season_status').once('value'),
+              database.ref('users').once('value')
             ]);
 
             const updates = {};
@@ -384,7 +394,7 @@ const formatMoscowDateTime = (...args) => (
             });
 
             await Promise.all([
-              db.ref().update(updates),
+              database.ref().update(updates),
               postNews('🧹 Администратор сбросил(а) мини-ивенты и дуэли «Тотемы».')
             ]);
             window.resetMiniEventBadge?.();

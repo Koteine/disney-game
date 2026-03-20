@@ -302,6 +302,7 @@
                     <b>Экстренные действия:</b>
                     <button id="admin-emergency-toggle-btn" class="news-toggle-btn" onclick="toggleAdminEmergencyActions()">Развернуть</button>
                 </div>
+                <button id="admin-reset-mini-events-btn" type="button" onclick="adminResetMiniEvents()" class="admin-btn" style="background:#546e7a; width:100%; margin:8px 0 0;">🧹 Сброс мини-ивентов</button>
                 <div id="admin-emergency-body" class="news-list" style="margin-top:8px;">
                     <button onclick="toggleEmergencySection('grant')" class="admin-btn" style="background:#00897b; width:100%; margin:0 0 6px;">Принудительная выдача билетиков</button>
                     <div id="admin-emergency-grant-body" class="news-list" style="margin-bottom:8px;">
@@ -370,11 +371,6 @@
                             <button onclick="adminAdjustKarma(1)" class="admin-btn" style="background:#2e7d32; margin:0; flex:1;">[+] Начислить</button>
                             <button onclick="adminAdjustKarma(-1)" class="admin-btn" style="background:#c62828; margin:0; flex:1;">[-] Списать</button>
                         </div>
-                    </div>
-
-                    <div class="admin-emergency-reset-row">
-                        <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
-                        <button id="admin-reset-mini-events-btn" type="button" class="admin-btn" style="background:#546e7a; width:100%; margin:0 0 6px;">🧹 Сброс мини-ивентов</button>
                     </div>
 
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
