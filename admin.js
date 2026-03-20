@@ -657,8 +657,20 @@ const formatMoscowDateTime = (...args) => (
             window.renderPlayerTicketsList = renderPlayerTicketsList;
           }
 
+          function bindAdminMiniEventResetButton() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn || btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              adminResetMiniEvents();
+            });
+          }
+
           async function initAdminPage() {
             exposeAdminActions();
+            bindAdminMiniEventResetButton();
             ensureAdminTabVisibility();
 
             if (!isAdminSessionVisible()) {
