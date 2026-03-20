@@ -417,6 +417,7 @@ const formatMoscowDateTime = (...args) => (
               });
               window.resetMiniEventBadge?.();
               window.resetDuelWaitNoticeTimer?.();
+
               window.closeCalligraphyDuelUI?.();
               window.closeTotemGameOverlay?.();
               alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
@@ -425,7 +426,9 @@ const formatMoscowDateTime = (...args) => (
               alert(error?.message || 'Не удалось сбросить мини-ивенты. Попробуй ещё раз.');
             } finally {
               if (resetBtn) {
+
                 resetBtn.removeAttribute('aria-busy');
+
                 resetBtn.textContent = '🧹 Сброс мини-ивентов';
                 delete resetBtn.dataset.loading;
               }
@@ -704,6 +707,15 @@ const formatMoscowDateTime = (...args) => (
             btn.style.pointerEvents = 'auto';
             if (btn.dataset.loading === '1') return;
             btn.removeAttribute('aria-busy');
+          }
+
+          function ensureMiniResetButtonActive() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn) return;
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading === '1') return;
+            if (btn.disabled) btn.disabled = false;
+            btn.removeAttribute('disabled');
           }
 
           async function initAdminPage() {
