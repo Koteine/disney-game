@@ -9,6 +9,21 @@
 
     const ctx = () => window.__duelContext || {};
 
+    function resetDuelWaitNoticeTimer() {
+        if (duelWaitNoticeInterval) {
+            clearInterval(duelWaitNoticeInterval);
+            duelWaitNoticeInterval = null;
+        }
+        const label = document.getElementById('duel-status-label');
+        const textNode = document.getElementById('duel-status-text');
+        const timerNode = document.getElementById('duel-status-timer');
+        const okBtn = document.getElementById('duel-status-ok');
+        if (textNode) textNode.textContent = '';
+        if (timerNode) timerNode.textContent = '';
+        if (okBtn) okBtn.style.display = 'none';
+        if (label) label.style.display = 'none';
+    }
+
     with (ctx()) {
         const TOTEM_MODES = ['jungle_rhythm', 'poison_cipher', 'shedding'];
         const TOTEM_REWARD_ITEMS = ['totemShard', 'jungleMask', 'pythonEye'];
@@ -1060,6 +1075,7 @@
         window.openCalligraphyDuelUI = openCalligraphyDuelUI;
         window.closeCalligraphyDuelUI = closeCalligraphyDuelUI;
         window.closeTotemGameOverlay = closeCalligraphyDuelUI;
+        window.resetDuelWaitNoticeTimer = resetDuelWaitNoticeTimer;
         window.subscribeToCalligraphyDuelInvites = subscribeToCalligraphyDuelInvites;
         window.postCalligraphyDuelStartedNewsIfNeeded = postCalligraphyDuelStartedNewsIfNeeded;
         window.showOutgoingDuelStatusNotification = showOutgoingDuelStatusNotification;
