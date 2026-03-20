@@ -388,6 +388,7 @@ const formatMoscowDateTime = (...args) => (
                 if (['resolved', 'declined', 'expired'].includes(status)) return;
                 updates[`calligraphy_duels/${snap.key}/status`] = 'expired';
                 updates[`calligraphy_duels/${snap.key}/expiresAt`] = 0;
+
                 updates[`calligraphy_duels/${snap.key}/expiredAt`] = now;
                 updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
                 updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
@@ -417,6 +418,7 @@ const formatMoscowDateTime = (...args) => (
               });
               window.resetMiniEventBadge?.();
               window.resetDuelWaitNoticeTimer?.();
+
               window.closeCalligraphyDuelUI?.();
               window.closeTotemGameOverlay?.();
               alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
