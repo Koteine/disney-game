@@ -5172,7 +5172,7 @@ ${optionsText}
                         <span style="text-align:left; word-break:break-word; line-height:1.4;">
                             <b style="color:${charColor}">${safeNickname}</b> | <code style="color:#666;">${escapeHtml(userTgId)}</code> | <span style="color:#666;">${safeTelegramName}</span>
                         </span>
-                        <button onclick="kick('${userTgId}')" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px; flex-shrink:0;">Удалить</button>
+                        <button onclick="adminRemovePlayerFromGame('${userTgId}', this)" style="color:red; border:1px solid red; border-radius:5px; background:none; padding:2px 6px; font-size:10px; flex-shrink:0;">Удалить игрока из игры</button>
                     </div>`;
                 });
 
@@ -5213,14 +5213,586 @@ ${optionsText}
             btn.innerText = expanded ? '👥 Список игроков: развернуть' : '👥 Список игроков: свернуть';
         }
 
-        function kick(id) {
-            if (!isAdminUser()) return;
-            if(confirm("Удалить?")) db.ref('whitelist/'+id).remove();
+        function setInlineAdminButtonState(buttonEl, isRunning, runningLabel) {
+            if (!buttonEl) return;
+            if (!buttonEl.dataset.defaultLabel) {
+                buttonEl.dataset.defaultLabel = buttonEl.innerHTML;
+            }
+            buttonEl.disabled = !!isRunning;
+            buttonEl.style.opacity = isRunning ? '0.7' : '1';
+            buttonEl.style.pointerEvents = isRunning ? 'none' : '';
+            buttonEl.innerHTML = isRunning ? String(runningLabel || '⏳ Выполняется...') : buttonEl.dataset.defaultLabel;
         }
+
+        function normalizeAdminUid(value) {
+            return String(value || '').trim();
+        }
+
+        function resolveAdminPlayerName(uid, whitelistRow = {}, usersRow = {}) {
+            const charIndex = Number(whitelistRow?.charIndex ?? usersRow?.charIndex);
+            if (Number.isInteger(charIndex) && players[charIndex]?.n) return String(players[charIndex].n || '').trim();
+            const fallback = [
+                whitelistRow?.nickname,
+                whitelistRow?.telegramFirstName,
+                whitelistRow?.telegram_name,
+                whitelistRow?.first_name,
+                whitelistRow?.name,
+                usersRow?.nickname,
+                usersRow?.name,
+                usersRow?.username,
+                usersRow?.displayName
+            ].find((value) => String(value || '').trim());
+            return String(fallback || `ID ${uid}`).trim();
+        }
+
+        function serializeAdminError(err) {
+            if (!err) return { message: 'Неизвестная ошибка' };
+            return {
+                message: String(err?.message || err),
+                code: String(err?.code || ''),
+                stack: String(err?.stack || '')
+            };
+        }
+
+        async function writeAdminActionLog(actionType, status, details = {}) {
+            try {
+                const key = db.ref('admin_action_logs').push().key;
+                if (!key) return;
+                await db.ref(`admin_action_logs/${key}`).set({
+                    actionType: String(actionType || 'admin_action'),
+                    status: String(status || 'info'),
+                    adminId: String(currentUserId || ''),
+                    createdAt: Date.now(),
+                    details
+                });
+            } catch (loggingError) {
+                console.error('[admin log] failed to write admin_action_logs entry', loggingError);
+            }
+        }
+
+        function createAdminNewsLog(type, text, extra = {}) {
+            return {
+                text: String(text || ''),
+                createdAt: Date.now(),
+                type: String(type || 'admin_action'),
+                adminId: String(currentUserId || ''),
+                ...extra
+            };
+        }
+
+        function buildResetCurrentRoundValue(now, adminId) {
+            return {
+                number: 0,
+                endTime: 0,
+                startedAt: 0,
+                startedBy: '',
+                fieldMode: 'cells',
+                traps: [],
+                magicCell: null,
+                miniGameCell: null,
+                wordSketchCell: null,
+                magnetCell: null,
+                itemCells: {},
+                snakeConfig: null,
+                resetAt: now,
+                resetBy: adminId,
+                active: false
+            };
+        }
+
+        function buildSessionResetUpdates({ whitelist = {}, users = {}, now = Date.now(), adminId = '' } = {}) {
+            const updates = {
+                submissions: null,
+                works: null,
+                snake_encounters: null,
+                snake_clashes: null,
+                snake_synergy: null,
+                snake_duel_history: null,
+                calligraphy_duels: null,
+                system_notifications: null,
+                rounds: null,
+                tickets: null,
+                tickets_archive: null,
+                revoked_tickets: null,
+                snake_presence: null,
+                snake_traps: null,
+                snake_smuggler: null,
+                snake_arcane_sessions: null,
+                snake_robbery_cell_guard: null,
+                magic_links: null,
+                wheel_event: null,
+                wheel_draw: null,
+                wheel_history: null,
+                current_winner: null,
+                last_winner: null,
+                winners_history: null,
+                game_event: null,
+                game_events: null,
+                current_event: null,
+                mushu_event: null,
+                epic_paint: null,
+                event_schedule: null,
+                round_schedules: null,
+                board: null,
+                players: null,
+                whitelist: null,
+                ticket_counter: 0,
+                raffle_state: {
+                    status: 'ready',
+                    participants: null,
+                    currentDraw: null,
+                    resetAt: now,
+                    resetBy: adminId
+                },
+                current_round: buildResetCurrentRoundValue(now, adminId)
+            };
+
+            Object.keys(users || {}).forEach((uid) => {
+                updates[`users/${uid}/charIndex`] = null;
+                updates[`users/${uid}/tickets`] = null;
+                updates[`users/${uid}/isActive`] = false;
+                updates[`users/${uid}/active`] = false;
+                updates[`users/${uid}/removedFromSessionAt`] = now;
+                updates[`users/${uid}/removedFromSessionBy`] = adminId;
+            });
+
+            Object.keys(whitelist || {}).forEach((uid) => {
+                updates[`player_season_status/${uid}/last_impulse_time`] = 0;
+                updates[`player_season_status/${uid}/updatedAt`] = now;
+            });
+
+            const newsKey = db.ref('news_feed').push().key;
+            if (newsKey) {
+                updates[`news_feed/${newsKey}`] = createAdminNewsLog(
+                    'admin_session_reset',
+                    'Администратор выполнил(а) сброс текущей сессии',
+                    { resetAt: now }
+                );
+            }
+
+            const auditKey = db.ref('admin_action_logs').push().key;
+            if (auditKey) {
+                updates[`admin_action_logs/${auditKey}`] = {
+                    actionType: 'admin_session_reset',
+                    status: 'success',
+                    adminId,
+                    createdAt: now,
+                    details: {
+                        clearedPlayers: Object.keys(whitelist || {}).length,
+                        clearedUsers: Object.keys(users || {}).length
+                    }
+                };
+            }
+
+            return updates;
+        }
+
+        function markArchivedTicketAsRemoved(row, { uid, charIndex, now, adminId, reason }) {
+            return {
+                ...(row && typeof row === 'object' ? row : {}),
+                active: false,
+                excluded: true,
+                owner: null,
+                userId: null,
+                removedFromSessionAt: now,
+                removedFromSessionBy: adminId,
+                removedUserId: uid,
+                removedCharIndex: Number.isInteger(charIndex) ? charIndex : null,
+                removalReason: String(reason || 'admin_remove_player')
+            };
+        }
+
+        function buildPlayerRemovalUpdates({
+            uid,
+            whitelistRow = {},
+            usersRow = {},
+            users = {},
+            tickets = {},
+            ticketsArchive = {},
+            board = {},
+            rounds = {},
+            snakePresence = {},
+            snakeEncounters = {},
+            snakeClashes = {},
+            snakeSynergy = {},
+            snakeDuelHistory = {},
+            submissions = {},
+            works = {},
+            calligraphyDuels = {},
+            currentEvent = {},
+            gameEvents = {},
+            mushuEvent = {},
+            epicPaint = {},
+            magicLinks = {},
+            snakeSmuggler = {},
+            snakeArcaneSessions = {},
+            snakeRobberyCellGuard = {},
+            now = Date.now(),
+            adminId = ''
+        }) {
+            const updates = {};
+            const safeUid = normalizeAdminUid(uid);
+            const charIndex = Number(whitelistRow?.charIndex ?? usersRow?.charIndex);
+            const removedTicketNums = new Set();
+            const matchesUid = (value) => normalizeAdminUid(value) === safeUid;
+            const matchesCharIndex = (value) => Number.isInteger(charIndex) && Number(value) === charIndex;
+
+            updates[`whitelist/${safeUid}`] = null;
+            updates[`users/${safeUid}/charIndex`] = null;
+            updates[`users/${safeUid}/tickets`] = null;
+            updates[`users/${safeUid}/isActive`] = false;
+            updates[`users/${safeUid}/active`] = false;
+            updates[`users/${safeUid}/removedFromSessionAt`] = now;
+            updates[`users/${safeUid}/removedFromSessionBy`] = adminId;
+            updates[`system_notifications/${safeUid}`] = null;
+            updates[`player_season_status/${safeUid}/last_impulse_time`] = 0;
+            updates[`player_season_status/${safeUid}/updatedAt`] = now;
+
+            Object.entries(tickets || {}).forEach(([ticketNum, row]) => {
+                if (!row || (!matchesUid(row.userId) && !matchesCharIndex(row.owner))) return;
+                removedTicketNums.add(String(ticketNum));
+                updates[`tickets/${ticketNum}`] = null;
+            });
+
+            Object.entries(users || {}).forEach(([userId, row]) => {
+                const ticketMap = row?.tickets && typeof row.tickets === 'object' ? row.tickets : {};
+                Object.keys(ticketMap).forEach((ticketNum) => {
+                    if (removedTicketNums.has(String(ticketNum))) {
+                        updates[`users/${userId}/tickets/${ticketNum}`] = null;
+                    }
+                });
+            });
+
+            removedTicketNums.forEach((ticketNum) => {
+                updates[`revoked_tickets/${ticketNum}`] = null;
+            });
+
+            Object.entries(ticketsArchive || {}).forEach(([archiveKey, row]) => {
+                const ticketNum = String(row?.ticket || row?.ticketNum || '');
+                if (!row || (!matchesUid(row.userId) && !matchesCharIndex(row.owner) && !removedTicketNums.has(ticketNum))) return;
+                updates[`tickets_archive/${archiveKey}`] = markArchivedTicketAsRemoved(row, {
+                    uid: safeUid,
+                    charIndex,
+                    now,
+                    adminId,
+                    reason: 'admin_remove_player'
+                });
+            });
+
+            Object.entries(board || {}).forEach(([cellKey, cell]) => {
+                if (!cell || (!matchesUid(cell.userId) && !matchesCharIndex(cell.owner))) return;
+                updates[`board/${cellKey}`] = null;
+            });
+
+            Object.entries(rounds || {}).forEach(([roundId, roundRow]) => {
+                const snakeRow = roundRow?.snake || {};
+                if (snakeRow?.assignments?.[safeUid]) {
+                    updates[`rounds/${roundId}/snake/assignments/${safeUid}`] = null;
+                }
+                Object.entries(snakeRow?.occupancy || {}).forEach(([cellKey, occ]) => {
+                    if (occ && typeof occ === 'object' && Object.prototype.hasOwnProperty.call(occ, safeUid)) {
+                        updates[`rounds/${roundId}/snake/occupancy/${cellKey}/${safeUid}`] = null;
+                    }
+                });
+                if (snakeRow?.moves?.[safeUid]) {
+                    updates[`rounds/${roundId}/snake/moves/${safeUid}`] = null;
+                }
+            });
+
+            Object.entries(snakePresence || {}).forEach(([roundId, cells]) => {
+                Object.entries(cells || {}).forEach(([cellKey, occupants]) => {
+                    if (occupants && typeof occupants === 'object' && Object.prototype.hasOwnProperty.call(occupants, safeUid)) {
+                        updates[`snake_presence/${roundId}/${cellKey}/${safeUid}`] = null;
+                    }
+                });
+            });
+
+            const clearNestedPlayerRows = (basePath, source) => {
+                Object.entries(source || {}).forEach(([roundId, cells]) => {
+                    Object.entries(cells || {}).forEach(([cellKey, rows]) => {
+                        Object.entries(rows || {}).forEach(([rowKey, row]) => {
+                            const playersList = Array.isArray(row?.players) ? row.players.map((value) => normalizeAdminUid(value)) : [];
+                            if (playersList.includes(safeUid) || matchesUid(row?.winner) || matchesUid(row?.loser) || matchesUid(row?.attackerId) || matchesUid(row?.victimId)) {
+                                updates[`${basePath}/${roundId}/${cellKey}/${rowKey}`] = null;
+                            }
+                        });
+                    });
+                });
+            };
+
+            clearNestedPlayerRows('snake_encounters', snakeEncounters);
+            clearNestedPlayerRows('snake_clashes', snakeClashes);
+            clearNestedPlayerRows('snake_synergy', snakeSynergy);
+            clearNestedPlayerRows('snake_duel_history', snakeDuelHistory);
+
+            Object.entries(submissions || {}).forEach(([rowKey, row]) => {
+                if (!row || (!matchesUid(row.userId) && !matchesCharIndex(row.owner))) return;
+                updates[`submissions/${rowKey}`] = null;
+            });
+
+            Object.entries(works || {}).forEach(([rowKey, row]) => {
+                if (!row || (!matchesUid(row.userId) && !matchesCharIndex(row.owner))) return;
+                updates[`works/${rowKey}`] = null;
+            });
+
+            Object.entries(calligraphyDuels || {}).forEach(([duelKey, row]) => {
+                const duelPlayers = Object.keys(row?.players || {}).map((value) => normalizeAdminUid(value));
+                if (matchesUid(row?.challengerId) || matchesUid(row?.opponentId) || duelPlayers.includes(safeUid)) {
+                    updates[`calligraphy_duels/${duelKey}`] = null;
+                }
+            });
+
+            if (currentEvent?.participants && Object.prototype.hasOwnProperty.call(currentEvent.participants, safeUid)) {
+                updates[`current_event/participants/${safeUid}`] = null;
+            }
+            if (currentEvent?.fed_users && Object.prototype.hasOwnProperty.call(currentEvent.fed_users, safeUid)) {
+                updates[`current_event/fed_users/${safeUid}`] = null;
+            }
+            if (currentEvent?.rewarded_users && Object.prototype.hasOwnProperty.call(currentEvent.rewarded_users, safeUid)) {
+                updates[`current_event/rewarded_users/${safeUid}`] = null;
+            }
+
+            Object.entries(gameEvents || {}).forEach(([eventKey, row]) => {
+                if (row?.participants && Object.prototype.hasOwnProperty.call(row.participants, safeUid)) {
+                    updates[`game_events/${eventKey}/participants/${safeUid}`] = null;
+                }
+                if (row?.teams && typeof row.teams === 'object') {
+                    Object.entries(row.teams).forEach(([teamKey, teamRows]) => {
+                        if (teamRows && typeof teamRows === 'object' && Object.prototype.hasOwnProperty.call(teamRows, safeUid)) {
+                            updates[`game_events/${eventKey}/teams/${teamKey}/${safeUid}`] = null;
+                        }
+                    });
+                }
+            });
+
+            if (mushuEvent?.participants && Object.prototype.hasOwnProperty.call(mushuEvent.participants, safeUid)) {
+                updates[`mushu_event/participants/${safeUid}`] = null;
+            }
+            if (mushuEvent?.fed_users && Object.prototype.hasOwnProperty.call(mushuEvent.fed_users, safeUid)) {
+                updates[`mushu_event/fed_users/${safeUid}`] = null;
+            }
+            if (mushuEvent?.rewarded_users && Object.prototype.hasOwnProperty.call(mushuEvent.rewarded_users, safeUid)) {
+                updates[`mushu_event/rewarded_users/${safeUid}`] = null;
+            }
+            if (mushuEvent?.rewards && Object.prototype.hasOwnProperty.call(mushuEvent.rewards, safeUid)) {
+                updates[`mushu_event/rewards/${safeUid}`] = null;
+            }
+
+            if (epicPaint?.participants && Object.prototype.hasOwnProperty.call(epicPaint.participants, safeUid)) {
+                updates[`epic_paint/participants/${safeUid}`] = null;
+            }
+            Object.entries(epicPaint?.participants_by_event || {}).forEach(([eventKey, row]) => {
+                if (row && typeof row === 'object' && Object.prototype.hasOwnProperty.call(row, safeUid)) {
+                    updates[`epic_paint/participants_by_event/${eventKey}/${safeUid}`] = null;
+                }
+            });
+            Object.entries(epicPaint?.rewarded || {}).forEach(([eventKey, row]) => {
+                if (row && typeof row === 'object' && Object.prototype.hasOwnProperty.call(row, safeUid)) {
+                    updates[`epic_paint/rewarded/${eventKey}/${safeUid}`] = null;
+                }
+            });
+
+            Object.entries(magicLinks || {}).forEach(([roundId, links]) => {
+                Object.entries(links || {}).forEach(([linkKey, row]) => {
+                    if (matchesUid(row?.playerA?.userId) || matchesUid(row?.playerB?.userId)) {
+                        updates[`magic_links/${roundId}/${linkKey}`] = null;
+                    }
+                });
+            });
+
+            const smugglerCurrent = snakeSmuggler?.current || {};
+            if (smugglerCurrent?.eligible && Object.prototype.hasOwnProperty.call(smugglerCurrent.eligible, safeUid)) {
+                updates[`snake_smuggler/current/eligible/${safeUid}`] = null;
+            }
+
+            Object.entries(snakeArcaneSessions || {}).forEach(([sessionId, row]) => {
+                if (matchesUid(row?.attackerId) || matchesUid(row?.victimId)) {
+                    updates[`snake_arcane_sessions/${sessionId}`] = null;
+                }
+            });
+
+            Object.entries(snakeRobberyCellGuard || {}).forEach(([roundId, positions]) => {
+                Object.entries(positions || {}).forEach(([posKey, victims]) => {
+                    if (victims && typeof victims === 'object' && Object.prototype.hasOwnProperty.call(victims, safeUid)) {
+                        updates[`snake_robbery_cell_guard/${roundId}/${posKey}/${safeUid}`] = null;
+                    }
+                });
+            });
+
+            const newsKey = db.ref('news_feed').push().key;
+            if (newsKey) {
+                updates[`news_feed/${newsKey}`] = createAdminNewsLog(
+                    'admin_player_removed',
+                    `Администратор удалил(а) игрока из текущей сессии`,
+                    { targetUserId: safeUid, targetCharIndex: Number.isInteger(charIndex) ? charIndex : null }
+                );
+            }
+
+            const auditKey = db.ref('admin_action_logs').push().key;
+            if (auditKey) {
+                updates[`admin_action_logs/${auditKey}`] = {
+                    actionType: 'admin_remove_player',
+                    status: 'success',
+                    adminId,
+                    createdAt: now,
+                    details: {
+                        targetUserId: safeUid,
+                        removedTicketCount: removedTicketNums.size
+                    }
+                };
+            }
+
+            return updates;
+        }
+
         const adminResetLocks = {
             session: false,
             season: false
         };
+        const adminPlayerRemovalLocks = new Set();
+
+        async function adminRemovePlayerFromGame(id, buttonEl = null) {
+            if (!isAdminUser()) {
+                alert('Эта функция доступна только администратору.');
+                return false;
+            }
+
+            const uid = normalizeAdminUid(id);
+            if (!uid) {
+                alert('Не удалось определить Telegram ID игрока.');
+                return false;
+            }
+            if (adminPlayerRemovalLocks.has(uid)) return false;
+
+            const [whitelistSnap, usersSnap] = await Promise.all([
+                db.ref(`whitelist/${uid}`).once('value'),
+                db.ref(`users/${uid}`).once('value')
+            ]);
+            if (!whitelistSnap.exists() && !usersSnap.exists()) {
+                alert('Игрок уже удалён из текущей сессии.');
+                return false;
+            }
+
+            const whitelistRow = whitelistSnap.val() || {};
+            const usersRow = usersSnap.val() || {};
+            const playerName = resolveAdminPlayerName(uid, whitelistRow, usersRow);
+            const confirmed = await showAdminConfirmModal(
+                'Удалить игрока из игры',
+                `Подтвердите удаление игрока «${playerName}». Он будет удалён из текущей сессии, билеты и задания будут очищены, а активные связи в игровых системах — разорваны.`,
+                'Удалить игрока',
+                'Отмена'
+            );
+            if (!confirmed) return false;
+
+            adminPlayerRemovalLocks.add(uid);
+            setInlineAdminButtonState(buttonEl, true, '⏳ Удаляю...');
+            await writeAdminActionLog('admin_remove_player', 'started', {
+                targetUserId: uid,
+                targetName: playerName
+            });
+
+            try {
+                console.info('[admin remove][player] step=fetch_related_data', { uid, playerName });
+                const [
+                    allUsersSnap,
+                    ticketsSnap,
+                    ticketsArchiveSnap,
+                    boardSnap,
+                    roundsSnap,
+                    snakePresenceSnap,
+                    snakeEncountersSnap,
+                    snakeClashesSnap,
+                    snakeSynergySnap,
+                    snakeDuelHistorySnap,
+                    submissionsSnap,
+                    worksSnap,
+                    calligraphyDuelsSnap,
+                    currentEventSnap,
+                    gameEventsSnap,
+                    mushuEventSnap,
+                    epicPaintSnap,
+                    magicLinksSnap,
+                    snakeSmugglerSnap,
+                    snakeArcaneSessionsSnap,
+                    snakeRobberyCellGuardSnap
+                ] = await Promise.all([
+                    db.ref('users').once('value'),
+                    db.ref('tickets').once('value'),
+                    db.ref('tickets_archive').once('value'),
+                    db.ref('board').once('value'),
+                    db.ref('rounds').once('value'),
+                    db.ref('snake_presence').once('value'),
+                    db.ref('snake_encounters').once('value'),
+                    db.ref('snake_clashes').once('value'),
+                    db.ref('snake_synergy').once('value'),
+                    db.ref('snake_duel_history').once('value'),
+                    db.ref('submissions').once('value'),
+                    db.ref('works').once('value'),
+                    db.ref('calligraphy_duels').once('value'),
+                    db.ref('current_event').once('value'),
+                    db.ref('game_events').once('value'),
+                    db.ref('mushu_event').once('value'),
+                    db.ref('epic_paint').once('value'),
+                    db.ref('magic_links').once('value'),
+                    db.ref('snake_smuggler').once('value'),
+                    db.ref('snake_arcane_sessions').once('value'),
+                    db.ref('snake_robbery_cell_guard').once('value')
+                ]);
+
+                console.info('[admin remove][player] step=build_updates', { uid, playerName });
+                const updates = buildPlayerRemovalUpdates({
+                    uid,
+                    whitelistRow,
+                    usersRow,
+                    users: allUsersSnap.val() || {},
+                    tickets: ticketsSnap.val() || {},
+                    ticketsArchive: ticketsArchiveSnap.val() || {},
+                    board: boardSnap.val() || {},
+                    rounds: roundsSnap.val() || {},
+                    snakePresence: snakePresenceSnap.val() || {},
+                    snakeEncounters: snakeEncountersSnap.val() || {},
+                    snakeClashes: snakeClashesSnap.val() || {},
+                    snakeSynergy: snakeSynergySnap.val() || {},
+                    snakeDuelHistory: snakeDuelHistorySnap.val() || {},
+                    submissions: submissionsSnap.val() || {},
+                    works: worksSnap.val() || {},
+                    calligraphyDuels: calligraphyDuelsSnap.val() || {},
+                    currentEvent: currentEventSnap.val() || {},
+                    gameEvents: gameEventsSnap.val() || {},
+                    mushuEvent: mushuEventSnap.val() || {},
+                    epicPaint: epicPaintSnap.val() || {},
+                    magicLinks: magicLinksSnap.val() || {},
+                    snakeSmuggler: snakeSmugglerSnap.val() || {},
+                    snakeArcaneSessions: snakeArcaneSessionsSnap.val() || {},
+                    snakeRobberyCellGuard: snakeRobberyCellGuardSnap.val() || {},
+                    now: Date.now(),
+                    adminId: String(currentUserId || '')
+                });
+
+                console.info('[admin remove][player] step=apply_updates', { uid, playerName, updatesCount: Object.keys(updates).length });
+                await db.ref().update(updates);
+                console.info('[admin remove][player] success', { uid, playerName, updatesCount: Object.keys(updates).length });
+                alert(`Игрок «${playerName}» успешно удалён из текущей сессии.`);
+                return true;
+            } catch (err) {
+                console.error('[admin remove][player] failed', {
+                    uid,
+                    playerName,
+                    error: err,
+                    serialized: serializeAdminError(err)
+                });
+                await writeAdminActionLog('admin_remove_player', 'failed', {
+                    targetUserId: uid,
+                    targetName: playerName,
+                    error: serializeAdminError(err)
+                });
+                alert(`Не удалось удалить игрока «${playerName}». Подробности записаны в лог администратора.`);
+                return false;
+            } finally {
+                adminPlayerRemovalLocks.delete(uid);
+                setInlineAdminButtonState(buttonEl, false);
+            }
+        }
 
         function setAdminActionButtonState(buttonId, isRunning, runningLabel) {
             const btn = document.getElementById(buttonId);
@@ -5278,249 +5850,39 @@ ${optionsText}
             });
         }
 
-        function cloneResetState(value) {
-            if (value === null || typeof value === 'undefined') return {};
-            return JSON.parse(JSON.stringify(value));
-        }
-
-        function buildSessionResetMeta() {
-            return {
-                now: Date.now(),
-                adminId: String(currentUserId || ''),
-                logKey: db.ref('news_feed').push().key,
-                mode: 'destructive'
-            };
-        }
-
-        function buildSessionResetLogEntry(meta, message) {
-            return {
-                text: String(message || 'Администратор выполнил сброс текущей сессии'),
-                createdAt: Number(meta?.now || Date.now()),
-                type: meta?.mode === 'safe' ? 'admin_session_reset_safe' : 'admin_session_reset',
-                adminId: String(meta?.adminId || '')
-            };
-        }
-
-        function buildInactiveCollection(source, mapper) {
-            if (!source || typeof source !== 'object') return null;
-            const next = {};
-            Object.entries(source).forEach(([key, value]) => {
-                next[key] = mapper(value || {}, key);
-            });
-            return Object.keys(next).length ? next : null;
-        }
-
-        function applySessionResetState(currentRoot, meta) {
-            const root = cloneResetState(currentRoot);
-            const now = Number(meta?.now || Date.now());
-            const adminId = String(meta?.adminId || '');
-            const safeMode = String(meta?.mode || 'destructive') === 'safe';
-
-            const clearNode = (key, safeValueFactory = null) => {
-                if (!safeMode || typeof safeValueFactory !== 'function') {
-                    root[key] = null;
-                    return;
-                }
-                root[key] = safeValueFactory(root[key]);
-            };
-
-            const currentRoundNumber = Number(root?.current_round?.number || 0);
-
-            // Step 1: dependent entities.
-            clearNode('submissions');
-            clearNode('works');
-            clearNode('snake_encounters', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                status: 'reset',
-                active: false,
-                canStartClash: false,
-                resetAt: now,
-                resetBy: adminId
-            })));
-            clearNode('snake_clashes', (value) => buildInactiveCollection(value, (roundMap) => buildInactiveCollection(roundMap, (cellMap) => buildInactiveCollection(cellMap, (row) => ({
-                ...row,
-                status: 'reset',
-                active: false,
-                resetAt: now,
-                resetBy: adminId
-            })))));
-            clearNode('snake_synergy', (value) => buildInactiveCollection(value, (roundMap) => buildInactiveCollection(roundMap, (cellMap) => buildInactiveCollection(cellMap, (row) => ({
-                ...row,
-                status: 'reset',
-                active: false,
-                resetAt: now,
-                resetBy: adminId
-            })))));
-            clearNode('snake_duel_history');
-            clearNode('calligraphy_duels', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                status: 'reset',
-                active: false,
-                resetAt: now,
-                resetBy: adminId
-            })));
-            clearNode('system_notifications');
-
-            // Step 2: assignments.
-            clearNode('rounds', (value) => buildInactiveCollection(value, (roundRow) => ({
-                ...roundRow,
-                snake: {
-                    ...(roundRow?.snake || {}),
-                    assignments: null,
-                    occupancy: null,
-                    moves: null,
-                    active: false,
-                    resetAt: now,
-                    resetBy: adminId
-                }
-            })));
-
-            // Step 3: tickets.
-            clearNode('tickets');
-            clearNode('tickets_archive', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                active: false,
-                excluded: true,
-                owner: null,
-                userId: null,
-                resetAt: now,
-                resetBy: adminId
-            })));
-            clearNode('revoked_tickets');
-            root.ticket_counter = 0;
-
-            // Step 4: snake state.
-            clearNode('snake_presence');
-            clearNode('snake_traps');
-            clearNode('snake_smuggler');
-            clearNode('snake_arcane_sessions');
-            clearNode('snake_robbery_cell_guard');
-            clearNode('magic_links');
-
-            // Step 5: raffle state.
-            clearNode('wheel_event');
-            clearNode('wheel_draw');
-            root.raffle_state = {
-                status: 'ready',
-                participants: null,
-                currentDraw: null,
-                resetAt: now,
-                resetBy: adminId
-            };
-            clearNode('wheel_history');
-            clearNode('current_winner');
-            clearNode('last_winner');
-            clearNode('winners_history');
-
-            // Step 6: events.
-            clearNode('game_event');
-            clearNode('game_events', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                status: 'reset',
-                active: false,
-                teams: null,
-                resetAt: now,
-                resetBy: adminId
-            })));
-            clearNode('current_event');
-            clearNode('mushu_event', (value) => ({
-                ...(value || {}),
-                status: 'reset',
-                active: false,
-                fed_users: null,
-                rewarded_users: null,
-                resetAt: now,
-                resetBy: adminId
-            }));
-            clearNode('epic_paint', (value) => ({
-                ...(value || {}),
-                strokes: null,
-                participants: null,
-                participants_by_event: null,
-                rewarded: null,
-                active: false,
-                resetAt: now,
-                resetBy: adminId
-            }));
-            clearNode('event_schedule');
-            clearNode('round_schedules', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                status: 'cancelled',
-                active: false,
-                scheduledFor: null,
-                resetAt: now,
-                resetBy: adminId
-            })));
-
-            // Step 7: players.
-            clearNode('board');
-            clearNode('players');
-            clearNode('whitelist', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                isActive: false,
-                active: false,
-                charIndex: null,
-                snakeState: null,
-                inventory: null,
-                used_tasks: null,
-                magnifier_used_round: null,
-                ink_challenge: null,
-                debt: null,
-                removedFromSessionAt: now,
-                removedFromSessionBy: adminId
-            })));
-            clearNode('users', (value) => buildInactiveCollection(value, (row) => ({
-                ...row,
-                isActive: false,
-                active: false,
-                charIndex: null,
-                tickets: null,
-                removedFromSessionAt: now,
-                removedFromSessionBy: adminId
-            })));
-
-            // Step 8: round.
-            root.current_round = null;
-
-            const logKey = String(meta?.logKey || '').trim();
-            if (logKey) {
-                root.news_feed = root.news_feed && typeof root.news_feed === 'object' ? root.news_feed : {};
-                root.news_feed[logKey] = buildSessionResetLogEntry(meta, safeMode
-                    ? `Администратор выполнил безопасный сброс текущей сессии${currentRoundNumber > 0 ? ` (раунд ${currentRoundNumber})` : ''}`
-                    : `Администратор выполнил сброс текущей сессии${currentRoundNumber > 0 ? ` (раунд ${currentRoundNumber})` : ''}`);
-            }
-
-            return root;
-        }
-
-        async function executeSessionResetTransaction(meta) {
-            const tx = await db.ref().transaction((currentRoot) => applySessionResetState(currentRoot, meta), undefined, false);
-            if (!tx?.committed) {
-                throw new Error(`Session reset transaction was not committed (mode: ${meta?.mode || 'destructive'})`);
-            }
-            return tx.snapshot?.val() || null;
-        }
-
         async function performSessionReset() {
-            const destructiveMeta = buildSessionResetMeta();
+            const now = Date.now();
+            const adminId = String(currentUserId || '');
+            await writeAdminActionLog('admin_session_reset', 'started', { startedAt: now });
             try {
-                await executeSessionResetTransaction(destructiveMeta);
-                return { mode: destructiveMeta.mode };
-            } catch (primaryError) {
-                console.error('[admin reset][session] destructive transaction failed', primaryError);
-                const safeMeta = {
-                    ...buildSessionResetMeta(),
-                    now: Date.now(),
-                    mode: 'safe'
-                };
-                try {
-                    await executeSessionResetTransaction(safeMeta);
-                    console.warn('[admin reset][session] fallback safe reset committed');
-                    return { mode: safeMeta.mode, fallbackFrom: primaryError };
-                } catch (safeError) {
-                    console.error('[admin reset][session] safe transaction failed', safeError);
-                    throw safeError;
-                }
+                console.info('[admin reset][session] step=fetch_players');
+                const [whitelistSnap, usersSnap] = await Promise.all([
+                    db.ref('whitelist').once('value'),
+                    db.ref('users').once('value')
+                ]);
+                console.info('[admin reset][session] step=build_updates');
+                const updates = buildSessionResetUpdates({
+                    whitelist: whitelistSnap.val() || {},
+                    users: usersSnap.val() || {},
+                    now,
+                    adminId
+                });
+                console.info('[admin reset][session] step=apply_updates', { updatesCount: Object.keys(updates).length });
+                await db.ref().update(updates);
+                console.info('[admin reset][session] success', {
+                    clearedPlayers: Object.keys(whitelistSnap.val() || {}).length,
+                    clearedUsers: Object.keys(usersSnap.val() || {}).length
+                });
+                return { mode: 'multipath_update' };
+            } catch (err) {
+                console.error('[admin reset][session] failed', {
+                    error: err,
+                    serialized: serializeAdminError(err)
+                });
+                await writeAdminActionLog('admin_session_reset', 'failed', {
+                    error: serializeAdminError(err)
+                });
+                throw err;
             }
         }
 
