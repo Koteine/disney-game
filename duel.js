@@ -57,6 +57,9 @@
         }
 
         async function sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded, __queued = false) {
+            if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
+                return alert(window.getAdminGameplayBlockedLabel?.() || 'Недоступно в режиме администратора');
+            }
             if (!__queued && window.enqueueSnakeAction) {
                 return window.enqueueSnakeAction('totems_send_challenge', () => sendCellImpulseToOwner(cellIndex, cellOwnerUserId, ownerNameEncoded, true));
             }
@@ -122,6 +125,9 @@
         }
 
         async function declineCalligraphyDuel(duelKey, __queued = false) {
+            if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
+                return alert(window.getAdminGameplayBlockedLabel?.() || 'Недоступно в режиме администратора');
+            }
             if (!__queued && window.enqueueSnakeAction) {
                 return window.enqueueSnakeAction('totems_decline', () => declineCalligraphyDuel(duelKey, true));
             }
@@ -144,6 +150,9 @@
         }
 
         async function acceptCalligraphyDuel(duelKey, __queued = false) {
+            if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
+                return { ok: false, reason: 'admin_observer' };
+            }
             if (!__queued && window.enqueueSnakeAction) {
                 return window.enqueueSnakeAction('totems_accept', () => acceptCalligraphyDuel(duelKey, true));
             }

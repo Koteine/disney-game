@@ -179,6 +179,10 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
             function renderInventory() {
                 const row = document.getElementById('inventory-row');
                 if (!row) return;
+                if (typeof window.isObserverOnlyAdmin === 'function' && window.isObserverOnlyAdmin()) {
+                    row.innerHTML = '<span class="inv-chip">Недоступно в режиме администратора</span>';
+                    return;
+                }
 
                 const chips = Object.entries(itemTypes)
                     .map(([key, meta]) => ({ key, meta, count: inventoryCount(key) }))
@@ -189,6 +193,9 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
             }
 
             async function activateGoldenPollen(cellIdx) {
+                if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
+                    return alert(window.getAdminGameplayBlockedLabel?.() || 'Недоступно в режиме администратора');
+                }
                 const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
                 const cell = cellSnap.val();
                 if (!isOwnRegularCell(cell) || cell.itemType) return alert('Золотую пыльцу можно использовать только на своей обычной клетке без предмета.');
@@ -204,13 +211,19 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
 
                 const nextUsed = [...used, nextTask];
                 await db.ref(`whitelist/${currentUserId}/used_tasks`).set(nextUsed);
-                await db.ref(`board/${cellIdx}`).update({ taskIdx: nextTask, pollenUsedAt: Date.now() });
-                await postNews(`🎇 ${players[myIndex].n} использовал(а) Золотую пыльцу и перебросил(а) задание в клетке №${Number(cellIdx) + 1}.`);
-                const updated = await db.ref(`board/${cellIdx}`).once('value');
-                showCell(cellIdx, updated.val());
+                const rerollResult = await window.replaceBoardCellAssignment?.(cellIdx, nextTask, {
+                    itemKey: 'goldenPollen',
+                    reason: 'item_reroll'
+                });
+                await db.ref(`board/${cellIdx}`).update({ pollenUsedAt: Date.now() });
+                await postNews(`🎇 ${players[myIndex].n} использовал(а) Золотую пыльцу и сменил(а) задание в клетке №${Number(cellIdx) + 1}: #${Number(rerollResult?.oldTaskIdx ?? cell.taskIdx)} → #${nextTask}.`);
+                showCell(cellIdx, rerollResult?.cell || { ...cell, taskIdx: nextTask });
             }
 
             async function activateMagnifier(cellIdx) {
+                if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
+                    return alert(window.getAdminGameplayBlockedLabel?.() || 'Недоступно в режиме администратора');
+                }
                 const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
                 const cell = cellSnap.val();
                 if (!isOwnRegularCell(cell) || cell.itemType) return alert('Лупу можно применить только к своей обычной клетке без предмета.');
@@ -231,13 +244,19 @@ window.__initItemsModule = function initItemsModule(itemsContext) {
 
                 await db.ref(`whitelist/${currentUserId}/used_tasks`).set([...used, nextTask]);
                 await db.ref(`whitelist/${currentUserId}/magnifier_used_round`).set(currentRoundNum);
-                await db.ref(`board/${cellIdx}`).update({ taskIdx: nextTask, magnifierUsedAt: Date.now() });
-                await postNews(`🔎 ${players[myIndex].n} использовал(а) Лупу и обновил(а) задание в клетке №${Number(cellIdx) + 1}.`);
-                const updated = await db.ref(`board/${cellIdx}`).once('value');
-                showCell(cellIdx, updated.val());
+                const rerollResult = await window.replaceBoardCellAssignment?.(cellIdx, nextTask, {
+                    itemKey: 'magnifier',
+                    reason: 'item_reroll'
+                });
+                await db.ref(`board/${cellIdx}`).update({ magnifierUsedAt: Date.now() });
+                await postNews(`🔎 ${players[myIndex].n} использовал(а) Лупу и сменил(а) задание в клетке №${Number(cellIdx) + 1}: #${Number(rerollResult?.oldTaskIdx ?? cell.taskIdx)} → #${nextTask}.`);
+                showCell(cellIdx, rerollResult?.cell || { ...cell, taskIdx: nextTask });
             }
 
             async function activateInkSaboteur(cellIdx, options = {}) {
+                if (typeof window.canUseGameplayFeatures === 'function' && !window.canUseGameplayFeatures()) {
+                    return alert(window.getAdminGameplayBlockedLabel?.() || 'Недоступно в режиме администратора');
+                }
                 const autoPick = !!options.autoPick;
                 const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
                 const cell = cellSnap.val();

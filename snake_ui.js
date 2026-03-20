@@ -133,7 +133,10 @@
       const currentUserId = String(getCurrentUserId?.() || '').trim();
       const currentFieldMode = String(getCurrentFieldMode?.() || 'cells');
       const currentRoundNum = Number(getCurrentRoundNum?.() || 0);
-      if (currentFieldMode !== 'snake' || Number(currentUserId) === Number(adminId)) {
+      const isObserverOnlyAdmin = typeof window.isObserverOnlyAdmin === 'function'
+        ? window.isObserverOnlyAdmin()
+        : Number(currentUserId) === Number(adminId);
+      if (currentFieldMode !== 'snake' || isObserverOnlyAdmin) {
         hideSnakeStatusBlock();
         return;
       }

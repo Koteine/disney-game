@@ -85,14 +85,39 @@ const JSON_URL = 'tasks.json';
         let currentUserRole = 'player';
         let telegramUser = {};
 
+        function isAdminUser() {
+            return Number(currentUserId) === Number(ADMIN_ID);
+        }
+
+        function isAdminPlayer() {
+            return isAdminUser() && Number.isInteger(myIndex) && myIndex >= 0;
+        }
+
+        function isObserverOnlyAdmin() {
+            return isAdminUser() && !isAdminPlayer();
+        }
+
+        function canUseGameplayFeatures() {
+            return !isObserverOnlyAdmin();
+        }
+
+        function getAdminGameplayBlockedLabel() {
+            return 'Недоступно в режиме администратора';
+        }
+
         function refreshTelegramContext() {
             telegramUser = tg.initDataUnsafe?.user || {};
             currentUserId = Number(telegramUser.id) || 0;
             currentUserPathId = String(telegramUser.id || '').trim();
-            currentUserRole = Number(currentUserId) === Number(ADMIN_ID) ? 'admin' : 'player';
+            currentUserRole = isAdminUser() ? 'admin' : 'player';
             window.currentUserId = currentUserId;
             window.currentUserPathId = currentUserPathId;
             window.currentUserRole = currentUserRole;
+            window.isAdminUser = isAdminUser;
+            window.isAdminPlayer = isAdminPlayer;
+            window.isObserverOnlyAdmin = isObserverOnlyAdmin;
+            window.canUseGameplayFeatures = canUseGameplayFeatures;
+            window.getAdminGameplayBlockedLabel = getAdminGameplayBlockedLabel;
         }
         const onValue = (ref, handler) => ref.on('value', handler);
         function adminUpdate(path, patch) {
@@ -501,6 +526,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function submitWordSketchGuess(cellIdx) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const input = document.getElementById(`word-sketch-input-${cellIdx}`);
             if (!input) return;
 
@@ -633,6 +659,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function moveMiniGameTile(cellIdx, tileIdx) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const cellRef = db.ref('board/' + cellIdx);
             const snap = await cellRef.once('value');
             const cell = snap.val();
@@ -805,6 +832,7 @@ const JSON_URL = 'tasks.json';
 
 
         async function chooseInkChallengeOption(cellIdx, optionNumber) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
             const challenge = challengeSnap.val();
             if (!challenge || challenge.round !== currentRoundNum || challenge.isResolved) return alert('Клякса для текущего раунда не активна.');
@@ -823,6 +851,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function confirmInkChallengeOption(cellIdx) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const challengeSnap = await db.ref(`whitelist/${currentUserId}/ink_challenge`).once('value');
             const challenge = challengeSnap.val();
             if (!challenge || challenge.round !== currentRoundNum || challenge.isResolved) return alert('Клякса для текущего раунда не активна.');
@@ -959,6 +988,15 @@ const JSON_URL = 'tasks.json';
                 });
             };
 
+            if (isObserverOnlyAdmin()) {
+                if (select) select.disabled = true;
+                if (submitBtn) submitBtn.disabled = true;
+                setUploadVisibility(false);
+                statusEl.innerText = getAdminGameplayBlockedLabel();
+                statusEl.style.color = '#b71c1c';
+                return;
+            }
+
             if (select.disabled || !select.value) {
                 submitBtn.disabled = true;
                 setUploadVisibility(true);
@@ -1018,6 +1056,7 @@ const JSON_URL = 'tasks.json';
         
         
         async function chooseWandBlessingOption(cellIdx, optionNum) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             if (![1,2,3].includes(optionNum)) return;
             const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
             const blessing = blessingSnap.val();
@@ -1036,6 +1075,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function confirmWandBlessingOption(cellIdx) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const blessingSnap = await db.ref(`whitelist/${currentUserId}/wand_blessing`).once('value');
             const blessing = blessingSnap.val();
             if (!blessing || blessing.round !== currentRoundNum || blessing.isResolved) return alert('Эта магия уже недоступна.');
@@ -1067,6 +1107,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function surrenderCell(cellIdx) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const cellSnap = await db.ref(`board/${cellIdx}`).once('value');
             const cell = cellSnap.val();
             if (!cell || cell.userId !== currentUserId) return alert('Сдаться можно только в своём задании.');
@@ -1550,16 +1591,39 @@ const JSON_URL = 'tasks.json';
             const shopBtn = document.getElementById('snake-shop-open-btn');
             const backpackBtn = document.getElementById('snake-backpack-open-btn');
             const isSnakeMode = resolveRoundFieldMode(currentRoundData) === 'snake';
-            const isPlayer = myIndex !== -1 && Number(currentUserId) !== Number(ADMIN_ID);
+            const isPlayer = myIndex !== -1 && canUseGameplayFeatures();
             if (!wrap) return;
-            if (!isSnakeMode || !isPlayer) {
+            if (!isSnakeMode) {
                 wrap.style.display = 'none';
                 return;
             }
             wrap.style.display = 'flex';
+            if (!isPlayer) {
+                if (shopBtn) {
+                    shopBtn.style.display = 'block';
+                    shopBtn.disabled = true;
+                    shopBtn.textContent = getAdminGameplayBlockedLabel();
+                }
+                if (backpackBtn) {
+                    backpackBtn.style.display = 'block';
+                    backpackBtn.disabled = true;
+                    backpackBtn.textContent = getAdminGameplayBlockedLabel();
+                }
+                if (statusEl) statusEl.textContent = getAdminGameplayBlockedLabel();
+                if (previewEl) previewEl.textContent = getAdminGameplayBlockedLabel();
+                return;
+            }
             const state = getSnakeShopWindowState();
             if (shopBtn) shopBtn.style.display = state.isOpen ? 'block' : 'none';
-            if (backpackBtn) backpackBtn.style.display = 'block';
+            if (shopBtn) {
+                shopBtn.disabled = false;
+                shopBtn.textContent = '🐍 Лавка «Шепот Клыка»';
+            }
+            if (backpackBtn) {
+                backpackBtn.style.display = 'block';
+                backpackBtn.disabled = false;
+                backpackBtn.textContent = '🎒 Рюкзак змейки';
+            }
             if (statusEl) {
                 statusEl.textContent = state.isOpen
                     ? `Лавка открыта в окне ${state.windowId || ''} (МСК)`
@@ -1569,7 +1633,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function refreshSnakePendingIndicator() {
-            if (resolveRoundFieldMode(currentRoundData) !== 'snake' || !currentUserId || Number(currentUserId) === Number(ADMIN_ID)) {
+            if (resolveRoundFieldMode(currentRoundData) !== 'snake' || !currentUserId || !canUseGameplayFeatures()) {
                 updateSnakePendingIndicator(0);
                 return;
             }
@@ -1585,6 +1649,7 @@ const JSON_URL = 'tasks.json';
         async function snakePurchaseItem(itemKey, viaSmuggler = false) {
             return enqueueSnakeAction(`snake_purchase_${itemKey}`, async () => {
                 try {
+                    if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
                     const item = SNAKE_SHOP_ITEMS[itemKey];
                     if (!item) return alert('Неизвестный предмет.');
                     if (!getSnakeShopWindowState().isOpen && !viaSmuggler) return alert('Лавка сейчас закрыта.');
@@ -1631,6 +1696,7 @@ const JSON_URL = 'tasks.json';
         }
 
         async function openSnakeShopModal() {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             if (resolveRoundFieldMode(currentRoundData) !== 'snake') return alert('Лавка доступна только в режиме «Змейка».');
             const state = getSnakeShopWindowState();
             const smugRow = (await db.ref('snake_smuggler/current').once('value')).val() || {};
@@ -1654,6 +1720,7 @@ const JSON_URL = 'tasks.json';
         }
 
         function openSnakeBackpackModal() {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const visibleItems = Object.entries(myInventory || {})
                 .map(([key, count]) => ({ key, count: Number(count || 0) }))
                 .filter(({ count }) => count > 0)
@@ -2120,7 +2187,7 @@ ${optionsText}
 
         async function refreshSnakeSmugglerPresence(userState = null) {
             const isSnakeMode = resolveRoundFieldMode(currentRoundData) === 'snake';
-            if (!isSnakeMode || !currentUserId || Number(currentUserId) === Number(ADMIN_ID)) return;
+            if (!isSnakeMode || !currentUserId || !canUseGameplayFeatures()) return;
             const shop = getSnakeShopWindowState();
             const ref = db.ref('snake_smuggler/current');
             if (!shop.isOpen) {
@@ -2278,9 +2345,9 @@ ${optionsText}
                     return;
                 }
 
-                if (Number(currentUserId) === Number(ADMIN_ID)) {
+                if (isObserverOnlyAdmin()) {
                     btn.disabled = true;
-                    btn.innerText = "👀 Режим наблюдателя";
+                    btn.innerText = getAdminGameplayBlockedLabel();
                     hideSnakeStatusBlock();
                     await renderAdminSnakeOverview();
                     window.updateEventUiState?.();
@@ -2572,6 +2639,7 @@ ${optionsText}
         }
 
         async function challengeSnakeCellPlayer(targetUserId, cellPos) {
+            if (!canUseGameplayFeatures()) return alert(getAdminGameplayBlockedLabel());
             const targetUid = String(targetUserId || '').trim();
             const currentUid = String(currentUserId || '').trim();
             const pos = Number(cellPos || 0);
@@ -2872,8 +2940,8 @@ ${optionsText}
                 myIndex
             });
             if (snakeRollInFlight) return;
-            if (Number(currentUserId) === Number(ADMIN_ID)) {
-                return alert('Админ не участвует в игре как игрок: можно только наблюдать за событиями и полем.');
+            if (isObserverOnlyAdmin()) {
+                return alert(getAdminGameplayBlockedLabel());
             }
             snakeRollInFlight = true;
             let activeSnakeRollRequestId = '';
@@ -3685,7 +3753,7 @@ ${optionsText}
             const cooldownMs = Number(window.__duelContext?.IMPULSE_COOLDOWN_MS || 0);
             const cooldownLeftMs = Math.max(0, Number(mySeason.last_impulse_time || 0) + cooldownMs - nowTs);
             const isCooldownActive = cooldownLeftMs > 0;
-            const isAdminObserver = Number(currentUserId) === Number(ADMIN_ID);
+            const isAdminObserver = isObserverOnlyAdmin();
 
             const members = presenceRows.map((row) => {
                 const uid = String(row.userId || '').trim();
@@ -6085,9 +6153,14 @@ ${optionsText}
             const uploadCard = document.getElementById('works-upload-card');
             const title = document.getElementById('works-tab-title');
             const adminFilters = document.getElementById('works-admin-filters');
-            if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
+            const canPlay = canUseGameplayFeatures();
+            if (uploadCard) uploadCard.style.display = canPlay ? 'block' : 'none';
             if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
-            if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
+            if (title) {
+                title.innerText = isAdmin
+                    ? (canPlay ? '🖼️ Работы и сдача' : '🖼️ Работы игроков')
+                    : '📤 Сдача работ';
+            }
             if (!isAdmin) {
                 worksAdminSelectedUserId = '';
                 worksAdminView = 'pending';
@@ -6169,7 +6242,7 @@ ${optionsText}
         }
 
         function checkAccess() {
-            const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+            const isAdmin = isAdminUser();
             const navAdminBtn = document.getElementById('nav-admin-btn');
             const wheelAdminWrap = document.getElementById('wheel-admin-btn');
 
@@ -6189,12 +6262,14 @@ ${optionsText}
                 if (wheelAdminWrap) wheelAdminWrap.innerHTML = '';
             }
             db.ref('whitelist/' + currentUserId).on('value', s => {
-                const currentIsAdmin = Number(currentUserId) === Number(ADMIN_ID);
+                const currentIsAdmin = isAdminUser();
                 if (s.exists()) {
                     myIndex = s.val().charIndex;
                     const playerName = players[myIndex]?.n || 'Игрок';
                     const playerColor = charColors[myIndex] || '#6a1b9a';
-                    document.getElementById('player-identity').innerHTML = `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
+                    document.getElementById('player-identity').innerHTML = currentIsAdmin
+                        ? `Ты: <b>Администратор + игрок</b><br><span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`
+                        : `Ты: <span style="color:${playerColor}">${escapeHtml(playerName)}</span><br><small style="color:#666;">Telegram ID: ${currentUserId}</small>`;
                     updateWorksTabForRole(currentIsAdmin);
                     setAuthorizedView(true);
                     return;
@@ -6456,8 +6531,120 @@ ${optionsText}
             if (cell.isInkChallenge) return `🫧 Клякса-диверсант: ${cell.inkOptionLabel || 'усложнение выбирается в карточке клетки'}`;
             if (cell.isWandBlessing) return `🎆 Волшебная палочка: ${cell.wandOptionLabel || 'выбери упрощение в карточке клетки'}`;
             if (cell.isGold) return '👑 Золотая клетка: свободная тема';
+            if (typeof cell.taskLabel === 'string' && cell.taskLabel.trim()) return cell.taskLabel.trim();
             const t = tasks[cell.taskIdx];
             return t?.text || 'Обычное задание';
+        }
+
+        function getTaskLabelByTaskIdx(taskIdx) {
+            const normalizedTaskIdx = Number(taskIdx);
+            if (!Number.isInteger(normalizedTaskIdx) || normalizedTaskIdx < 0) return 'Обычное задание';
+            return String(tasks?.[normalizedTaskIdx]?.text || 'Обычное задание');
+        }
+
+        function syncBoardCellIntoLocalCaches(cellIdx, cellData) {
+            const normalizedCellIdx = Number(cellIdx);
+            if (!Number.isInteger(normalizedCellIdx) || normalizedCellIdx < 0 || !cellData) return;
+            const normalizedRow = {
+                ...cellData,
+                cell: normalizedCellIdx + 1,
+                cellIdx: normalizedCellIdx,
+                isArchived: false
+            };
+            liveBoardTicketsData = (Array.isArray(liveBoardTicketsData) ? liveBoardTicketsData : [])
+                .filter((row) => Number(row?.cellIdx) !== normalizedCellIdx)
+                .concat(normalizedRow);
+            allTicketsData = (Array.isArray(allTicketsData) ? allTicketsData : [])
+                .filter((row) => row?.isArchived || Number(row?.cellIdx) !== normalizedCellIdx)
+                .concat(normalizedRow);
+        }
+
+        async function appendPlayerAssignmentLog({
+            userId,
+            cellIdx,
+            round,
+            itemKey,
+            oldTaskIdx,
+            oldTaskLabel,
+            newTaskIdx,
+            newTaskLabel
+        }) {
+            const uid = String(userId || '').trim();
+            if (!uid) return;
+            const now = Date.now();
+            await db.ref(`player_activity_log/${uid}`).push({
+                type: 'assignment_reroll',
+                text: 'Игрок сменил задание с помощью предмета',
+                cellIdx: Number(cellIdx),
+                cell: Number(cellIdx) + 1,
+                round: Number(round || 0),
+                itemKey: String(itemKey || '').trim(),
+                oldTaskIdx: Number(oldTaskIdx),
+                oldTaskLabel: String(oldTaskLabel || '').trim(),
+                newTaskIdx: Number(newTaskIdx),
+                newTaskLabel: String(newTaskLabel || '').trim(),
+                createdAt: now,
+                updatedAt: now
+            });
+        }
+
+        async function replaceBoardCellAssignment(cellIdx, nextTaskIdx, options = {}) {
+            const normalizedCellIdx = Number(cellIdx);
+            const normalizedTaskIdx = Number(nextTaskIdx);
+            if (!Number.isInteger(normalizedCellIdx) || normalizedCellIdx < 0) throw new Error('Некорректная клетка для смены задания.');
+            if (!Number.isInteger(normalizedTaskIdx) || normalizedTaskIdx < 0) throw new Error('Некорректное новое задание.');
+
+            const cellRef = db.ref(`board/${normalizedCellIdx}`);
+            const cellSnap = await cellRef.once('value');
+            const currentCell = cellSnap.val() || null;
+            if (!currentCell) throw new Error('Клетка для смены задания не найдена.');
+
+            const oldTaskIdx = Number(currentCell.taskIdx);
+            const oldTaskLabel = getTaskLabelByCell(currentCell);
+            const newTaskLabel = getTaskLabelByTaskIdx(normalizedTaskIdx);
+            const now = Date.now();
+
+            await cellRef.update({
+                taskIdx: normalizedTaskIdx,
+                taskLabel: newTaskLabel,
+                assignmentUpdatedAt: now,
+                updatedAt: now,
+                lastAssignmentChangeAt: now,
+                lastAssignmentChangeSource: String(options.reason || 'item_reroll'),
+                lastAssignmentChangeItemKey: String(options.itemKey || '')
+            });
+
+            const updatedCellSnap = await cellRef.once('value');
+            const updatedCell = updatedCellSnap.val() || {
+                ...currentCell,
+                taskIdx: normalizedTaskIdx,
+                taskLabel: newTaskLabel,
+                assignmentUpdatedAt: now,
+                updatedAt: now
+            };
+            syncBoardCellIntoLocalCaches(normalizedCellIdx, updatedCell);
+            if (typeof window.updateTicketsTable === 'function') window.updateTicketsTable();
+            fillSubmissionTaskOptions();
+            renderSubmissions();
+
+            await appendPlayerAssignmentLog({
+                userId: String(updatedCell.userId || currentUserId || ''),
+                cellIdx: normalizedCellIdx,
+                round: Number(updatedCell.round || currentRoundNum || 0),
+                itemKey: String(options.itemKey || '').trim(),
+                oldTaskIdx,
+                oldTaskLabel,
+                newTaskIdx: normalizedTaskIdx,
+                newTaskLabel
+            });
+
+            return {
+                cell: updatedCell,
+                oldTaskIdx,
+                oldTaskLabel,
+                newTaskIdx: normalizedTaskIdx,
+                newTaskLabel
+            };
         }
 
         function getSnakeTaskLabelSnapshot(row = {}, snakeAssignment = null) {
@@ -6521,6 +6708,13 @@ ${optionsText}
             const select = document.getElementById('work-task-select');
             if (!select) return;
 
+            if (isObserverOnlyAdmin()) {
+                select.innerHTML = `<option value="">${getAdminGameplayBlockedLabel()}</option>`;
+                select.disabled = true;
+                refreshUploadStateForSelectedTask();
+                return;
+            }
+
             const myCells = allTicketsData.filter(t => {
                 const sameUserId = Number(t.userId) === Number(currentUserId);
                 const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(t.owner) === Number(myIndex);
@@ -6554,7 +6748,9 @@ ${optionsText}
             updateInkDeadlineHint();
             select.disabled = false;
             select.innerHTML = submitCells.map(cell => {
-                const shortTask = String(cell.taskLabel || getTaskLabelByCell(cell)).slice(0, 90);
+                const shortTask = String(String(cell.mode || '') === 'snake'
+                    ? (getSnakeTaskLabelSnapshot(cell) || cell.taskLabel || getTaskLabelByCell(cell))
+                    : getTaskLabelByCell(cell)).slice(0, 90);
                 const ticketLabel = String(cell.ticket || '').trim() ? `Билет ${cell.ticket}` : (String(cell.mode || '') === 'snake' ? 'Активное snake-задание' : 'Без билета');
                 return `<option value="${cell.cellIdx}">Клетка №${cell.cell} · ${ticketLabel} · ${shortTask}</option>`;
             }).join('');
@@ -6802,7 +6998,7 @@ ${optionsText}
         }
 
         async function checkSubmissionRoundDeadlines() {
-            if (!currentUserId || Number(currentUserId) === Number(ADMIN_ID) || myIndex === -1) return;
+            if (!currentUserId || !canUseGameplayFeatures() || myIndex === -1) return;
             if (!currentRoundNum || !roundEndTime) return;
 
             const boardSnap = await db.ref('board').once('value');
@@ -6918,7 +7114,7 @@ ${optionsText}
         }
 
         async function submitWork() {
-            if (Number(currentUserId) === Number(ADMIN_ID)) return alert('Режим администратора: сдача работ недоступна.');
+            if (isObserverOnlyAdmin()) return alert(getAdminGameplayBlockedLabel());
             const select = document.getElementById('work-task-select');
             const beforeInput = document.getElementById('work-image-before-input');
             const afterInput = document.getElementById('work-image-after-input');
@@ -8140,6 +8336,7 @@ ${optionsText}
         window.adminSelectKarmaUser = adminSelectKarmaUser;
         window.adminAdjustKarma = adminAdjustKarma;
 	        window.sendGalleryCompliment = sendGalleryCompliment;
+        window.replaceBoardCellAssignment = replaceBoardCellAssignment;
         window.roll = roll;
         window.openSnakeShopModal = openSnakeShopModal;
         window.openSnakeBackpackModal = openSnakeBackpackModal;
