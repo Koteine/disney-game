@@ -144,6 +144,10 @@ const formatMoscowDateTime = (...args) => (
             const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
             const disabled = !isAdminUser();
             controls.forEach((el) => {
+              if (el.id === 'admin-reset-mini-events-btn') {
+                el.disabled = false;
+                return;
+              }
               el.disabled = disabled;
             });
           }
