@@ -777,6 +777,7 @@ const formatMoscowDateTime = (...args) => (
             if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
             window.adminRoundInterval = setInterval(async () => {
               ensureAdminTabVisibility();
+              bindAdminMiniEventResetButton();
               syncEmergencyControlsState();
               ensureMiniResetButtonActive();
               await checkScheduledRounds();
