@@ -2298,11 +2298,11 @@ ${optionsText}
                 const hasUndismissedOutgoingNotice = !!statusOkBtn && statusOkBtn.style.display !== 'none';
                 const hasPendingOutgoingDuel = activeDuels.some((duel) => {
                     if (!duel || typeof duel !== 'object') return false;
-                    return String(duel.challengerId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
+                    return String(duel.challengerId || '') === String(currentUserId) && isTotemsDuelBlockingStatus(duel.status);
                 });
                 const pendingOutgoingDuel = activeDuels.find((duel) => {
                     if (!duel || typeof duel !== 'object') return false;
-                    return String(duel.challengerId || '') === String(currentUserId) && String(duel.status || '') === 'pending';
+                    return String(duel.challengerId || '') === String(currentUserId) && isTotemsDuelBlockingStatus(duel.status);
                 });
                 if (hasPendingOutgoingDuel) {
                     const expiresAt = Number(pendingOutgoingDuel?.expiresAt || 0);
@@ -2660,18 +2660,26 @@ ${optionsText}
         let snakeRollInFlight = false;
         let snakeDuelInviteInFlight = false;
 
+        function isTotemsDuelBlockingStatus(rawStatus) {
+            const duelStatus = String(rawStatus || '').trim();
+            return ['invited', 'pending', 'active', 'attacker_pending', 'defender_pending'].includes(duelStatus);
+        }
+
         function hasActiveOrPendingDuelBetween(userA, userB) {
             const a = String(userA || '').trim();
             const b = String(userB || '').trim();
             if (!a || !b) return false;
+            const now = Date.now();
             return (activeDuels || []).some((duel) => {
                 if (!duel || typeof duel !== 'object') return false;
                 const challengerId = String(duel.challengerId || '').trim();
                 const opponentId = String(duel.opponentId || '').trim();
-                const duelStatus = String(duel.status || '').trim();
-                if (!['pending', 'active'].includes(duelStatus)) return false;
+                if (!isTotemsDuelBlockingStatus(duel.status)) return false;
                 const pairMatch = (challengerId === a && opponentId === b) || (challengerId === b && opponentId === a);
-                return pairMatch;
+                if (!pairMatch) return false;
+                const expiresAt = Number(duel.expiresAt || 0);
+                if (expiresAt > 0 && expiresAt <= now) return false;
+                return true;
             });
         }
 
@@ -7265,7 +7273,7 @@ ${optionsText}
                 snap.forEach(s => items.push({ key: s.key, ...(s.val() || {}) }));
                 activeDuels = items;
                 items.forEach((duel) => {
-                    if (!duel?.key || duel.status !== 'active') return;
+                    if (!duel?.key || !isTotemsDuelBlockingStatus(duel.status)) return;
                     window.postCalligraphyDuelStartedNewsIfNeeded(duel.key, duel).catch((err) => console.error('duel started news failed', err));
                 });
             });
