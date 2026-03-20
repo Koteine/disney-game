@@ -190,6 +190,7 @@ const JSON_URL = 'tasks.json';
         let myWandBlessing = null;
         let allSubmissions = [];
         let worksAdminSelectedUserId = '';
+        let worksAdminView = 'pending';
         let worksAdminPlayersRef = null;
         let currentGameEvent = null;
         let currentGameEventKey = null;
@@ -4008,11 +4009,110 @@ ${optionsText}
                 .sort((a, b) => Number(a.num) - Number(b.num));
         }
 
+        function normalizeRaffleWinnerRecord(rawWinner, fallback = {}) {
+            if (!rawWinner && !fallback) return null;
+            const source = rawWinner && typeof rawWinner === 'object' ? rawWinner : {};
+            const ticket = String(source.ticket || source.ticketNum || source.num || source.winnerId || fallback.ticket || fallback.ticketNum || fallback.num || fallback.winnerId || '').trim();
+            const winnerName = String(source.winnerName || source.name || source.playerName || fallback.winnerName || fallback.name || fallback.playerName || '').trim();
+            const userId = String(source.userId || fallback.userId || '').trim();
+            if (!ticket && !winnerName && !userId) return null;
+            return {
+                ticket,
+                winnerName: winnerName || 'Игрок',
+                userId: userId || null,
+                createdAt: Number(source.createdAt || fallback.createdAt || 0) || 0,
+                source: String(source.source || fallback.source || 'raffle_state_sync'),
+                drawId: Number(source.drawId || fallback.drawId || 0) || 0
+            };
+        }
+
+        function getRaffleWinnersFromState(drawState, tickets = []) {
+            const ticketMap = new Map((Array.isArray(tickets) ? tickets : []).map((ticket) => [String(ticket.num), ticket]));
+            const winnerCandidates = [];
+            const winnerIds = Array.isArray(drawState?.winnerIds) ? drawState.winnerIds : [];
+            const winners = Array.isArray(drawState?.winners) ? drawState.winners : [];
+
+            winners.forEach((winner, index) => {
+                const fallbackTicket = String(winner?.ticket || winner?.ticketNum || winner?.num || winnerIds[index] || '').trim();
+                const ticketInfo = fallbackTicket ? ticketMap.get(fallbackTicket) : null;
+                const normalized = normalizeRaffleWinnerRecord(winner, {
+                    ticket: fallbackTicket,
+                    winnerName: ticketInfo?.name || '',
+                    userId: ticketInfo?.userId || null,
+                    drawId: Number(drawState?.startTime || drawState?.createdAt || 0) || 0,
+                    createdAt: Number(drawState?.completedAt || drawState?.createdAt || 0) || 0,
+                    source: 'raffle_state_sync'
+                });
+                if (normalized) winnerCandidates.push(normalized);
+            });
+
+            winnerIds.forEach((ticketNum) => {
+                const ticket = String(ticketNum || '').trim();
+                if (!ticket) return;
+                const ticketInfo = ticketMap.get(ticket);
+                const normalized = normalizeRaffleWinnerRecord({
+                    ticket,
+                    winnerName: ticketInfo?.name || '',
+                    userId: ticketInfo?.userId || null,
+                    drawId: Number(drawState?.startTime || drawState?.createdAt || 0) || 0,
+                    createdAt: Number(drawState?.completedAt || drawState?.createdAt || 0) || 0,
+                    source: 'raffle_state_sync'
+                });
+                if (normalized) winnerCandidates.push(normalized);
+            });
+
+            if (drawState?.winnerId) {
+                const ticket = String(drawState.winnerId || '').trim();
+                const ticketInfo = ticketMap.get(ticket);
+                const normalized = normalizeRaffleWinnerRecord({
+                    ticket,
+                    winnerName: drawState?.winnerName || ticketInfo?.name || '',
+                    userId: ticketInfo?.userId || null,
+                    drawId: Number(drawState?.startTime || drawState?.createdAt || 0) || 0,
+                    createdAt: Number(drawState?.completedAt || drawState?.createdAt || 0) || 0,
+                    source: 'raffle_state_sync'
+                });
+                if (normalized) winnerCandidates.push(normalized);
+            }
+
+            const seen = new Set();
+            return winnerCandidates.filter((winner) => {
+                const dedupeKey = `${winner.ticket}::${winner.userId || ''}`;
+                if (!winner.ticket || seen.has(dedupeKey)) return false;
+                seen.add(dedupeKey);
+                return true;
+            });
+        }
+
+        function getWinnerRecordsFromHistoryEntry(entry) {
+            if (!entry || typeof entry !== 'object') return [];
+            const fallback = {
+                createdAt: Number(entry.createdAt || 0) || 0,
+                drawId: Number(entry.drawId || 0) || 0,
+                source: String(entry.source || 'raffle_state_sync')
+            };
+            if (Array.isArray(entry.winners) && entry.winners.length) {
+                return entry.winners
+                    .map((winner) => normalizeRaffleWinnerRecord(winner, fallback))
+                    .filter(Boolean);
+            }
+            const legacyWinner = normalizeRaffleWinnerRecord(entry, fallback);
+            return legacyWinner ? [legacyWinner] : [];
+        }
+
         async function getWinnerUserIdsForCurrentRaffleCycle() {
             const historySnap = await db.ref('winners_history').once('value');
             const winnerIds = new Set();
             historySnap.forEach((item) => {
-                const userId = String(item.val()?.userId || '').trim();
+                const row = item.val() || {};
+                if (Array.isArray(row.winners)) {
+                    row.winners.forEach((winner) => {
+                        const userId = String(winner?.userId || '').trim();
+                        if (userId) winnerIds.add(userId);
+                    });
+                    return;
+                }
+                const userId = String(row.userId || '').trim();
                 if (userId) winnerIds.add(userId);
             });
             return winnerIds;
@@ -4091,8 +4191,32 @@ ${optionsText}
             return card;
         }
 
+        function clearMagicStateTimers(state) {
+            if (!state?.timeouts?.length) return;
+            state.timeouts.forEach((timerId) => clearTimeout(timerId));
+            state.timeouts = [];
+        }
+
+        function queueMagicStateTimeout(state, cb, delayMs) {
+            if (!state) return 0;
+            const timerId = setTimeout(() => {
+                state.timeouts = (state.timeouts || []).filter((id) => id !== timerId);
+                cb();
+            }, delayMs);
+            state.timeouts = state.timeouts || [];
+            state.timeouts.push(timerId);
+            return timerId;
+        }
+
+        function createMagicStageLayer(className) {
+            const layer = document.createElement('div');
+            layer.className = className;
+            return layer;
+        }
+
         function stopMagicStarField() {
             if (magicStarFieldState?.rafId) cancelAnimationFrame(magicStarFieldState.rafId);
+            clearMagicStateTimers(magicStarFieldState);
             magicStarFieldState = null;
         }
 
@@ -4119,10 +4243,11 @@ ${optionsText}
             state.rafId = requestAnimationFrame(tick);
         }
 
-        function buildStarNodesFromTickets(stage, tickets) {
+        function buildStarNodesFromTickets(stage, tickets, targetLayer = stage) {
             const width = stage.clientWidth || 620;
             const height = stage.clientHeight || 420;
-            return tickets.map(ticket => {
+            const fragment = document.createDocumentFragment();
+            const nodes = tickets.map(ticket => {
                 const el = document.createElement('span');
                 const len = String(ticket.num).length;
                 el.className = `magic-ticket-star size-${Math.min(len, 3)}`;
@@ -4132,7 +4257,7 @@ ${optionsText}
                 el.appendChild(mark);
                 el.style.setProperty('--so', (0.68 + Math.random() * 0.28).toFixed(2));
                 el.style.setProperty('--tw', `${5.5 + Math.random() * 5.5}s`);
-                stage.appendChild(el);
+                fragment.appendChild(el);
                 return {
                     el,
                     x: Math.random() * width,
@@ -4141,23 +4266,73 @@ ${optionsText}
                     vy: (Math.random() - 0.5) * 0.18
                 };
             });
+            targetLayer.appendChild(fragment);
+            return nodes;
+        }
+
+        function buildMagicCards(tickets, winnerTicket, targetLayer) {
+            const fragment = document.createDocumentFragment();
+            const cards = tickets.map(ticket => {
+                const card = createMagicCardMarkup(ticket, String(ticket.num) === String(winnerTicket));
+                card.dataset.baseRadius = String(50 + Math.random() * 70);
+                fragment.appendChild(card);
+                return card;
+            });
+            targetLayer.appendChild(fragment);
+            return cards;
+        }
+
+        function renderMagicEmptyState(stage, message) {
+            stage.innerHTML = '';
+            const empty = document.createElement('div');
+            empty.className = 'magic-empty-state';
+            empty.textContent = message;
+            stage.appendChild(empty);
+        }
+
+        function activateMagicCardLayer(state) {
+            if (!state || state.cardsActivated) return;
+            state.cardsActivated = true;
+            if (state.starLayer) state.starLayer.classList.add('is-hidden');
+            if (state.cardLayer) state.cardLayer.classList.add('is-active');
+        }
+
+        function buildMagicDrawScene(stage, tickets, winnerTicket) {
+            stage.innerHTML = '';
+            const starLayer = createMagicStageLayer('magic-stage-layer magic-star-layer');
+            const cardLayer = createMagicStageLayer('magic-stage-layer magic-card-layer');
+            stage.appendChild(starLayer);
+            stage.appendChild(cardLayer);
+            return {
+                starLayer,
+                cardLayer,
+                stars: buildStarNodesFromTickets(stage, tickets, starLayer),
+                cards: buildMagicCards(tickets, winnerTicket, cardLayer)
+            };
+        }
+
+        function buildIdleMagicScene(stage, tickets) {
+            stage.innerHTML = '';
+            const starLayer = createMagicStageLayer('magic-stage-layer magic-star-layer is-idle');
+            stage.appendChild(starLayer);
+            return buildStarNodesFromTickets(stage, tickets, starLayer);
         }
 
         async function renderIdleMagicSky() {
             const stage = document.getElementById('magic-cards-stage');
             if (!stage) return;
             const tickets = await getTicketsFromFirebaseDrawPool();
-            stage.innerHTML = '';
             if (!tickets.length) {
-                stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нет активных билетов для звёздного неба</div>';
+                renderMagicEmptyState(stage, 'Нет активных билетов для звёздного неба');
                 return;
             }
-            const stars = buildStarNodesFromTickets(stage, tickets);
+            const stars = buildIdleMagicScene(stage, tickets);
             animateDriftingStars(stars, stage);
         }
 
         function stopMagicAnimationFrame() {
             if (magicDrawAnimationState?.rafId) cancelAnimationFrame(magicDrawAnimationState.rafId);
+            clearMagicStateTimers(magicDrawAnimationState);
             magicDrawAnimationState = null;
         }
 
@@ -4167,24 +4342,23 @@ ${optionsText}
             if (!stage || !banner) return;
             const drawId = Number(drawPayload?.startTime || drawPayload?.createdAt || 0);
             if (!drawId || activeMagicDrawId === drawId) return;
+            const raffleWinners = getRaffleWinnersFromState(drawPayload);
+            const winnerTicket = String(raffleWinners[0]?.ticket || drawPayload?.winnerId || '');
+            if (!winnerTicket) return;
             activeMagicDrawId = drawId;
             banner.classList.remove('show');
 
-            const winnerTicket = String(drawPayload?.winnerId || '');
-            if (!winnerTicket) return;
-
             getTicketsFromFirebaseDrawPool().then((tickets) => {
                 if (!tickets.length) {
-                    stage.innerHTML = '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#f8e5a8; font-weight:700; text-align:center; padding:20px;">Нет билетов в Firebase /tickets</div>';
+                    renderMagicEmptyState(stage, 'Нет билетов в Firebase /tickets');
                     return;
                 }
 
                 const winner = tickets.find(t => String(t.num) === winnerTicket) || tickets[0];
-                stage.innerHTML = '';
                 stopMagicStarField();
                 stopMagicAnimationFrame();
 
-                const stars = buildStarNodesFromTickets(stage, tickets);
+                const scene = buildMagicDrawScene(stage, tickets, winner.num);
                 const startServerMs = Number(drawPayload.startTime || 0);
                 const totalMs = 60000;
                 const gatherMs = 2000;
@@ -4193,31 +4367,24 @@ ${optionsText}
 
                 const state = {
                     rafId: 0,
-                    stars,
+                    stars: scene.stars,
                     startServerMs,
                     totalMs,
                     gatherMs,
                     winner,
                     winnerShown: false,
-                    cards: []
+                    cards: scene.cards,
+                    starLayer: scene.starLayer,
+                    cardLayer: scene.cardLayer,
+                    cardsActivated: false,
+                    timeouts: []
                 };
                 magicDrawAnimationState = state;
-
-                const makeCards = () => {
-                    if (state.cards.length) return;
-                    stage.innerHTML = '';
-                    state.cards = tickets.map(ticket => {
-                        const card = createMagicCardMarkup(ticket, String(ticket.num) === String(winner.num));
-                        card.dataset.baseRadius = String(50 + Math.random() * 70);
-                        stage.appendChild(card);
-                        requestAnimationFrame(() => card.classList.add('is-visible'));
-                        return card;
-                    });
-                };
 
                 const revealWinner = () => {
                     if (state.winnerShown) return;
                     state.winnerShown = true;
+                    activateMagicCardLayer(state);
                     const winnerCard = state.cards.find(card => card.dataset.winner === '1');
                     state.cards.forEach(card => {
                         if (card !== winnerCard) {
@@ -4232,7 +4399,9 @@ ${optionsText}
                         winnerCard.style.left = '50%';
                         winnerCard.style.top = '50%';
                         winnerCard.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(0deg)';
-                        setTimeout(() => winnerCard.classList.add('is-revealed'), 500);
+                        queueMagicStateTimeout(state, () => {
+                            if (magicDrawAnimationState === state) winnerCard.classList.add('is-revealed');
+                        }, 500);
                     }
                     banner.classList.add('show');
                     document.getElementById('winner-display').innerHTML = `🏆 Билет №${winner.num}: <b>${winner.name}</b>`;
@@ -4257,7 +4426,7 @@ ${optionsText}
                             star.el.style.opacity = String(1 - k * 0.2);
                         });
                     } else if (t < state.totalMs) {
-                        makeCards();
+                        activateMagicCardLayer(state);
                         const spinT = (t - state.gatherMs);
                         const whirl = (spinT / 1000) * 2.9;
                         state.cards.forEach((card, idx) => {
@@ -4271,7 +4440,7 @@ ${optionsText}
                             card.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) rotate(${rot}deg) scale(${scale})`;
                         });
                     } else {
-                        makeCards();
+                        activateMagicCardLayer(state);
                         revealWinner();
                         return;
                     }
@@ -4280,7 +4449,7 @@ ${optionsText}
                 };
 
                 if (elapsed >= totalMs) {
-                    makeCards();
+                    activateMagicCardLayer(state);
                     revealWinner();
                     return;
                 }
@@ -4342,9 +4511,6 @@ ${optionsText}
             stopMagicStarField();
         }
 
-        async function runWheelStopAnimationAndShowWinner(winnerTicket, winnerName, drawId) {
-            runSyncedRaffleAnimation({ status: 'started', startTime: drawId, winnerId: winnerTicket, winnerName });
-        }
 
         function renderWinnerHistory() {
             const preview = document.getElementById('winner-history-preview');
@@ -4355,9 +4521,19 @@ ${optionsText}
                 list.innerHTML = '';
                 return;
             }
-            const latest = winnerHistoryItems[0];
-            preview.innerText = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · №${latest.ticket} · ${latest.winnerName}`;
-            list.innerHTML = winnerHistoryItems.map((item, idx) => `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · 🎟 ${item.ticket} · 👑 ${item.winnerName}</div>`).join('');
+            const latest = winnerHistoryItems[0] || {};
+            const latestWinners = getWinnerRecordsFromHistoryEntry(latest);
+            const latestSummary = latestWinners.length
+                ? latestWinners.map((winner) => `№${winner.ticket} · ${escapeHtml(winner.winnerName)}`).join(', ')
+                : 'Победители не найдены';
+            preview.innerHTML = `${new Date(latest.createdAt || 0).toLocaleString('ru-RU')} · ${latestSummary}`;
+            list.innerHTML = winnerHistoryItems.map((item, idx) => {
+                const winners = getWinnerRecordsFromHistoryEntry(item);
+                const winnersMarkup = winners.length
+                    ? `<div>${winners.map((winner) => `🎟 ${escapeHtml(winner.ticket)} · 👑 ${escapeHtml(winner.winnerName)}`).join('<br>')}</div>`
+                    : '<div>Победители не найдены</div>';
+                return `<div class="news-item">${idx + 1}. ${new Date(item.createdAt || 0).toLocaleString('ru-RU')} · розыгрыш #${escapeHtml(String(item.drawId || idx + 1))}<br>${winnersMarkup}</div>`;
+            }).join('');
         }
 
         function toggleWinnerHistoryPanel() {
@@ -4410,7 +4586,9 @@ ${optionsText}
             winnerHistoryRef.on('value', snap => {
                 const items = [];
                 snap.forEach(item => items.push(item.val() || {}));
-                winnerHistoryItems = items.reverse();
+                winnerHistoryItems = items
+                    .filter((item) => getWinnerRecordsFromHistoryEntry(item).length)
+                    .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
                 renderWinnerHistory();
             });
 
@@ -4420,42 +4598,73 @@ ${optionsText}
                 currentDrawSchedule = snap.val() || { status: 'ready' };
                 updateAdminDrawStatus();
 
-                if (currentDrawSchedule.status === 'started' && currentDrawSchedule.startTime && currentDrawSchedule.winnerId) {
+                const scheduledWinners = getRaffleWinnersFromState(currentDrawSchedule);
+                if (currentDrawSchedule.status === 'started' && currentDrawSchedule.startTime && scheduledWinners.length) {
                     runSyncedRaffleAnimation(currentDrawSchedule);
                     const finishAt = Number(currentDrawSchedule.startTime) + 60000;
                     if (getServerNowMs() >= finishAt && !currentDrawSchedule.completedAt) {
                         const tx = await db.ref('raffle_state').transaction(v => {
-                            if (!v || v.status !== 'started' || v.completedAt) return v;
+                            const txWinners = getRaffleWinnersFromState(v || {});
+                            if (!v || v.status !== 'started' || v.completedAt || !txWinners.length) return v;
                             return { ...v, status: 'completed', completedAt: firebase.database.ServerValue.TIMESTAMP };
                         });
                         if (tx.committed) {
                             const finalState = tx.snapshot.val() || {};
                             const tickets = await getTicketsFromFirebaseDrawPool();
-                            const winnerTicket = String(finalState.winnerId || '');
-                            const winner = tickets.find(t => String(t.num) === winnerTicket) || { num: winnerTicket, name: 'Игрок', userId: null };
                             const doneAt = Number(finalState.completedAt) || Date.now();
-                            const winnerUserId = String(winner.userId || '').trim();
                             const drawId = Number(finalState.startTime) || doneAt;
-                            const postWinUpdates = winnerUserId
-                                ? await collectPostWinTicketExclusionUpdates({
-                                    winnerUserId,
-                                    winnerTicketNum: String(winner.num),
+                            const winners = getRaffleWinnersFromState(finalState, tickets).map((winner) => ({
+                                ...winner,
+                                createdAt: doneAt,
+                                drawId,
+                                source: 'raffle_state_sync'
+                            }));
+                            if (!winners.length) return;
+
+                            const primaryWinner = winners[0];
+                            const postWinUpdatesList = await Promise.all(winners
+                                .filter((winner) => winner.userId && winner.ticket)
+                                .map((winner) => collectPostWinTicketExclusionUpdates({
+                                    winnerUserId: winner.userId,
+                                    winnerTicketNum: String(winner.ticket),
                                     drawId
-                                })
-                                : {};
-                            const winnerHistoryKey = db.ref('winners_history').push().key;
-                            const wheelHistoryKey = db.ref('wheel_history').push().key;
+                                })));
+                            const mergedPostWinUpdates = postWinUpdatesList.reduce((acc, item) => Object.assign(acc, item || {}), {});
                             const updates = {
-                                current_winner: { ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' },
-                                last_winner: { ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' },
-                                [`winners_history/${winnerHistoryKey}`]: { ticket: String(winner.num), winnerName: winner.name, userId: winner.userId || null, createdAt: doneAt, source: 'raffle_state_sync' },
-                                [`wheel_history/${wheelHistoryKey}`]: {
-                                drawId: Number(finalState.startTime) || doneAt,
-                                ticket: String(winner.num),
-                                winnerName: winner.name,
-                                createdAt: doneAt
-                                },
-                                ...postWinUpdates
+                                current_winner: { ticket: String(primaryWinner.ticket), winnerName: primaryWinner.winnerName, userId: primaryWinner.userId || null, createdAt: doneAt, source: 'raffle_state_sync', drawId },
+                                last_winner: { ticket: String(primaryWinner.ticket), winnerName: primaryWinner.winnerName, userId: primaryWinner.userId || null, createdAt: doneAt, source: 'raffle_state_sync', drawId },
+                                ...mergedPostWinUpdates
+                            };
+
+                            const seenWinnerEntries = new Set();
+                            winners.forEach((winner) => {
+                                const dedupeKey = `${drawId}::${winner.ticket}::${winner.userId || ''}`;
+                                if (seenWinnerEntries.has(dedupeKey)) return;
+                                seenWinnerEntries.add(dedupeKey);
+                                const winnerHistoryKey = db.ref('winners_history').push().key;
+                                updates[`winners_history/${winnerHistoryKey}`] = {
+                                    ticket: String(winner.ticket),
+                                    winnerName: winner.winnerName,
+                                    userId: winner.userId || null,
+                                    createdAt: doneAt,
+                                    drawId,
+                                    source: 'raffle_state_sync'
+                                };
+                            });
+
+                            const wheelHistoryKey = db.ref('wheel_history').push().key;
+                            updates[`wheel_history/${wheelHistoryKey}`] = {
+                                drawId,
+                                winners: winners.map((winner) => ({
+                                    ticket: String(winner.ticket),
+                                    winnerName: winner.winnerName,
+                                    userId: winner.userId || null,
+                                    createdAt: doneAt,
+                                    drawId,
+                                    source: 'raffle_state_sync'
+                                })),
+                                createdAt: doneAt,
+                                source: 'raffle_state_sync'
                             };
                             await db.ref().update(updates);
                         }
@@ -5879,13 +6088,16 @@ ${optionsText}
             if (uploadCard) uploadCard.style.display = isAdmin ? 'none' : 'block';
             if (adminFilters) adminFilters.style.display = isAdmin ? 'block' : 'none';
             if (title) title.innerText = isAdmin ? '🖼️ Работы игроков' : '📤 Сдача работ';
-            if (!isAdmin) worksAdminSelectedUserId = '';
-            if (isAdmin) syncWorksAdminPlayers();
+            if (!isAdmin) {
+                worksAdminSelectedUserId = '';
+                worksAdminView = 'pending';
+            }
+            if (isAdmin) {
+                syncWorksAdminPlayers();
+                syncWorksAdminFiltersUi();
+            }
         }
 
-        function normalizeNicknameForFilter(name) {
-            return String(name || '').trim().toLowerCase();
-        }
 
         function getSubmissionPlayerNickname(item) {
             if (Number.isInteger(item?.owner) && players[item.owner]?.n) return String(players[item.owner].n);
@@ -5930,8 +6142,25 @@ ${optionsText}
                     })
                 ].join('');
                 select.value = worksAdminSelectedUserId;
+                syncWorksAdminFiltersUi();
                 renderSubmissions();
             });
+        }
+
+        function syncWorksAdminFiltersUi() {
+            const pendingBtn = document.getElementById('works-admin-tab-pending');
+            const playerBtn = document.getElementById('works-admin-tab-player');
+            const playerFilter = document.getElementById('works-admin-player-filter');
+            const isPendingView = worksAdminView !== 'by_player';
+            if (pendingBtn) pendingBtn.classList.toggle('active', isPendingView);
+            if (playerBtn) playerBtn.classList.toggle('active', !isPendingView);
+            if (playerFilter) playerFilter.style.display = isPendingView ? 'none' : 'block';
+        }
+
+        function setWorksAdminView(rawView) {
+            worksAdminView = rawView === 'by_player' ? 'by_player' : 'pending';
+            syncWorksAdminFiltersUi();
+            renderSubmissions();
         }
 
         function setWorksAdminPlayer(rawUserId) {
@@ -6337,83 +6566,34 @@ ${optionsText}
             const list = document.getElementById('works-list');
             if (!list) return;
             const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
-            if (isAdmin && !worksAdminSelectedUserId) {
-                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Выберите игрока, чтобы посмотреть его работы.</div>';
-                return;
-            }
-            const visible = allSubmissions.filter(item => {
-                if (isAdmin) {
-                    return String(item.userId || '') === worksAdminSelectedUserId;
+            if (isAdmin) syncWorksAdminFiltersUi();
+
+            const filtered = allSubmissions.filter(item => {
+                if (isAdmin && worksAdminView === 'pending') {
+                    return String(item.status || 'pending') === 'pending' || !!item.requiresAdminReview;
+                }
+                if (isAdmin && worksAdminView === 'by_player') {
+                    return worksAdminSelectedUserId
+                        ? String(item.userId || '') === worksAdminSelectedUserId
+                        : false;
                 }
                 const sameUserId = String(item.userId || '') === String(currentUserId || '');
                 const sameOwner = Number.isInteger(myIndex) && myIndex >= 0 && Number(item.owner) === Number(myIndex);
                 return sameUserId || sameOwner;
             });
-            const filtered = visible;
-            const pendingForReview = isAdmin
-                ? allSubmissions
-                    .filter(item => String(item.status || 'pending') === 'pending' || !!item.requiresAdminReview)
-                    .sort((a, b) => (a.round || 0) - (b.round || 0) || (a.cellIdx || 0) - (b.cellIdx || 0))
-                : [];
 
-            if (!filtered.length) {
-                if (isAdmin && pendingForReview.length) {
-                    const pendingBodyId = 'works-pending-body';
-                    list.innerHTML = `
-                        <div class="works-card" style="margin-bottom:10px; border:1px dashed #fbc02d;">
-                            <div class="collapse-head" onclick="toggleCollapse('${pendingBodyId}', this)">
-                                <span>⏳ Требуют одобрения: ${pendingForReview.length}</span>
-                                <button type="button" class="collapse-toggle">Развернуть</button>
-                            </div>
-                            <div id="${pendingBodyId}" class="collapse-body">
-                                ${pendingForReview.map(item => {
-                                    const pendingPlayer = getSubmissionPlayerNickname(item) || 'Без никнейма';
-                                    return `<div style="font-size:12px; color:#444; margin-top:8px; padding-top:8px; border-top:1px solid #eee;">👤 <b style="color:${charColors[item.owner] || '#333'}">${pendingPlayer}</b> · Раунд ${item.round || '—'} · Клетка №${(item.cellIdx ?? -1) + 1}</div>`;
-                                }).join('')}
-                            </div>
-                        </div>
-                        <div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ для выбранного игрока.</div>`;
-                    return;
-                }
-                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
-                return;
-            }
-
-            const pendingBodyId = 'works-pending-body';
-            const pendingBlockHtml = isAdmin ? `
-                <div class="works-card" style="margin-bottom:10px; border:1px dashed #fbc02d;">
-                    <div class="collapse-head" onclick="toggleCollapse('${pendingBodyId}', this)">
-                        <span>⏳ Требуют одобрения: ${pendingForReview.length}</span>
-                        <button type="button" class="collapse-toggle">Развернуть</button>
-                    </div>
-                    <div id="${pendingBodyId}" class="collapse-body">
-                        ${pendingForReview.length ? pendingForReview.map(item => {
-                            const pendingPlayer = getSubmissionPlayerNickname(item) || 'Без никнейма';
-                            const pendingTask = getSnakeTaskLabelSnapshot(item) || item.taskLabel || 'Описание задания отсутствует';
-                            return `
-                                <div style="margin-top:8px; padding:8px; border-radius:8px; background:#fff8e1;">
-                                    <div style="font-size:12px; color:#444; line-height:1.4;">👤 <b style="color:${charColors[item.owner] || '#333'}">${pendingPlayer}</b> · Раунд ${item.round || '—'} · Клетка №${(item.cellIdx ?? -1) + 1}</div>
-                                    <div style="font-size:12px; color:#555; margin-top:4px;">${pendingTask}</div>
-                                    <div style="display:flex; gap:6px; margin-top:8px;">
-                                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принять</button>
-                                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Отклонить</button>
-                                    </div>
-                                </div>`;
-                        }).join('') : '<div style="font-size:12px; color:#777; margin-top:8px;">Нет работ, ожидающих review.</div>'}
-                    </div>
+            const buildReviewControls = (item) => isAdmin ? `
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
+                    <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
                 </div>` : '';
 
-            list.innerHTML = pendingBlockHtml + filtered.map(item => {
+            const renderSubmissionCard = (item) => {
                 const status = getSubmissionStatusInfo(item.status, item);
                 const playerName = getSubmissionPlayerNickname(item) || 'Без никнейма';
                 const uploadedAt = Number(item.createdAt || item.updatedAt || 0);
                 const uploadedAtText = uploadedAt ? new Date(uploadedAt).toLocaleString('ru-RU') : '—';
                 const playerLine = isAdmin ? `<div style="font-size:12px; color:#666; margin-bottom:6px;">Игрок: <b style="color:${charColors[item.owner] || '#333'}">${playerName}</b> · TG ID: ${item.userId || '—'}</div>` : '';
-                const reviewControls = isAdmin ? `
-                    <div style="display:flex; gap:6px; margin-top:8px;">
-                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','accepted')" style="flex:1; border:1px solid #4CAF50; color:#2e7d32; background:#f1fff1; border-radius:8px; padding:8px;">✅ Принято</button>
-                        <button onclick="setSubmissionStatus('${item.id}','${item.sourcePrefix || 'submissions'}','${item.dbPath || item.id}','rejected')" style="flex:1; border:1px solid #f44336; color:#b71c1c; background:#fff5f5; border-radius:8px; padding:8px;">❌ Не принято</button>
-                    </div>` : '';
                 const beforeBodyId = `sub-before-${item.id}`;
                 const afterBodyId = `sub-after-${item.id}`;
 
@@ -6448,10 +6628,30 @@ ${optionsText}
                                 ${(item.afterImageData || item.imageData) ? `<img src="${item.afterImageData || item.imageData}" alt="Работа после" class="work-image">` : '<div style="font-size:12px; color:#999;">Фото «После» не загружено.</div>'}
                             </div>
                         </div>
-                        ${reviewControls}
+                        ${buildReviewControls(item)}
                     </div>
                 `;
-            }).join('');
+            };
+
+            if (isAdmin && worksAdminView === 'by_player' && !worksAdminSelectedUserId) {
+                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Выберите игрока, чтобы посмотреть его работы.</div>';
+                return;
+            }
+
+            if (!filtered.length) {
+                if (isAdmin && worksAdminView === 'pending') {
+                    list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Нет работ, ожидающих одобрения.</div>';
+                    return;
+                }
+                if (isAdmin && worksAdminView === 'by_player') {
+                    list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ для выбранного игрока.</div>';
+                    return;
+                }
+                list.innerHTML = '<div class="works-card" style="text-align:center; color:#999;">Пока нет загруженных работ.</div>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(item => renderSubmissionCard(item)).join('');
         }
 
         async function autoApproveStaleSubmissions() {
