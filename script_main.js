@@ -5278,69 +5278,250 @@ ${optionsText}
             });
         }
 
-        function buildSessionResetUpdates({ whitelist = {}, users = {}, now = Date.now() } = {}) {
-            const updates = {
-                players: null,
-                users: null,
-                board: null,
-                tickets: null,
-                tickets_archive: null,
-                revoked_tickets: null,
-                submissions: null,
-                works: null,
-                game_event: null,
-                game_events: null,
-                current_event: null,
-                mushu_event: null,
-                epic_paint: null,
-                event_schedule: null,
-                round_schedules: null,
-                calligraphy_duels: null,
-                system_notifications: null,
-                snake_encounters: null,
-                snake_synergy: null,
-                snake_clashes: null,
-                ticket_counter: 0,
-                wheel_event: null,
-                wheel_draw: null,
-                raffle_state: { status: 'ready', resetAt: now, resetBy: currentUserId },
-                wheel_history: null,
-                current_winner: null,
-                last_winner: null,
-                winners_history: null,
-                current_round: {
-                    number: 0,
-                    endTime: 0,
-                    startedAt: 0,
-                    durationMs: 0,
-                    fieldMode: 'cells',
-                    traps: [],
-                    magicCell: null,
-                    miniGameCell: null,
-                    wordSketchCell: null,
-                    magnetCell: null,
-                    itemCells: {},
-                    snakeConfig: null,
-                    resetAt: now,
-                    resetBy: currentUserId
+        function cloneResetState(value) {
+            if (value === null || typeof value === 'undefined') return {};
+            return JSON.parse(JSON.stringify(value));
+        }
+
+        function buildSessionResetMeta() {
+            return {
+                now: Date.now(),
+                adminId: String(currentUserId || ''),
+                logKey: db.ref('news_feed').push().key,
+                mode: 'destructive'
+            };
+        }
+
+        function buildSessionResetLogEntry(meta, message) {
+            return {
+                text: String(message || 'Администратор выполнил сброс текущей сессии'),
+                createdAt: Number(meta?.now || Date.now()),
+                type: meta?.mode === 'safe' ? 'admin_session_reset_safe' : 'admin_session_reset',
+                adminId: String(meta?.adminId || '')
+            };
+        }
+
+        function buildInactiveCollection(source, mapper) {
+            if (!source || typeof source !== 'object') return null;
+            const next = {};
+            Object.entries(source).forEach(([key, value]) => {
+                next[key] = mapper(value || {}, key);
+            });
+            return Object.keys(next).length ? next : null;
+        }
+
+        function applySessionResetState(currentRoot, meta) {
+            const root = cloneResetState(currentRoot);
+            const now = Number(meta?.now || Date.now());
+            const adminId = String(meta?.adminId || '');
+            const safeMode = String(meta?.mode || 'destructive') === 'safe';
+
+            const clearNode = (key, safeValueFactory = null) => {
+                if (!safeMode || typeof safeValueFactory !== 'function') {
+                    root[key] = null;
+                    return;
                 }
+                root[key] = safeValueFactory(root[key]);
             };
 
-            Object.keys(whitelist || {}).forEach((uid) => {
-                updates[`whitelist/${uid}`] = null;
-            });
-            Object.keys(users || {}).forEach((uid) => {
-                updates[`users/${uid}`] = null;
-            });
+            const currentRoundNumber = Number(root?.current_round?.number || 0);
 
-            const logKey = db.ref('news_feed').push().key;
-            updates[`news_feed/${logKey}`] = {
-                text: 'Администратор выполнил сброс текущей сессии',
-                createdAt: now,
-                type: 'admin_session_reset',
-                adminId: String(currentUserId || '')
+            // Step 1: dependent entities.
+            clearNode('submissions');
+            clearNode('works');
+            clearNode('snake_encounters', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                status: 'reset',
+                active: false,
+                canStartClash: false,
+                resetAt: now,
+                resetBy: adminId
+            })));
+            clearNode('snake_clashes', (value) => buildInactiveCollection(value, (roundMap) => buildInactiveCollection(roundMap, (cellMap) => buildInactiveCollection(cellMap, (row) => ({
+                ...row,
+                status: 'reset',
+                active: false,
+                resetAt: now,
+                resetBy: adminId
+            })))));
+            clearNode('snake_synergy', (value) => buildInactiveCollection(value, (roundMap) => buildInactiveCollection(roundMap, (cellMap) => buildInactiveCollection(cellMap, (row) => ({
+                ...row,
+                status: 'reset',
+                active: false,
+                resetAt: now,
+                resetBy: adminId
+            })))));
+            clearNode('snake_duel_history');
+            clearNode('calligraphy_duels', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                status: 'reset',
+                active: false,
+                resetAt: now,
+                resetBy: adminId
+            })));
+            clearNode('system_notifications');
+
+            // Step 2: assignments.
+            clearNode('rounds', (value) => buildInactiveCollection(value, (roundRow) => ({
+                ...roundRow,
+                snake: {
+                    ...(roundRow?.snake || {}),
+                    assignments: null,
+                    occupancy: null,
+                    moves: null,
+                    active: false,
+                    resetAt: now,
+                    resetBy: adminId
+                }
+            })));
+
+            // Step 3: tickets.
+            clearNode('tickets');
+            clearNode('tickets_archive', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                active: false,
+                excluded: true,
+                owner: null,
+                userId: null,
+                resetAt: now,
+                resetBy: adminId
+            })));
+            clearNode('revoked_tickets');
+            root.ticket_counter = 0;
+
+            // Step 4: snake state.
+            clearNode('snake_presence');
+            clearNode('snake_traps');
+            clearNode('snake_smuggler');
+            clearNode('snake_arcane_sessions');
+            clearNode('snake_robbery_cell_guard');
+            clearNode('magic_links');
+
+            // Step 5: raffle state.
+            clearNode('wheel_event');
+            clearNode('wheel_draw');
+            root.raffle_state = {
+                status: 'ready',
+                participants: null,
+                currentDraw: null,
+                resetAt: now,
+                resetBy: adminId
             };
-            return updates;
+            clearNode('wheel_history');
+            clearNode('current_winner');
+            clearNode('last_winner');
+            clearNode('winners_history');
+
+            // Step 6: events.
+            clearNode('game_event');
+            clearNode('game_events', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                status: 'reset',
+                active: false,
+                teams: null,
+                resetAt: now,
+                resetBy: adminId
+            })));
+            clearNode('current_event');
+            clearNode('mushu_event', (value) => ({
+                ...(value || {}),
+                status: 'reset',
+                active: false,
+                fed_users: null,
+                rewarded_users: null,
+                resetAt: now,
+                resetBy: adminId
+            }));
+            clearNode('epic_paint', (value) => ({
+                ...(value || {}),
+                strokes: null,
+                participants: null,
+                participants_by_event: null,
+                rewarded: null,
+                active: false,
+                resetAt: now,
+                resetBy: adminId
+            }));
+            clearNode('event_schedule');
+            clearNode('round_schedules', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                status: 'cancelled',
+                active: false,
+                scheduledFor: null,
+                resetAt: now,
+                resetBy: adminId
+            })));
+
+            // Step 7: players.
+            clearNode('board');
+            clearNode('players');
+            clearNode('whitelist', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                isActive: false,
+                active: false,
+                charIndex: null,
+                snakeState: null,
+                inventory: null,
+                used_tasks: null,
+                magnifier_used_round: null,
+                ink_challenge: null,
+                debt: null,
+                removedFromSessionAt: now,
+                removedFromSessionBy: adminId
+            })));
+            clearNode('users', (value) => buildInactiveCollection(value, (row) => ({
+                ...row,
+                isActive: false,
+                active: false,
+                charIndex: null,
+                tickets: null,
+                removedFromSessionAt: now,
+                removedFromSessionBy: adminId
+            })));
+
+            // Step 8: round.
+            root.current_round = null;
+
+            const logKey = String(meta?.logKey || '').trim();
+            if (logKey) {
+                root.news_feed = root.news_feed && typeof root.news_feed === 'object' ? root.news_feed : {};
+                root.news_feed[logKey] = buildSessionResetLogEntry(meta, safeMode
+                    ? `Администратор выполнил безопасный сброс текущей сессии${currentRoundNumber > 0 ? ` (раунд ${currentRoundNumber})` : ''}`
+                    : `Администратор выполнил сброс текущей сессии${currentRoundNumber > 0 ? ` (раунд ${currentRoundNumber})` : ''}`);
+            }
+
+            return root;
+        }
+
+        async function executeSessionResetTransaction(meta) {
+            const tx = await db.ref().transaction((currentRoot) => applySessionResetState(currentRoot, meta), undefined, false);
+            if (!tx?.committed) {
+                throw new Error(`Session reset transaction was not committed (mode: ${meta?.mode || 'destructive'})`);
+            }
+            return tx.snapshot?.val() || null;
+        }
+
+        async function performSessionReset() {
+            const destructiveMeta = buildSessionResetMeta();
+            try {
+                await executeSessionResetTransaction(destructiveMeta);
+                return { mode: destructiveMeta.mode };
+            } catch (primaryError) {
+                console.error('[admin reset][session] destructive transaction failed', primaryError);
+                const safeMeta = {
+                    ...buildSessionResetMeta(),
+                    now: Date.now(),
+                    mode: 'safe'
+                };
+                try {
+                    await executeSessionResetTransaction(safeMeta);
+                    console.warn('[admin reset][session] fallback safe reset committed');
+                    return { mode: safeMeta.mode, fallbackFrom: primaryError };
+                } catch (safeError) {
+                    console.error('[admin reset][session] safe transaction failed', safeError);
+                    throw safeError;
+                }
+            }
         }
 
         function buildSeasonResetUpdates({ seasonProfiles = {}, now = Date.now() } = {}) {
@@ -5370,7 +5551,8 @@ ${optionsText}
             title,
             message,
             successMessage,
-            buildUpdates
+            buildUpdates,
+            executeReset
         }) {
             if (!isAdminUser()) {
                 alert('Эта функция доступна только администратору.');
@@ -5387,26 +5569,28 @@ ${optionsText}
             setAdminActionButtonState(buttonId, true, runningLabel);
 
             try {
-                const [whitelistSnap, usersSnap, seasonSnap] = await Promise.all([
-                    db.ref('whitelist').once('value'),
-                    db.ref('users').once('value'),
-                    db.ref('player_season_status').once('value')
-                ]);
-                const now = Date.now();
-                const updates = buildUpdates({
-                    whitelist: whitelistSnap.val() || {},
-                    users: usersSnap.val() || {},
-                    seasonProfiles: seasonSnap.val() || {},
-                    now
-                });
+                if (typeof executeReset === 'function') {
+                    await executeReset();
+                } else {
+                    const whitelistSnap = await db.ref('whitelist').once('value');
+                    const usersSnap = await db.ref('users').once('value');
+                    const seasonSnap = await db.ref('player_season_status').once('value');
+                    const now = Date.now();
+                    const updates = buildUpdates({
+                        whitelist: whitelistSnap.val() || {},
+                        users: usersSnap.val() || {},
+                        seasonProfiles: seasonSnap.val() || {},
+                        now
+                    });
+                    await db.ref().update(updates);
+                }
 
-                await db.ref().update(updates);
                 console.info(successMessage);
                 alert(successMessage);
                 return true;
             } catch (err) {
-                console.error('Admin reset failed', { lockKey, err });
-                alert('Не удалось выполнить сброс. Попробуйте ещё раз.');
+                console.error('Admin reset failed', { lockKey, err, stack: err?.stack || null });
+                alert('Ошибка сброса. Проверьте логи администратора');
                 return false;
             } finally {
                 adminResetLocks[lockKey] = false;
@@ -5421,8 +5605,8 @@ ${optionsText}
                 runningLabel: '⏳ Сброс сессии...',
                 title: 'Сброс текущей сессии',
                 message: 'Вы уверены, что хотите полностью сбросить текущую сессию? Будут удалены текущий раунд, задания, билеты, события и все игроки. Чтобы вернуться в игру, игроков нужно будет добавить заново по Telegram ID.',
-                successMessage: 'Текущая сессия полностью сброшена. Игроки удалены из игры, а все игровые данные очищены.',
-                buildUpdates: buildSessionResetUpdates
+                successMessage: 'Сессия успешно сброшена',
+                executeReset: performSessionReset
             });
             if (done) location.reload();
         }
