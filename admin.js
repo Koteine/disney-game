@@ -387,6 +387,7 @@ const formatMoscowDateTime = (...args) => (
               db.ref().update(updates),
               postNews('🧹 Администратор сбросил(а) мини-ивенты и дуэли «Тотемы».')
             ]);
+            window.resetMiniEventBadge?.();
             window.closeCalligraphyDuelUI?.();
             window.closeTotemGameOverlay?.();
             alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
@@ -646,8 +647,20 @@ const formatMoscowDateTime = (...args) => (
             window.renderPlayerTicketsList = renderPlayerTicketsList;
           }
 
+          function bindAdminMiniEventResetButton() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn || btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              adminResetMiniEvents();
+            });
+          }
+
           async function initAdminPage() {
             exposeAdminActions();
+            bindAdminMiniEventResetButton();
             ensureAdminTabVisibility();
 
             if (!isAdminSessionVisible()) {
