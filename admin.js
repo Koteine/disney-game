@@ -142,9 +142,11 @@ const formatMoscowDateTime = (...args) => (
             const emergencyBody = document.getElementById('admin-emergency-body');
             if (!emergencyBody) return;
             const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
-            const disabled = !isAdminUser();
             controls.forEach((el) => {
-              el.disabled = disabled;
+              if (el.id === 'admin-reset-mini-events-btn' && el.dataset.loading === '1') {
+                return;
+              }
+              el.disabled = false;
             });
           }
 
@@ -345,62 +347,87 @@ const formatMoscowDateTime = (...args) => (
           async function adminResetMiniEvents() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
             if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
+            const resetBtn = document.getElementById('admin-reset-mini-events-btn');
+            if (resetBtn?.dataset.loading === '1') return;
+            if (resetBtn) {
+              resetBtn.dataset.loading = '1';
+              resetBtn.disabled = true;
+              resetBtn.textContent = '⏳ Сброс мини-ивентов...';
+            }
             const database = await waitForDbReadySafe().catch(() => null);
-            if (!database) return alert('База данных недоступна.');
+            if (!database) {
+              if (resetBtn) {
+                resetBtn.disabled = false;
+                resetBtn.textContent = '🧹 Сброс мини-ивентов';
+                delete resetBtn.dataset.loading;
+              }
+              return alert('База данных недоступна.');
+            }
 
-            const [duelsSnap, notificationsSnap, seasonSnap, usersSnap] = await Promise.all([
-              database.ref('calligraphy_duels').once('value'),
-              database.ref('system_notifications').once('value'),
-              database.ref('player_season_status').once('value'),
-              database.ref('users').once('value')
-            ]);
+            try {
+              const [duelsSnap, notificationsSnap, seasonSnap, usersSnap] = await Promise.all([
+                database.ref('calligraphy_duels').once('value'),
+                database.ref('system_notifications').once('value'),
+                database.ref('player_season_status').once('value'),
+                database.ref('users').once('value')
+              ]);
 
-            const updates = {};
-            const now = Date.now();
-            const duelNotificationTypes = new Set([
-              'calligraphy_duel_invite',
-              'calligraphy_duel_wait_notice',
-              'calligraphy_duel_timeout',
-              'calligraphy_duel_declined',
-              'calligraphy_duel_result'
-            ]);
+              const updates = {};
+              const now = Date.now();
+              const duelNotificationTypes = new Set([
+                'calligraphy_duel_invite',
+                'calligraphy_duel_wait_notice',
+                'calligraphy_duel_timeout',
+                'calligraphy_duel_declined',
+                'calligraphy_duel_result'
+              ]);
 
-            duelsSnap.forEach((snap) => {
-              const duel = snap.val() || {};
-              const status = String(duel.status || '');
-              if (['resolved', 'declined'].includes(status)) return;
-              updates[`calligraphy_duels/${snap.key}/status`] = 'expired';
-              updates[`calligraphy_duels/${snap.key}/expiredAt`] = now;
-              updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
-              updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
-              updates[`calligraphy_duels/${snap.key}/resetBy`] = String(currentUserId || '');
-            });
-
-            notificationsSnap.forEach((userSnap) => {
-              userSnap.forEach((notifSnap) => {
-                const notif = notifSnap.val() || {};
-                if (!duelNotificationTypes.has(String(notif.type || ''))) return;
-                updates[`system_notifications/${userSnap.key}/${notifSnap.key}`] = null;
+              duelsSnap.forEach((snap) => {
+                const duel = snap.val() || {};
+                const status = String(duel.status || '');
+                if (['resolved', 'declined', 'expired'].includes(status)) return;
+                updates[`calligraphy_duels/${snap.key}/status`] = 'expired';
+                updates[`calligraphy_duels/${snap.key}/expiredAt`] = now;
+                updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
+                updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
+                updates[`calligraphy_duels/${snap.key}/resetBy`] = String(currentUserId || '');
               });
-            });
 
-            seasonSnap.forEach((userSnap) => {
-              updates[`player_season_status/${userSnap.key}/last_impulse_time`] = 0;
-              updates[`player_season_status/${userSnap.key}/updatedAt`] = now;
-            });
+              notificationsSnap.forEach((userSnap) => {
+                userSnap.forEach((notifSnap) => {
+                  const notif = notifSnap.val() || {};
+                  if (!duelNotificationTypes.has(String(notif.type || ''))) return;
+                  updates[`system_notifications/${userSnap.key}/${notifSnap.key}`] = null;
+                });
+              });
 
-            usersSnap.forEach((userSnap) => {
-              updates[`users/${userSnap.key}/last_impulse_time`] = 0;
-            });
+              seasonSnap.forEach((userSnap) => {
+                updates[`player_season_status/${userSnap.key}/last_impulse_time`] = 0;
+                updates[`player_season_status/${userSnap.key}/updatedAt`] = now;
+              });
 
-            await Promise.all([
-              database.ref().update(updates),
-              postNews('🧹 Администратор сбросил(а) мини-ивенты и дуэли «Тотемы».')
-            ]);
-            window.resetMiniEventBadge?.();
-            window.closeCalligraphyDuelUI?.();
-            window.closeTotemGameOverlay?.();
-            alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
+              usersSnap.forEach((userSnap) => {
+                updates[`users/${userSnap.key}/last_impulse_time`] = 0;
+              });
+
+              await database.ref().update(updates);
+              postNews('🧹 Администратор сбросил(а) мини-ивенты и дуэли «Тотемы».').catch((err) => {
+                console.warn('Не удалось отправить новость о сбросе мини-ивентов', err);
+              });
+              window.resetMiniEventBadge?.();
+              window.closeCalligraphyDuelUI?.();
+              window.closeTotemGameOverlay?.();
+              alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
+            } catch (error) {
+              console.error('adminResetMiniEvents failed', error);
+              alert(error?.message || 'Не удалось сбросить мини-ивенты. Попробуй ещё раз.');
+            } finally {
+              if (resetBtn) {
+                resetBtn.disabled = false;
+                resetBtn.textContent = '🧹 Сброс мини-ивентов';
+                delete resetBtn.dataset.loading;
+              }
+            }
           }
 
           async function resetAllInventories() {
@@ -661,11 +688,26 @@ const formatMoscowDateTime = (...args) => (
             const btn = document.getElementById('admin-reset-mini-events-btn');
             if (!btn || btn.dataset.bound === '1') return;
             btn.dataset.bound = '1';
+            btn.type = 'button';
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading !== '1') {
+              btn.disabled = false;
+              btn.removeAttribute('disabled');
+            }
             btn.addEventListener('click', (event) => {
               event.preventDefault();
               event.stopPropagation();
               adminResetMiniEvents();
             });
+          }
+
+          function ensureMiniResetButtonActive() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn) return;
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading === '1') return;
+            if (btn.disabled) btn.disabled = false;
+            btn.removeAttribute('disabled');
           }
 
           async function initAdminPage() {
@@ -689,6 +731,7 @@ const formatMoscowDateTime = (...args) => (
             if (!database) return;
 
             syncEmergencyControlsState();
+            ensureMiniResetButtonActive();
             window.addEventListener('load', () => syncEmergencyControlsState(), { once: true });
 
             const executeBtn = document.getElementById('btn-execute-emergency');
@@ -735,6 +778,7 @@ const formatMoscowDateTime = (...args) => (
             window.adminRoundInterval = setInterval(async () => {
               ensureAdminTabVisibility();
               syncEmergencyControlsState();
+              ensureMiniResetButtonActive();
               await checkScheduledRounds();
             }, 1000);
 
