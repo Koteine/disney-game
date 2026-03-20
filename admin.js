@@ -142,13 +142,12 @@ const formatMoscowDateTime = (...args) => (
             const emergencyBody = document.getElementById('admin-emergency-body');
             if (!emergencyBody) return;
             const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
-            const disabled = !isAdminUser();
             controls.forEach((el) => {
-              if (el.id === 'admin-reset-mini-events-btn') {
-                el.disabled = false;
+              if (el.id === 'admin-reset-mini-events-btn' && el.dataset.loading === '1') {
                 return;
               }
-              el.disabled = disabled;
+              el.disabled = false;
+
             });
           }
 
