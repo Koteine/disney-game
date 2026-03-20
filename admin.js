@@ -147,6 +147,7 @@ const formatMoscowDateTime = (...args) => (
                 return;
               }
               el.disabled = false;
+
             });
           }
 
