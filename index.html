@@ -382,8 +382,8 @@
                     <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
                     <button onclick="adminReplaceAllNicknames()" class="admin-btn" style="background:#9C27B0; width:100%; margin:0;">🎭 ЗАМЕНИТЬ ВСЕМ НИКНЕЙМЫ</button>
                     <button onclick="adminResetCurrentRound()" class="admin-btn" style="background:#fb8c00; width:100%; margin-top:8px;">🔄 СБРОСИТЬ ТЕКУЩИЙ РАУНД</button>
-                    <button onclick="adminResetGame()" class="admin-btn" style="background:#FF8C00; font-size:12px; width:100%; margin-top:8px;">🔄 Сброс текущей сессии (Задания и Игроки)</button>
-                    <button onclick="adminFullReset()" class="admin-btn" style="background:#455a64; font-size:10px; width:100%; margin-top:8px;">🛡️ ДАННЫЕ СЕЗОНА ЗАЩИЩЕНЫ ОТ СБРОСА</button>
+                    <button id="admin-reset-session-btn" onclick="adminResetGame()" class="admin-btn" style="background:#FF8C00; font-size:12px; width:100%; margin-top:8px;">🔄 Сброс текущей сессии</button>
+                    <button id="admin-reset-season-btn" onclick="adminFullReset()" class="admin-btn" style="background:#455a64; font-size:10px; width:100%; margin-top:8px;">🧹 Сбросить данные сезона</button>
                 </div>
             </div>
         </div>

@@ -5217,24 +5217,93 @@ ${optionsText}
             if (!isAdminUser()) return;
             if(confirm("Удалить?")) db.ref('whitelist/'+id).remove();
         }
-        async function adminResetGame() {
-            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            if (!confirm('Подтвердить сброс текущей сессии?')) return;
-            if (!confirm('Это удалит players/ и игровые пулы. Карма сезона сохранится. Продолжить?')) return;
+        const adminResetLocks = {
+            session: false,
+            season: false
+        };
 
-            const whitelistSnap = await db.ref('whitelist').once('value');
+        function setAdminActionButtonState(buttonId, isRunning, runningLabel) {
+            const btn = document.getElementById(buttonId);
+            if (!btn) return;
+            if (!btn.dataset.defaultLabel) {
+                btn.dataset.defaultLabel = btn.innerHTML;
+            }
+            btn.disabled = !!isRunning;
+            btn.style.opacity = isRunning ? '0.7' : '1';
+            btn.style.pointerEvents = isRunning ? 'none' : '';
+            btn.innerHTML = isRunning ? String(runningLabel || '⏳ Выполняется...') : btn.dataset.defaultLabel;
+        }
+
+        function showAdminConfirmModal(title, message, confirmLabel = 'Подтвердить', cancelLabel = 'Отмена') {
+            const titleEl = document.getElementById('mTitle');
+            const textEl = document.getElementById('mText');
+            const modalEl = document.getElementById('modal');
+            const overlayEl = document.getElementById('overlay');
+            if (!titleEl || !textEl || !modalEl || !overlayEl) {
+                return Promise.resolve(confirm(message));
+            }
+
+            return new Promise((resolve) => {
+                let settled = false;
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    closeModal();
+                    resolve(result);
+                };
+                const onOverlayClick = (event) => {
+                    if (event.target === overlayEl) finish(false);
+                };
+                const cleanup = () => {
+                    overlayEl.removeEventListener('click', onOverlayClick);
+                    document.getElementById('admin-confirm-cancel-btn')?.removeEventListener('click', cancelHandler);
+                    document.getElementById('admin-confirm-submit-btn')?.removeEventListener('click', submitHandler);
+                };
+                const cancelHandler = () => finish(false);
+                const submitHandler = () => finish(true);
+
+                titleEl.textContent = title;
+                textEl.innerHTML = `
+                    <div style="font-size:13px; color:#4a148c; text-align:left; line-height:1.5;">${escapeHtml(message)}</div>
+                    <div style="display:flex; gap:8px; margin-top:12px;">
+                        <button id="admin-confirm-cancel-btn" class="admin-btn" style="margin:0; flex:1; background:#9e9e9e;">${escapeHtml(cancelLabel)}</button>
+                        <button id="admin-confirm-submit-btn" class="admin-btn" style="margin:0; flex:1;">${escapeHtml(confirmLabel)}</button>
+                    </div>`;
+                modalEl.style.display = 'block';
+                overlayEl.style.display = 'block';
+                overlayEl.addEventListener('click', onOverlayClick);
+                document.getElementById('admin-confirm-cancel-btn')?.addEventListener('click', cancelHandler, { once: true });
+                document.getElementById('admin-confirm-submit-btn')?.addEventListener('click', submitHandler, { once: true });
+            });
+        }
+
+        function buildSessionResetUpdates({ whitelist = {}, users = {}, now = Date.now() } = {}) {
             const updates = {
                 players: null,
-                board: {},
+                users: null,
+                board: null,
+                tickets: null,
                 tickets_archive: null,
+                revoked_tickets: null,
                 submissions: null,
+                works: null,
                 game_event: null,
                 game_events: null,
+                current_event: null,
+                mushu_event: null,
                 epic_paint: null,
+                event_schedule: null,
+                round_schedules: null,
+                calligraphy_duels: null,
+                system_notifications: null,
+                snake_encounters: null,
+                snake_synergy: null,
+                snake_clashes: null,
                 ticket_counter: 0,
                 wheel_event: null,
                 wheel_draw: null,
-                raffle_state: { status: 'ready' },
+                raffle_state: { status: 'ready', resetAt: now, resetBy: currentUserId },
                 wheel_history: null,
                 current_winner: null,
                 last_winner: null,
@@ -5242,37 +5311,131 @@ ${optionsText}
                 current_round: {
                     number: 0,
                     endTime: 0,
+                    startedAt: 0,
+                    durationMs: 0,
+                    fieldMode: 'cells',
                     traps: [],
                     magicCell: null,
                     miniGameCell: null,
                     wordSketchCell: null,
                     magnetCell: null,
-                    itemCells: {}
+                    itemCells: {},
+                    snakeConfig: null,
+                    resetAt: now,
+                    resetBy: currentUserId
                 }
             };
 
-            whitelistSnap.forEach(userSnap => {
-                const uid = userSnap.key;
-                updates[`whitelist/${uid}/inventory`] = { goldenPollen: 0, inkSaboteur: 0, magnifier: 0, cloak: 0 };
-                updates[`whitelist/${uid}/magnifier_used_round`] = 0;
-                updates[`whitelist/${uid}/last_round`] = 0;
-                updates[`whitelist/${uid}/used_tasks`] = [];
-                updates[`whitelist/${uid}/${USER_GLOBAL_USED_TASKS_PATH_SUFFIX}`] = {};
-                updates[`whitelist/${uid}/isEliminated`] = false;
-                updates[`whitelist/${uid}/eliminatedAt`] = null;
-                updates[`whitelist/${uid}/eliminatedAtRound`] = null;
-                updates[`whitelist/${uid}/eliminationReason`] = null;
-                updates[`whitelist/${uid}/ink_challenge`] = null;
-                updates[`whitelist/${uid}/wand_blessing`] = null;
+            Object.keys(whitelist || {}).forEach((uid) => {
+                updates[`whitelist/${uid}`] = null;
+            });
+            Object.keys(users || {}).forEach((uid) => {
+                updates[`users/${uid}`] = null;
             });
 
-            await db.ref().update(updates);
-            alert('Игра сброшена полностью: поле, раунды, билеты, предметы, лента событий и работы очищены. Нажми «Запустить раунд», чтобы начать заново.');
-            location.reload();
+            const logKey = db.ref('news_feed').push().key;
+            updates[`news_feed/${logKey}`] = {
+                text: 'Администратор выполнил сброс текущей сессии',
+                createdAt: now,
+                type: 'admin_session_reset',
+                adminId: String(currentUserId || '')
+            };
+            return updates;
+        }
+
+        function buildSeasonResetUpdates({ seasonProfiles = {}, now = Date.now() } = {}) {
+            const updates = {
+                gallery_compliments: null,
+                player_activity_log: null
+            };
+
+            Object.keys(seasonProfiles || {}).forEach((uid) => {
+                updates[`player_season_status/${uid}`] = null;
+            });
+
+            const logKey = db.ref('news_feed').push().key;
+            updates[`news_feed/${logKey}`] = {
+                text: 'Администратор сбросил данные сезона',
+                createdAt: now,
+                type: 'admin_season_reset',
+                adminId: String(currentUserId || '')
+            };
+            return updates;
+        }
+
+        async function runAdminResetOperation({
+            lockKey,
+            buttonId,
+            runningLabel,
+            title,
+            message,
+            successMessage,
+            buildUpdates
+        }) {
+            if (!isAdminUser()) {
+                alert('Эта функция доступна только администратору.');
+                return false;
+            }
+            if (adminResetLocks[lockKey]) return false;
+
+            adminResetLocks[lockKey] = true;
+            const confirmed = await showAdminConfirmModal(title, message, 'Подтвердить', 'Отмена');
+            if (!confirmed) {
+                adminResetLocks[lockKey] = false;
+                return false;
+            }
+            setAdminActionButtonState(buttonId, true, runningLabel);
+
+            try {
+                const [whitelistSnap, usersSnap, seasonSnap] = await Promise.all([
+                    db.ref('whitelist').once('value'),
+                    db.ref('users').once('value'),
+                    db.ref('player_season_status').once('value')
+                ]);
+                const now = Date.now();
+                const updates = buildUpdates({
+                    whitelist: whitelistSnap.val() || {},
+                    users: usersSnap.val() || {},
+                    seasonProfiles: seasonSnap.val() || {},
+                    now
+                });
+
+                await db.ref().update(updates);
+                console.info(successMessage);
+                alert(successMessage);
+                return true;
+            } catch (err) {
+                console.error('Admin reset failed', { lockKey, err });
+                alert('Не удалось выполнить сброс. Попробуйте ещё раз.');
+                return false;
+            } finally {
+                adminResetLocks[lockKey] = false;
+                setAdminActionButtonState(buttonId, false);
+            }
+        }
+
+        async function adminResetGame() {
+            const done = await runAdminResetOperation({
+                lockKey: 'session',
+                buttonId: 'admin-reset-session-btn',
+                runningLabel: '⏳ Сброс сессии...',
+                title: 'Сброс текущей сессии',
+                message: 'Вы уверены, что хотите полностью сбросить текущую сессию? Будут удалены текущий раунд, задания, билеты, события и все игроки. Чтобы вернуться в игру, игроков нужно будет добавить заново по Telegram ID.',
+                successMessage: 'Текущая сессия полностью сброшена. Игроки удалены из игры, а все игровые данные очищены.',
+                buildUpdates: buildSessionResetUpdates
+            });
+            if (done) location.reload();
         }
         async function adminFullReset() {
-            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            alert('player_season_status защищен от полного сброса. Очистка отключена.');
+            await runAdminResetOperation({
+                lockKey: 'season',
+                buttonId: 'admin-reset-season-btn',
+                runningLabel: '⏳ Сброс сезона...',
+                title: 'Сброс данных сезона',
+                message: 'Вы уверены, что хотите сбросить данные сезона? Это действие необратимо.',
+                successMessage: 'Данные сезона сброшены: карма, сезонный прогресс и сезонная история очищены.',
+                buildUpdates: buildSeasonResetUpdates
+            });
         }
         async function adminTriggerSpin() {
             if (!isAdminUser()) return;
