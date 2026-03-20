@@ -346,9 +346,9 @@ const formatMoscowDateTime = (...args) => (
 
           async function adminResetMiniEvents() {
             if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
             const resetBtn = document.getElementById('admin-reset-mini-events-btn');
             if (resetBtn?.dataset.loading === '1') return;
+            if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
             if (resetBtn) {
               resetBtn.dataset.loading = '1';
               resetBtn.disabled = true;
@@ -694,11 +694,16 @@ const formatMoscowDateTime = (...args) => (
               btn.disabled = false;
               btn.removeAttribute('disabled');
             }
-            btn.addEventListener('click', (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              adminResetMiniEvents();
-            });
+          }
+
+          function ensureMiniResetButtonActive() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn) return;
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading === '1') return;
+            if (btn.disabled) btn.disabled = false;
+            btn.removeAttribute('disabled');
+
           }
 
           function ensureMiniResetButtonActive() {
