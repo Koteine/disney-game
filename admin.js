@@ -690,20 +690,15 @@ const formatMoscowDateTime = (...args) => (
             btn.dataset.bound = '1';
             btn.type = 'button';
             btn.style.pointerEvents = 'auto';
+            btn.onclick = null;
             if (btn.dataset.loading !== '1') {
               btn.disabled = false;
               btn.removeAttribute('disabled');
             }
-          }
-
-          function ensureMiniResetButtonActive() {
-            const btn = document.getElementById('admin-reset-mini-events-btn');
-            if (!btn) return;
-            btn.style.pointerEvents = 'auto';
-            if (btn.dataset.loading === '1') return;
-            if (btn.disabled) btn.disabled = false;
-            btn.removeAttribute('disabled');
-
+            btn.addEventListener('click', (event) => {
+              event.preventDefault();
+              adminResetMiniEvents();
+            });
           }
 
           function ensureMiniResetButtonActive() {
