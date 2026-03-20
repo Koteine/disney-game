@@ -217,6 +217,7 @@ window.__initTicketsModule = function __initTicketsModule() {
 
             function getTicketTaskLabel(t) {
                 if (t.isEventReward) return t.eventId === 'wall_battle' ? 'Награда за событие «Стенка на стенку»' : 'Награда за событие «Эпичный закрас»';
+                if (!t.isArchived && Number.isInteger(Number(t.cellIdx)) && Number(t.cellIdx) >= 0) return getTaskLabelByCell(t);
                 if (typeof t.taskLabel === 'string' && t.taskLabel.trim()) return t.taskLabel;
                 if (Number.isInteger(t.taskIdx) && t.taskIdx >= 0 && Array.isArray(tasks) && tasks[t.taskIdx]) {
                     return tasks[t.taskIdx].text || 'Обычное задание';
@@ -435,12 +436,13 @@ window.__initTicketsModule = function __initTicketsModule() {
                         });
                     });
 
-                const [boardSnap, duelsSnap, newsSnap, gallerySnap, mushuFeedSnap] = await Promise.all([
+                const [boardSnap, duelsSnap, newsSnap, gallerySnap, mushuFeedSnap, activityLogSnap] = await Promise.all([
                     db.ref('board').once('value'),
                     db.ref(DUEL_PATH).limitToLast(300).once('value'),
                     db.ref('news_feed').limitToLast(300).once('value'),
                     db.ref('gallery_compliments').once('value'),
-                    db.ref('current_event/feed_log').limitToLast(500).once('value')
+                    db.ref('current_event/feed_log').limitToLast(500).once('value'),
+                    db.ref(`player_activity_log/${uid}`).limitToLast(200).once('value')
                 ]);
 
                 const board = boardSnap.val() || {};
@@ -452,6 +454,20 @@ window.__initTicketsModule = function __initTicketsModule() {
                         ts: Number(cell.updatedAt || cell.createdAt || 0),
                         round: Number(cell.round) || null,
                         text: `Открыл(а) клетку №${Number(cellIdx) + 1}${cell.round ? ` (раунд ${cell.round})` : ''} · ${getTaskLabelByCell(cell)}${itemPart}`
+                    });
+                });
+
+                (activityLogSnap.val() ? Object.values(activityLogSnap.val()) : []).forEach((entry) => {
+                    if (!entry || String(entry.type || '') !== 'assignment_reroll') return;
+                    const oldTaskIdx = Number(entry.oldTaskIdx);
+                    const newTaskIdx = Number(entry.newTaskIdx);
+                    const oldTaskLabel = String(entry.oldTaskLabel || '').trim() || (Number.isInteger(oldTaskIdx) && tasks[oldTaskIdx] ? String(tasks[oldTaskIdx].text || '') : '');
+                    const newTaskLabel = String(entry.newTaskLabel || '').trim() || (Number.isInteger(newTaskIdx) && tasks[newTaskIdx] ? String(tasks[newTaskIdx].text || '') : '');
+                    const itemName = window.itemTypes?.[String(entry.itemKey || '').trim()]?.name || 'предмет';
+                    events.push({
+                        ts: Number(entry.createdAt || entry.updatedAt || 0),
+                        round: Number(entry.round) || null,
+                        text: `Игрок сменил задание с помощью предмета (${itemName})${Number(entry.cell || 0) > 0 ? ` · клетка №${Number(entry.cell)}` : ''} · было: #${oldTaskIdx} ${oldTaskLabel || '—'} · стало: #${newTaskIdx} ${newTaskLabel || '—'}`
                     });
                 });
 
