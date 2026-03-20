@@ -5278,37 +5278,99 @@ ${optionsText}
             });
         }
 
-        function buildSessionResetUpdates({ whitelist = {}, users = {}, now = Date.now() } = {}) {
-            const updates = {
-                players: null,
-                users: null,
-                board: null,
-                tickets: null,
-                tickets_archive: null,
-                revoked_tickets: null,
-                submissions: null,
-                works: null,
-                game_event: null,
-                game_events: null,
-                current_event: null,
-                mushu_event: null,
-                epic_paint: null,
-                event_schedule: null,
-                round_schedules: null,
-                calligraphy_duels: null,
-                system_notifications: null,
-                snake_encounters: null,
-                snake_synergy: null,
-                snake_clashes: null,
-                ticket_counter: 0,
-                wheel_event: null,
-                wheel_draw: null,
-                raffle_state: { status: 'ready', resetAt: now, resetBy: currentUserId },
-                wheel_history: null,
-                current_winner: null,
-                last_winner: null,
-                winners_history: null,
-                current_round: {
+        function cloneAdminResetValue(value) {
+            if (typeof structuredClone === 'function') {
+                return structuredClone(value || {});
+            }
+            return JSON.parse(JSON.stringify(value || {}));
+        }
+
+        function createAdminResetError(step, message, details = {}) {
+            const err = new Error(message);
+            err.resetStep = step;
+            Object.assign(err, details);
+            return err;
+        }
+
+        function logAdminResetStep(lockKey, step, details = {}) {
+            console.info(`[admin-reset:${lockKey}] ${step}`, details);
+        }
+
+        function logAdminResetFailure(lockKey, step, err, details = {}) {
+            console.error(`[admin-reset:${lockKey}] ${step}`, {
+                ...details,
+                errorMessage: err?.message || String(err),
+                errorStack: err?.stack || null,
+                error: err
+            });
+        }
+
+        function buildSessionResetUpdates({ rootData = {}, now = Date.now() } = {}) {
+            const nextRoot = cloneAdminResetValue(rootData);
+            const adminId = String(currentUserId || '');
+            const steps = [];
+            const trackStep = (step, paths, mutate) => {
+                const record = {
+                    step,
+                    paths: Array.isArray(paths) ? paths.slice() : [],
+                    startedAt: Date.now()
+                };
+                steps.push(record);
+                try {
+                    mutate(nextRoot);
+                    record.status = 'completed';
+                    record.finishedAt = Date.now();
+                } catch (error) {
+                    record.status = 'failed';
+                    record.finishedAt = Date.now();
+                    record.errorMessage = error?.message || String(error);
+                    record.errorStack = error?.stack || null;
+                    error.resetStep = step;
+                    error.stepRecord = record;
+                    error.stepRecords = steps.slice();
+                    throw error;
+                }
+            };
+
+            trackStep('clearing submissions', ['submissions', 'works'], (draft) => {
+                draft.submissions = null;
+                draft.works = null;
+            });
+
+            trackStep('clearing assignments', ['rounds/*/snake/assignments', 'calligraphy_duels'], (draft) => {
+                Object.values(draft.rounds || {}).forEach((round) => {
+                    if (round && round.snake) {
+                        round.snake.assignments = null;
+                    }
+                });
+                draft.calligraphy_duels = null;
+            });
+
+            trackStep('clearing tickets', ['board', 'tickets', 'tickets_archive', 'revoked_tickets', 'ticket_counter'], (draft) => {
+                draft.board = null;
+                draft.tickets = null;
+                draft.tickets_archive = null;
+                draft.revoked_tickets = null;
+                draft.ticket_counter = 0;
+            });
+
+            trackStep('clearing players', ['players', 'whitelist', 'users'], (draft) => {
+                draft.players = null;
+                draft.whitelist = null;
+                draft.users = null;
+            });
+
+            trackStep('clearing round state', ['game_event', 'game_events', 'current_event', 'mushu_event', 'epic_paint', 'event_schedule', 'round_schedules', 'rounds', 'current_round', 'system_notifications'], (draft) => {
+                draft.game_event = null;
+                draft.game_events = null;
+                draft.current_event = null;
+                draft.mushu_event = null;
+                draft.epic_paint = null;
+                draft.event_schedule = null;
+                draft.round_schedules = null;
+                draft.rounds = null;
+                draft.system_notifications = null;
+                draft.current_round = {
                     number: 0,
                     endTime: 0,
                     startedAt: 0,
@@ -5322,25 +5384,80 @@ ${optionsText}
                     itemCells: {},
                     snakeConfig: null,
                     resetAt: now,
-                    resetBy: currentUserId
-                }
-            };
-
-            Object.keys(whitelist || {}).forEach((uid) => {
-                updates[`whitelist/${uid}`] = null;
+                    resetBy: adminId
+                };
             });
-            Object.keys(users || {}).forEach((uid) => {
-                updates[`users/${uid}`] = null;
+
+            trackStep('clearing raffle state', ['wheel_event', 'wheel_draw', 'raffle_state', 'wheel_history', 'current_winner', 'last_winner', 'winners_history'], (draft) => {
+                draft.wheel_event = null;
+                draft.wheel_draw = null;
+                draft.raffle_state = { status: 'ready', resetAt: now, resetBy: adminId };
+                draft.wheel_history = null;
+                draft.current_winner = null;
+                draft.last_winner = null;
+                draft.winners_history = null;
+            });
+
+            trackStep('clearing snake state', ['snake_encounters', 'snake_synergy', 'snake_clashes', 'snake_presence', 'snake_traps', 'snake_duel_history', 'snake_arcane_sessions'], (draft) => {
+                draft.snake_encounters = null;
+                draft.snake_synergy = null;
+                draft.snake_clashes = null;
+                draft.snake_presence = null;
+                draft.snake_traps = null;
+                draft.snake_duel_history = null;
+                draft.snake_arcane_sessions = null;
             });
 
             const logKey = db.ref('news_feed').push().key;
-            updates[`news_feed/${logKey}`] = {
-                text: 'Администратор выполнил сброс текущей сессии',
-                createdAt: now,
-                type: 'admin_session_reset',
-                adminId: String(currentUserId || '')
-            };
-            return updates;
+            if (!logKey) {
+                throw createAdminResetError('writing reset audit log', 'Не удалось сгенерировать ключ записи о сбросе.');
+            }
+            trackStep('writing reset audit log', ['news_feed'], (draft) => {
+                draft.news_feed = draft.news_feed && typeof draft.news_feed === 'object' ? draft.news_feed : {};
+                draft.news_feed[logKey] = {
+                    text: 'Администратор выполнил сброс текущей сессии',
+                    createdAt: now,
+                    type: 'admin_session_reset',
+                    adminId
+                };
+            });
+
+            return { nextRoot, steps };
+        }
+
+        async function executeSessionReset({ lockKey, now }) {
+            const rootRef = db.ref();
+            let lastBuildSteps = [];
+            let lastBuildError = null;
+
+            const txResult = await rootRef.transaction((currentData) => {
+                try {
+                    const built = buildSessionResetUpdates({ rootData: currentData || {}, now });
+                    lastBuildSteps = built.steps || [];
+                    lastBuildError = null;
+                    return built.nextRoot;
+                } catch (error) {
+                    lastBuildSteps = Array.isArray(error?.stepRecords) ? error.stepRecords : (error?.stepRecord ? [error.stepRecord] : lastBuildSteps);
+                    lastBuildError = error;
+                    return undefined;
+                }
+            }, undefined, false);
+
+            lastBuildSteps.forEach((entry) => {
+                logAdminResetStep(lockKey, entry.step, entry);
+            });
+
+            if (lastBuildError) {
+                throw lastBuildError;
+            }
+            if (!txResult?.committed) {
+                throw createAdminResetError('transaction commit', 'Транзакция сброса не была подтверждена. Возможен конфликт параллельной записи.');
+            }
+
+            logAdminResetStep(lockKey, 'transaction committed', {
+                committed: !!txResult.committed,
+                snapshotExists: !!txResult.snapshot?.exists?.()
+            });
         }
 
         function buildSeasonResetUpdates({ seasonProfiles = {}, now = Date.now() } = {}) {
@@ -5370,13 +5487,17 @@ ${optionsText}
             title,
             message,
             successMessage,
-            buildUpdates
+            buildUpdates,
+            executeReset
         }) {
             if (!isAdminUser()) {
                 alert('Эта функция доступна только администратору.');
                 return false;
             }
-            if (adminResetLocks[lockKey]) return false;
+            if (adminResetLocks[lockKey]) {
+                logAdminResetStep(lockKey, 'duplicate reset prevented', { buttonId });
+                return false;
+            }
 
             adminResetLocks[lockKey] = true;
             const confirmed = await showAdminConfirmModal(title, message, 'Подтвердить', 'Отмена');
@@ -5387,26 +5508,29 @@ ${optionsText}
             setAdminActionButtonState(buttonId, true, runningLabel);
 
             try {
-                const [whitelistSnap, usersSnap, seasonSnap] = await Promise.all([
-                    db.ref('whitelist').once('value'),
-                    db.ref('users').once('value'),
-                    db.ref('player_season_status').once('value')
-                ]);
                 const now = Date.now();
-                const updates = buildUpdates({
-                    whitelist: whitelistSnap.val() || {},
-                    users: usersSnap.val() || {},
-                    seasonProfiles: seasonSnap.val() || {},
-                    now
-                });
-
-                await db.ref().update(updates);
-                console.info(successMessage);
+                if (typeof executeReset === 'function') {
+                    await executeReset({ lockKey, now });
+                } else {
+                    const [whitelistSnap, usersSnap, seasonSnap] = await Promise.all([
+                        db.ref('whitelist').once('value'),
+                        db.ref('users').once('value'),
+                        db.ref('player_season_status').once('value')
+                    ]);
+                    const updates = buildUpdates({
+                        whitelist: whitelistSnap.val() || {},
+                        users: usersSnap.val() || {},
+                        seasonProfiles: seasonSnap.val() || {},
+                        now
+                    });
+                    await db.ref().update(updates);
+                }
+                logAdminResetStep(lockKey, 'reset completed', { successMessage });
                 alert(successMessage);
                 return true;
             } catch (err) {
-                console.error('Admin reset failed', { lockKey, err });
-                alert('Не удалось выполнить сброс. Попробуйте ещё раз.');
+                logAdminResetFailure(lockKey, err?.resetStep || 'reset failed', err, { buttonId });
+                alert('Ошибка сброса. Обратитесь к логам администратора');
                 return false;
             } finally {
                 adminResetLocks[lockKey] = false;
@@ -5422,7 +5546,7 @@ ${optionsText}
                 title: 'Сброс текущей сессии',
                 message: 'Вы уверены, что хотите полностью сбросить текущую сессию? Будут удалены текущий раунд, задания, билеты, события и все игроки. Чтобы вернуться в игру, игроков нужно будет добавить заново по Telegram ID.',
                 successMessage: 'Текущая сессия полностью сброшена. Игроки удалены из игры, а все игровые данные очищены.',
-                buildUpdates: buildSessionResetUpdates
+                executeReset: executeSessionReset
             });
             if (done) location.reload();
         }
