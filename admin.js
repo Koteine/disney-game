@@ -351,13 +351,13 @@ const formatMoscowDateTime = (...args) => (
             if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
             if (resetBtn) {
               resetBtn.dataset.loading = '1';
-              resetBtn.disabled = true;
+              resetBtn.setAttribute('aria-busy', 'true');
               resetBtn.textContent = '⏳ Сброс мини-ивентов...';
             }
             const database = await waitForDbReadySafe().catch(() => null);
             if (!database) {
               if (resetBtn) {
-                resetBtn.disabled = false;
+                resetBtn.removeAttribute('aria-busy');
                 resetBtn.textContent = '🧹 Сброс мини-ивентов';
                 delete resetBtn.dataset.loading;
               }
@@ -388,7 +388,6 @@ const formatMoscowDateTime = (...args) => (
                 if (['resolved', 'declined', 'expired'].includes(status)) return;
                 updates[`calligraphy_duels/${snap.key}/status`] = 'expired';
                 updates[`calligraphy_duels/${snap.key}/expiresAt`] = 0;
-
                 updates[`calligraphy_duels/${snap.key}/expiredAt`] = now;
                 updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
                 updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
@@ -427,7 +426,9 @@ const formatMoscowDateTime = (...args) => (
               alert(error?.message || 'Не удалось сбросить мини-ивенты. Попробуй ещё раз.');
             } finally {
               if (resetBtn) {
-                resetBtn.disabled = false;
+
+                resetBtn.removeAttribute('aria-busy');
+
                 resetBtn.textContent = '🧹 Сброс мини-ивентов';
                 delete resetBtn.dataset.loading;
               }
@@ -696,13 +697,16 @@ const formatMoscowDateTime = (...args) => (
             btn.style.pointerEvents = 'auto';
             btn.onclick = null;
             if (btn.dataset.loading !== '1') {
-              btn.disabled = false;
-              btn.removeAttribute('disabled');
+              btn.removeAttribute('aria-busy');
             }
-            btn.addEventListener('click', (event) => {
-              event.preventDefault();
-              adminResetMiniEvents();
-            });
+          }
+
+          function ensureMiniResetButtonActive() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn) return;
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading === '1') return;
+            btn.removeAttribute('aria-busy');
           }
 
           function ensureMiniResetButtonActive() {
@@ -794,6 +798,12 @@ const formatMoscowDateTime = (...args) => (
           }
 
           exposeAdminActions();
+          document.addEventListener('click', (event) => {
+            const btn = event.target?.closest?.('#admin-reset-mini-events-btn');
+            if (!btn) return;
+            event.preventDefault();
+            adminResetMiniEvents();
+          });
 
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initAdminPage);
