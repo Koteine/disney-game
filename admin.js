@@ -147,7 +147,6 @@ const formatMoscowDateTime = (...args) => (
                 return;
               }
               el.disabled = false;
-
             });
           }
 
@@ -689,11 +688,26 @@ const formatMoscowDateTime = (...args) => (
             const btn = document.getElementById('admin-reset-mini-events-btn');
             if (!btn || btn.dataset.bound === '1') return;
             btn.dataset.bound = '1';
+            btn.type = 'button';
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading !== '1') {
+              btn.disabled = false;
+              btn.removeAttribute('disabled');
+            }
             btn.addEventListener('click', (event) => {
               event.preventDefault();
               event.stopPropagation();
               adminResetMiniEvents();
             });
+          }
+
+          function ensureMiniResetButtonActive() {
+            const btn = document.getElementById('admin-reset-mini-events-btn');
+            if (!btn) return;
+            btn.style.pointerEvents = 'auto';
+            if (btn.dataset.loading === '1') return;
+            if (btn.disabled) btn.disabled = false;
+            btn.removeAttribute('disabled');
           }
 
           async function initAdminPage() {
@@ -717,6 +731,7 @@ const formatMoscowDateTime = (...args) => (
             if (!database) return;
 
             syncEmergencyControlsState();
+            ensureMiniResetButtonActive();
             window.addEventListener('load', () => syncEmergencyControlsState(), { once: true });
 
             const executeBtn = document.getElementById('btn-execute-emergency');
@@ -763,6 +778,7 @@ const formatMoscowDateTime = (...args) => (
             window.adminRoundInterval = setInterval(async () => {
               ensureAdminTabVisibility();
               syncEmergencyControlsState();
+              ensureMiniResetButtonActive();
               await checkScheduledRounds();
             }, 1000);
 
