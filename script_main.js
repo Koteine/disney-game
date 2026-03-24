@@ -1331,10 +1331,52 @@ const JSON_URL = 'tasks.json';
             list.innerHTML = newsFeedItems.slice(0, 40).map((item, idx) => `<div class="news-item">${idx + 1}. ${item.text || ''}</div>`).join('');
         }
 
-        async function postNews(text) {
+        function sanitizeNewsUniqueKey(rawKey) {
+            if (window.NewsDedupe?.sanitizeNewsUniqueKey) return window.NewsDedupe.sanitizeNewsUniqueKey(rawKey);
+            const source = String(rawKey || '').trim();
+            if (!source) return '';
+            return source
+                .replace(/[.#$\[\]/]/g, '_')
+                .replace(/\s+/g, '_')
+                .slice(0, 180);
+        }
+
+        function buildNewsUniqueKey(parts = {}) {
+            if (window.NewsDedupe?.buildNewsUniqueKey) return window.NewsDedupe.buildNewsUniqueKey(parts);
+            const chunks = [];
+            if (parts.type) chunks.push(`type:${String(parts.type).trim()}`);
+            if (parts.eventId) chunks.push(`event:${String(parts.eventId).trim()}`);
+            if (parts.sourceId) chunks.push(`src:${String(parts.sourceId).trim()}`);
+            if (Number.isFinite(Number(parts.round))) chunks.push(`round:${Number(parts.round)}`);
+            if (parts.actionId) chunks.push(`action:${String(parts.actionId).trim()}`);
+            if (parts.bucketMs && parts.timestamp) {
+                const bucketMs = Math.max(1, Number(parts.bucketMs));
+                chunks.push(`bucket:${Math.floor(Number(parts.timestamp) / bucketMs)}`);
+            }
+            return sanitizeNewsUniqueKey(chunks.join('|'));
+        }
+
+        async function postNews(text, options = {}) {
             const msg = String(text || '').trim();
-            if (!msg) return;
-            await db.ref('news_feed').push({ text: msg, createdAt: Date.now() });
+            if (!msg) return false;
+            const now = Date.now();
+            const uniqueKey = sanitizeNewsUniqueKey(options.uniqueKey || buildNewsUniqueKey(options.uniqueParts || {}));
+            const basePayload = {
+                text: msg,
+                createdAt: now,
+                stableKey: uniqueKey || null,
+                eventType: options.eventType || null,
+                sourceId: options.sourceId || null,
+                round: Number.isFinite(Number(options.round)) ? Number(options.round) : null
+            };
+            if (uniqueKey) {
+                // Важный инвариант UX: одно игровое событие должно попасть в ленту только один раз,
+                // даже если одно и то же событие обработали несколько клиентов/листенеров одновременно.
+                const tx = await db.ref(`news_feed/${uniqueKey}`).transaction((row) => row || basePayload);
+                return !!tx.committed;
+            }
+            await db.ref('news_feed').push(basePayload);
+            return true;
         }
 
         async function postNewsOnce(oncePath, text, meta = {}) {
@@ -1356,7 +1398,7 @@ const JSON_URL = 'tasks.json';
                 return { round: normalizedRound, at: Date.now() };
             });
             if (!flagTx.committed) return;
-            await postNews(`Раунд #${normalizedRound} завершён`);
+            await postNews(`Раунд #${normalizedRound} завершён`, { uniqueParts: { type: 'round_end', round: normalizedRound, actionId: `round_${normalizedRound}_end` }, eventType: 'round_end', round: normalizedRound });
         }
         window.postNews = postNews;
 
@@ -4862,6 +4904,32 @@ ${optionsText}
             });
         }
 
+
+        async function buildMiniEventRoundResetUpdates(nowTs = Date.now()) {
+            const [duelsSnap, snakeClashesSnap, notificationsSnap, seasonSnap, usersSnap, whitelistSnap] = await Promise.all([
+                db.ref('calligraphy_duels').once('value'),
+                db.ref('snake_clashes').once('value'),
+                db.ref('system_notifications').once('value'),
+                db.ref('player_season_status').once('value'),
+                db.ref('users').once('value'),
+                db.ref('whitelist').once('value')
+            ]);
+
+            const source = {
+                duels: duelsSnap.val() || {},
+                snakeClashes: snakeClashesSnap.val() || {},
+                notifications: notificationsSnap.val() || {},
+                seasonStatus: seasonSnap.val() || {},
+                users: usersSnap.val() || {},
+                whitelist: whitelistSnap.val() || {}
+            };
+            if (window.MiniEventReset?.buildMiniEventResetPatch) {
+                return window.MiniEventReset.buildMiniEventResetPatch(source, nowTs);
+            }
+
+            return {};
+        }
+
         async function adminStartNewRound() {
 	    const d = parseInt(document.getElementById('r-days').value) || 0;
 	    const h = parseInt(document.getElementById('r-hours').value) || 0;
@@ -4913,21 +4981,29 @@ ${optionsText}
     const s = await db.ref('current_round/number').once('value');
     const newRoundNum = (s.val() || 0) + 1;
 
-    // Сохраняем в Firebase
-    await db.ref('current_round').set({
-        number: newRoundNum,
-        startedAt: Date.now(),
-        durationMs,
-        endTime: Date.now() + durationMs,
-        traps: traps,
-        magicCell: magicCell,
-        miniGameCell: miniGameCell,
-        wordSketchCell: wordSketchCell,
-        magnetCell: magnetCell,
-        itemCells
+    const nowTs = Date.now();
+    const miniEventResetUpdates = await buildMiniEventRoundResetUpdates(nowTs);
+
+    // Ручной reset мини-ивентов удалён: на каждом старте раунда они переинициализируются автоматически.
+    await db.ref().update({
+        current_round: {
+            number: newRoundNum,
+            startedAt: nowTs,
+            durationMs,
+            endTime: nowTs + durationMs,
+            traps: traps,
+            magicCell: magicCell,
+            miniGameCell: miniGameCell,
+            wordSketchCell: wordSketchCell,
+            magnetCell: magnetCell,
+            itemCells,
+            miniEventsResetRound: newRoundNum,
+            miniEventsResetAt: nowTs
+        },
+        ...miniEventResetUpdates
     });
 
-    await postNews(`Раунд #${newRoundNum} начался`);
+    await postNews(`Раунд #${newRoundNum} начался`, { uniqueParts: { type: 'round_start', round: newRoundNum, actionId: `round_${newRoundNum}_start` }, eventType: 'round_start', round: newRoundNum });
 
 	    alert(`Раунд №${newRoundNum} успешно запущен!\nДлительность: ${d}д ${h}ч ${m}м`);
 	}
@@ -6925,22 +7001,31 @@ ${optionsText}
             const s = await db.ref('current_round/number').once('value');
             const newRoundNum = (s.val() || 0) + 1;
 
-            await db.ref('current_round').set({
-              number: newRoundNum,
-              startedAt: Date.now(),
-              durationMs,
-              endTime: Date.now() + durationMs,
-              traps,
-              magicCell,
-              miniGameCell,
-              wordSketchCell,
-              magnetCell,
-              itemCells,
-              fieldMode,
-              snakeConfig
+            const nowTs = Date.now();
+            const miniEventResetUpdates = await buildMiniEventRoundResetUpdates(nowTs);
+
+            // Ручной reset мини-ивентов удалён: на каждом старте раунда они переинициализируются автоматически.
+            await db.ref().update({
+              current_round: {
+                number: newRoundNum,
+                startedAt: nowTs,
+                durationMs,
+                endTime: nowTs + durationMs,
+                traps,
+                magicCell,
+                miniGameCell,
+                wordSketchCell,
+                magnetCell,
+                itemCells,
+                fieldMode,
+                snakeConfig,
+                miniEventsResetRound: newRoundNum,
+                miniEventsResetAt: nowTs
+              },
+              ...miniEventResetUpdates
             });
 
-            await postNews(`Раунд #${newRoundNum} начался (${fieldMode === 'snake' ? 'режим Змейка' : 'режим Клетки'})`);
+            await postNews(`Раунд #${newRoundNum} начался (${fieldMode === 'snake' ? 'режим Змейка' : 'режим Клетки'})`, { uniqueParts: { type: 'round_start', round: newRoundNum, actionId: `round_${newRoundNum}_start` }, eventType: 'round_start', round: newRoundNum });
             return newRoundNum;
           }
 
@@ -7833,6 +7918,100 @@ ${optionsText}
             return allSubmissions.some(s => String(s.userId) === String(userId) && Number(s.round) === Number(roundNum) && s.beforeImageData && s.afterImageData && String(s.status || '') === 'accepted');
         }
 
+        async function isUserRequiredToSubmitForRound(roundNum, userId, boardSnapshot = null) {
+            const normalizedRound = Number(roundNum || 0);
+            const uid = String(userId || '').trim();
+            if (!normalizedRound || !uid) return false;
+            const board = boardSnapshot || (await db.ref('board').once('value')).val() || {};
+            const hasBoardCell = Object.values(board).some((cell) => cell && Number(cell.userId) === Number(uid) && Number(cell.round) === normalizedRound);
+            if (hasBoardCell) return true;
+            const snakeAssignmentSnap = await db.ref(`rounds/${normalizedRound}/snake/assignments/${uid}`).once('value');
+            return !!snakeAssignmentSnap.exists();
+        }
+
+        async function sendMissedWorkReminderIfNeeded(roundNum, userId) {
+            const normalizedRound = Number(roundNum || 0);
+            const uid = String(userId || '').trim();
+            if (!normalizedRound || !uid) return false;
+            const reminderFlagPath = `whitelist/${uid}/missed_work_control/reminders/round_${normalizedRound}`;
+            const reminderTx = await db.ref(reminderFlagPath).transaction((row) => {
+                if (row) return row;
+                return { at: Date.now(), round: normalizedRound };
+            });
+            if (!reminderTx.committed) return false;
+            await db.ref(`system_notifications/${uid}`).push({
+                type: 'work_submission_reminder',
+                round: normalizedRound,
+                text: 'Где же твоя работа, друг?',
+                createdAt: Date.now()
+            });
+            showPlayerNotification({
+                id: `work-reminder-${normalizedRound}`,
+                text: 'Где же твоя работа, друг?',
+                borderColor: '#ffb300'
+            });
+            return true;
+        }
+
+        async function withMissedSubmissionFinalizationLock(roundNum, userId) {
+            const normalizedRound = Number(roundNum || 0);
+            const uid = String(userId || '').trim();
+            if (!normalizedRound || !uid) return false;
+            const lockPath = `whitelist/${uid}/missed_work_control/finalized/round_${normalizedRound}`;
+            const tx = await db.ref(lockPath).transaction((row) => {
+                if (row) return row;
+                return { status: 'processing', at: Date.now(), round: normalizedRound };
+            });
+            return !!tx.committed;
+        }
+
+        async function finalizeMissedSubmissionOutcome(roundNum, userId, outcome, meta = {}) {
+            const normalizedRound = Number(roundNum || 0);
+            const uid = String(userId || '').trim();
+            if (!normalizedRound || !uid) return;
+            await db.ref(`whitelist/${uid}/missed_work_control/finalized/round_${normalizedRound}`).set({
+                status: String(outcome || 'unknown'),
+                round: normalizedRound,
+                at: Date.now(),
+                ...meta
+            });
+        }
+
+        async function isSurrenderAvailableForUser(userId) {
+            const uid = String(userId || '').trim();
+            if (!uid) return false;
+            const [roundSnap, boardSnap] = await Promise.all([
+                db.ref('current_round').once('value'),
+                db.ref('board').once('value')
+            ]);
+            const roundData = roundSnap.val() || {};
+            const totalRounds = Math.max(1, Number(roundData.totalRounds || roundData.plannedRounds || roundData.number || currentRoundNum || 1));
+            const surrenderLimit = Math.max(1, Math.floor(totalRounds / 3));
+            const board = boardSnap.val() || {};
+            const usedSurrenders = Object.values(board)
+                .filter(Boolean)
+                .filter(c => String(c.userId) === uid && c.excluded)
+                .length;
+            return usedSurrenders < surrenderLimit;
+        }
+
+        async function markRoundTicketsExcluded(userId, roundNum) {
+            const normalizedRound = Number(roundNum || 0);
+            const uid = Number(userId);
+            if (!normalizedRound || !Number.isFinite(uid)) return;
+            const archiveSnap = await db.ref('tickets_archive').once('value');
+            const updates = {};
+            archiveSnap.forEach((item) => {
+                const row = item.val() || {};
+                if (Number(row.userId) !== uid) return;
+                if (Number(row.round) !== normalizedRound) return;
+                if (row.isEventReward) return;
+                updates[`tickets_archive/${item.key}/excluded`] = true;
+                updates[`tickets_archive/${item.key}/ticketBurned`] = true;
+            });
+            if (Object.keys(updates).length) await db.ref().update(updates);
+        }
+
         async function burnUserTicketsAndEliminate(userId, reason = 'no_submission') {
             const boardSnap = await db.ref('board').once('value');
             const board = boardSnap.val() || {};
@@ -7871,17 +8050,20 @@ ${optionsText}
             const now = Date.now();
             const msLeft = roundEndTime - now;
             const isRoundActive = msLeft > 0;
-            const currentRoundWorks = allSubmissions.filter(s => Number(s.round) === Number(currentRoundNum));
-            const hasCurrentRoundWork = currentRoundWorks.some(s => String(s.userId) === String(currentUserId));
-            if (isRoundActive && !hasCurrentRoundWork) {
-                const remindKey = `workReminderShownRound${currentRoundNum}`;
-                if (!window[remindKey]) {
-                    window[remindKey] = true;
-                    showPlayerNotification({
-                        id: `work-reminder-${currentRoundNum}`,
-                        text: 'Твоя муза застряла в проке? 🎨 Твой холст скучает без мазков. Поторопись, иначе магические чернила испарятся, а твоё место на поле займет другой художник!'
-                    });
-                }
+            const reminderWindowMs = Number(window.MissedSubmissionControl?.THREE_HOURS_MS || (3 * 60 * 60 * 1000));
+            const hasCurrentRoundWork = hasFullSubmissionForRound(currentRoundNum);
+            const mustSubmitCurrentRound = await isUserRequiredToSubmitForRound(currentRoundNum, currentUserId, board);
+            const shouldSendReminder = window.MissedSubmissionControl?.shouldSendReminder
+                ? window.MissedSubmissionControl.shouldSendReminder({
+                    msLeft,
+                    reminderWindowMs,
+                    isParticipant: mustSubmitCurrentRound,
+                    hasSubmission: hasCurrentRoundWork,
+                    alreadySent: false
+                })
+                : (isRoundActive && msLeft <= reminderWindowMs && mustSubmitCurrentRound && !hasCurrentRoundWork);
+            if (shouldSendReminder) {
+                await sendMissedWorkReminderIfNeeded(currentRoundNum, currentUserId);
             }
 
             const userStateSnap = await db.ref(`whitelist/${currentUserId}`).once('value');
@@ -7915,41 +8097,87 @@ ${optionsText}
 
             const previousRound = currentRoundNum - 1;
             if (previousRound < 1) return;
-            const hadPrevCell = Object.values(board).some(c => c && Number(c.userId) === Number(currentUserId) && c.round === previousRound);
-            if (!hadPrevCell) return;
-
-            if (hasAcceptedSubmissionForRound(previousRound)) return;
-
-            const roundCells = Object.entries(board).filter(([_, c]) => c && Number(c.userId) === Number(currentUserId) && Number(c.round) === Number(previousRound));
-            const updates = {};
-            roundCells.forEach(([idx]) => {
-                updates[`board/${idx}/excluded`] = true;
-                updates[`board/${idx}/ticketBurned`] = true;
-            });
-            if (Object.keys(updates).length) {
-                await db.ref().update(updates);
-            }
-
-            if (!hasFullSubmissionForRound(previousRound)) {
-                await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
+            const mustSubmitPrevRound = await isUserRequiredToSubmitForRound(previousRound, currentUserId, board);
+            if (!mustSubmitPrevRound) return;
+            const hasAcceptedPrevRound = hasAcceptedSubmissionForRound(previousRound);
+            const hasAnyPrevRoundSubmission = hasFullSubmissionForRound(previousRound);
+            if (hasAcceptedPrevRound) return;
+            if (hasAnyPrevRoundSubmission) {
                 showPlayerNotification({
-                    id: `work-eliminated-${previousRound}`,
-                    text: 'Кажется, твоя работа так и не обнаружилась в загрузках. Печально, но твои билеты аннулированы, ты больше не принимаешь участие в игре.',
+                    id: `work-rejected-${previousRound}`,
+                    text: 'Работа за прошлый раунд не была принята. Билет по этому раунду исключён из участия.',
                     borderColor: '#ef5350'
                 });
-                await postNewsOnce(
-                    `whitelist/${currentUserId}/news_once/eliminated_no_submission_round_${previousRound}`,
-                    `${players[myIndex].n} выбыл(а) из игры`,
-                    { type: 'eliminated_no_submission', round: previousRound }
-                );
                 return;
             }
 
+            const lockAcquired = await withMissedSubmissionFinalizationLock(previousRound, currentUserId);
+            if (!lockAcquired) return;
+
+            const surrenderAvailable = await isSurrenderAvailableForUser(currentUserId);
+            const missedOutcome = window.MissedSubmissionControl?.resolveMissedSubmissionOutcome
+                ? window.MissedSubmissionControl.resolveMissedSubmissionOutcome({
+                    hasAcceptedSubmission: hasAcceptedPrevRound,
+                    hasAnySubmission: hasAnyPrevRoundSubmission,
+                    surrenderAvailable
+                })
+                : (surrenderAvailable ? 'auto_forfeit' : 'eliminate');
+            if (missedOutcome === 'auto_forfeit') {
+                const roundCells = Object.entries(board).filter(([_, c]) => c && Number(c.userId) === Number(currentUserId) && Number(c.round) === Number(previousRound));
+                const updates = {};
+                roundCells.forEach(([idx, cell]) => {
+                    updates[`board/${idx}/excluded`] = true;
+                    updates[`board/${idx}/ticketBurned`] = true;
+                    updates[`board/${idx}/ticket`] = '';
+                    if (cell?.isInkChallenge) updates[`whitelist/${currentUserId}/ink_challenge/isResolved`] = true;
+                    if (cell?.isInkChallenge) updates[`whitelist/${currentUserId}/ink_challenge/surrendered`] = true;
+                    if (cell?.isWandBlessing) updates[`whitelist/${currentUserId}/wand_blessing/isResolved`] = true;
+                    if (cell?.isWandBlessing) updates[`whitelist/${currentUserId}/wand_blessing/surrendered`] = true;
+                });
+                updates[`whitelist/${currentUserId}/missed_work_control/auto_forfeit_round_${previousRound}`] = {
+                    at: Date.now(),
+                    round: previousRound,
+                    source: 'auto_missed_submission'
+                };
+                await db.ref().update(updates);
+                await markRoundTicketsExcluded(currentUserId, previousRound);
+                await db.ref(`system_notifications/${currentUserId}`).push({
+                    type: 'work_miss_auto_forfeit',
+                    round: previousRound,
+                    text: 'В этот раз тебе засчитан автоматический ‘сдаюсь!’. Билет за раунд не начислен. Если в следующем раунде ты снова не сдашь работу — вылетишь из игры.',
+                    createdAt: Date.now()
+                });
+                showPlayerNotification({
+                    id: `work-auto-forfeit-${previousRound}`,
+                    text: 'В этот раз тебе засчитан автоматический ‘сдаюсь!’. Билет за раунд не начислен. Если в следующем раунде ты снова не сдашь работу — вылетишь из игры.',
+                    borderColor: '#ff9800'
+                });
+                await finalizeMissedSubmissionOutcome(previousRound, currentUserId, 'auto_forfeit', { surrenderAvailable: true });
+                return;
+            }
+            if (missedOutcome !== 'eliminate') {
+                await finalizeMissedSubmissionOutcome(previousRound, currentUserId, String(missedOutcome || 'skipped'), { surrenderAvailable });
+                return;
+            }
+
+            await burnUserTicketsAndEliminate(currentUserId, 'no_submission');
+            await db.ref(`system_notifications/${currentUserId}`).push({
+                type: 'work_miss_eliminated',
+                round: previousRound,
+                text: 'Жаль! Ты не проходишь на следующий раунд! Поражение.',
+                createdAt: Date.now()
+            });
             showPlayerNotification({
-                id: `work-rejected-${previousRound}`,
-                text: 'Работа за прошлый раунд не была принята. Билет по этому раунду исключён из участия.',
+                id: `work-eliminated-${previousRound}`,
+                text: 'Жаль! Ты не проходишь на следующий раунд! Поражение.',
                 borderColor: '#ef5350'
             });
+            await finalizeMissedSubmissionOutcome(previousRound, currentUserId, 'eliminated', { surrenderAvailable: false });
+            await postNewsOnce(
+                `whitelist/${currentUserId}/news_once/eliminated_no_submission_round_${previousRound}`,
+                `${players[myIndex].n} выбыл(а) из игры`,
+                { type: 'eliminated_no_submission', round: previousRound }
+            );
         }
 
         function readImageAsDataURL(file) {
