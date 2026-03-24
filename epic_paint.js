@@ -341,8 +341,8 @@
             if (!tx.committed) return;
 
             const finalizedEvent = { ...(tx.snapshot.val() || {}), key: currentGameEventKey, completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt };
-            const rewardedPlayersCount = await grantEpicPaintRewards(finalizedEvent);
-            await postEpicEventSummary(finalizedEvent, true, rewardedPlayersCount);
+            const rewardResult = await grantEpicPaintRewards(finalizedEvent);
+            await postEpicEventSummary(finalizedEvent, true, Number(rewardResult?.rewardedCount || 0));
         }
 
         async function maybeShowEpicPaintSuccessNotification(eventData = null) {
@@ -362,7 +362,7 @@
 
         async function grantEpicPaintRewards(eventData = null) {
             const eventKey = String(eventData?.key || currentGameEventKey || '').trim();
-            if (!eventKey) return 0;
+            if (!eventKey) return { rewardedCount: 0, rewardedUids: [], failedUids: [] };
 
             const [participantsByEventSnap, participantsSnap, strokesSnap, whitelistSnap] = await Promise.all([
                 db.ref(`epic_paint/participants_by_event/${eventKey}`).once('value'),
@@ -387,9 +387,11 @@
 
             const participantUids = Array.from(participantUidSet).filter(uid => /^\d+$/.test(uid));
             console.info('[epic_paint] reward finalize participants collected', { eventKey, participants: participantUids.length });
-            if (!participantUids.length) return 0;
+            if (!participantUids.length) return { rewardedCount: 0, rewardedUids: [], failedUids: [] };
 
             let rewardedCount = 0;
+            const rewardedUids = [];
+            const failedUids = [];
             for (const uidKey of participantUids) {
                 const lockTx = await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).transaction(v => v || { at: Date.now() });
                 if (!lockTx.committed) continue;
@@ -397,35 +399,57 @@
                 const uid = Number(uidKey);
                 const user = whitelist[uidKey] || whitelist[uid] || {};
                 const parsedOwner = Number(user?.charIndex);
-                const owner = Number.isInteger(parsedOwner) ? parsedOwner : null;
-                if (!Number.isInteger(owner)) {
-                    console.warn('[epic_paint] skipped reward: missing owner charIndex', { eventKey, uid: uidKey });
-                    await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).remove();
-                    continue;
-                }
+                const owner = Number.isInteger(parsedOwner) ? parsedOwner : -1;
 
                 const awarded = await claimSequentialTickets(1);
                 if (!Array.isArray(awarded) || !awarded[0]) {
                     console.warn('[epic_paint] skipped reward: ticket pool exhausted or unavailable', { eventKey, uid: uidKey });
                     await db.ref(`epic_paint/rewarded/${eventKey}/${uidKey}`).remove();
+                    failedUids.push(uidKey);
                     continue;
                 }
                 rewardedCount += 1;
                 console.info('[epic_paint] reward ticket granted', { eventKey, uid: uidKey, ticket: awarded[0] });
-                await db.ref('tickets_archive').push({
+                const ticketNum = String(awarded[0]);
+                const nowTs = Date.now();
+                const ticketPayload = {
+                    num: Number(ticketNum),
+                    ticketNum: Number(ticketNum),
+                    ticket: ticketNum,
+                    userId: String(uidKey),
                     owner,
-                    userId: uid,
-                    ticket: awarded[0],
+                    round: Number(currentRoundNum || 0),
+                    cell: 0,
+                    cellIdx: -1,
                     taskIdx: -1,
-                    round: currentRoundNum,
+                    source: 'epic_paint',
+                    ticketSource: 'EPIC_PAINT',
+                    taskLabel: 'Награда за событие «Эпичный раскрас»',
+                    createdAt: nowTs
+                };
+                const archiveKey = db.ref('tickets_archive').push().key;
+                const updates = {};
+                updates[`tickets/${ticketNum}`] = ticketPayload;
+                updates[`users/${uidKey}/tickets/${ticketNum}`] = ticketPayload;
+                updates[`tickets_archive/${archiveKey}`] = {
+                    owner,
+                    userId: String(uidKey),
+                    ticket: ticketNum,
+                    taskIdx: -1,
+                    round: Number(currentRoundNum || 0),
                     cell: 0,
                     cellIdx: -1,
                     isEventReward: true,
                     eventId: EPIC_PAINT_EVENT_ID,
+                    source: 'epic_paint',
+                    ticketSource: 'EPIC_PAINT',
                     ticketSourceLabel: 'Билет события',
-                    archivedAt: Date.now(),
+                    taskLabel: 'Награда за событие «Эпичный раскрас»',
+                    archivedAt: nowTs,
                     excluded: false
-                });
+                };
+                await db.ref().update(updates);
+                rewardedUids.push(uidKey);
             }
 
             await db.ref(`game_events/${eventKey}/rewardsPosted`).transaction(v => v || { at: Date.now(), rewardedCount });
@@ -433,7 +457,10 @@
 
             const notifyText = '🎨 «Эпичный закрас» завершён! Полотно закрашено на 95%+. Награда: 1 билет каждому участнику, кто оставил хотя бы один штрих.';
             const notifyMap = {};
-            participantUids.forEach(uid => {
+            const notifyRecipients = window.RewardDeliveryUtils?.pickEpicPaintNotifiedUids
+                ? window.RewardDeliveryUtils.pickEpicPaintNotifiedUids(rewardedUids)
+                : rewardedUids;
+            notifyRecipients.forEach(uid => {
                 notifyMap[uid] = { text: notifyText, type: 'event_epic_paint_completed', eventKey, createdAt: Date.now() };
             });
             const notifyTx = await db.ref(`game_events/${eventKey}/notifyPosted`).transaction(v => v || { at: Date.now(), type: 'event_epic_paint_completed' });
@@ -446,7 +473,7 @@
                 await db.ref().update(updates);
             }
 
-            return rewardedCount;
+            return { rewardedCount, rewardedUids, failedUids };
         }
 
         async function maybeFinalizeWallBattleSuccess(coverage, redCoverage, blueCoverage) {
@@ -490,7 +517,7 @@
                 const awarded = await claimSequentialTickets(1);
                 if (!awarded?.length) continue;
                 await addInventoryItemForUser(uid, 'magnifier', 1);
-                await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
+                await db.ref('tickets_archive').push({ owner, userId: uid, ticket: awarded[0], taskIdx: -1, round: currentRoundNum, cell: 0, cellIdx: -1, isEventReward: true, eventId: WALL_BATTLE_EVENT_ID, source: 'wall_battle', ticketSource: 'WALL_BATTLE', taskLabel: 'Награда за победу команды в событии «Стенка на стенку»', archivedAt: Date.now(), excluded: false });
                 await db.ref(`epic_paint/rewarded/${currentGameEventKey}/${uidKey}`).set(true);
                 rewardedCount += 1;
             }
@@ -500,8 +527,8 @@
         async function ensureCompletedEventArtifacts(eventData) {
             if (!eventData?.key) return;
             if (eventData.id === EPIC_PAINT_EVENT_ID) {
-                const rewardedPlayersCount = await grantEpicPaintRewards(eventData);
-                await postEpicEventSummary(eventData, true, rewardedPlayersCount);
+                const rewardResult = await grantEpicPaintRewards(eventData);
+                await postEpicEventSummary(eventData, true, Number(rewardResult?.rewardedCount || 0));
                 return;
             }
             if (eventData.id === WALL_BATTLE_EVENT_ID) {

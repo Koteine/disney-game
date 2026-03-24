@@ -211,6 +211,8 @@ const formatMoscowDateTime = (...args) => (
                   name: String(userSnap.val()?.name || userSnap.val()?.username || whiteSnap.val()?.name || `ID ${userId}`),
                   reason: reason || 'Ручная выдача администратором',
                   isManualReward: true,
+                  source: 'admin_grant',
+                  ticketSource: 'ADMIN',
                   issuedByAdmin: true,
                   createdAt: Date.now(),
                   timestamp: Date.now()
@@ -307,6 +309,8 @@ const formatMoscowDateTime = (...args) => (
                 cell: 0,
                 cellIdx: -1,
                 isManualReward: true,
+                source: 'admin_grant',
+                ticketSource: 'ADMIN',
                 archivedAt: Date.now(),
                 excluded: false,
                 adminNote: note,

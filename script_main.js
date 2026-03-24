@@ -5219,6 +5219,8 @@ ${optionsText}
                 cell: 0,
                 cellIdx: -1,
                 isManualRevoke: true,
+                source: 'admin_revoke',
+                ticketSource: 'ADMIN_REVOKE',
                 adminNote: note || null,
                 taskLabel: note ? `Ручное изъятие: ${note}` : 'Ручное изъятие администратором',
                 archivedAt: Date.now(),
@@ -8513,6 +8515,16 @@ ${optionsText}
 
                             const isSphinxTask = !!activeTask.isSphinxTrial || String(activeTask.type || row.snakeTaskType || '') === 'snake_sphinx';
                             const nowTs = Date.now();
+                            const resolvedTask = (Array.isArray(tasks) && Number.isInteger(resolvedSnakeTaskIdx) && resolvedSnakeTaskIdx >= 0)
+                                ? (tasks[resolvedSnakeTaskIdx] || {})
+                                : {};
+                            const taskSnapshot = {
+                                taskId: Number.isInteger(resolvedSnakeTaskIdx) ? resolvedSnakeTaskIdx : -1,
+                                type: String(resolvedTask?.img || '').trim() ? 'image' : 'text',
+                                text: String(resolvedTask?.text || resolvedTaskLabel || '').trim(),
+                                imageUrl: String(resolvedTask?.img || '').trim(),
+                                capturedAt: nowTs
+                            };
                             const ticketPayload = {
                                 num: nextTicket,
                                 ticketNum: nextTicket,
@@ -8525,10 +8537,13 @@ ${optionsText}
                                 taskLabel: String(resolvedTaskLabel || ''),
                                 assignmentTaskLabel: String(resolvedTaskLabel || ''),
                                 sourceTaskLabel: String(resolvedTaskLabel || ''),
+                                sourceTaskImage: String(taskSnapshot.imageUrl || ''),
+                                taskSnapshot,
                                 mode: 'snake',
                                 assignmentId,
                                 sourceAssignmentId: assignmentId,
                                 source: 'snake_assignment',
+                                ticketSource: 'PVP_SNAKE',
                                 createdAt: nowTs
                             };
                             const updates = {};
@@ -8658,6 +8673,17 @@ ${optionsText}
                         const roundNo = Number(approvedRow.round || roundData.number || 0);
                         const cellNo = Number(boardCellIdx) + 1;
                         const taskLabel = String(approvedRow.taskLabel || getTaskLabelByCell(approvedRow) || '');
+                        const resolvedTaskIdx = Number(approvedRow.taskIdx ?? approvedRow.sourceTaskId ?? -1);
+                        const taskFromList = (Array.isArray(tasks) && Number.isInteger(resolvedTaskIdx) && resolvedTaskIdx >= 0)
+                            ? (tasks[resolvedTaskIdx] || {})
+                            : {};
+                        const taskSnapshot = {
+                            taskId: Number.isInteger(resolvedTaskIdx) ? resolvedTaskIdx : -1,
+                            type: String(taskFromList?.img || '').trim() ? 'image' : 'text',
+                            text: String(taskFromList?.text || taskLabel || '').trim(),
+                            imageUrl: String(taskFromList?.img || '').trim(),
+                            capturedAt: awardTs
+                        };
                         const updates = {};
 
                         awardedNumbers.forEach((ticketNum) => {
@@ -8670,11 +8696,14 @@ ${optionsText}
                                 round: roundNo,
                                 cell: cellNo,
                                 cellIdx: boardCellIdx,
-                                taskIdx: Number(approvedRow.taskIdx ?? approvedRow.sourceTaskId ?? -1),
+                                taskIdx: resolvedTaskIdx,
                                 taskLabel,
                                 sourceTaskLabel: taskLabel,
+                                sourceTaskImage: String(taskSnapshot.imageUrl || ''),
+                                taskSnapshot,
                                 mode: String(approvedRow.mode || 'classic'),
-                                source: 'submission_approval',
+                                source: 'task',
+                                ticketSource: 'TASK',
                                 submissionId: String(submissionId || ''),
                                 createdAt: awardTs
                             };
@@ -8693,9 +8722,12 @@ ${optionsText}
                                 cell: cellNo,
                                 cellIdx: boardCellIdx,
                                 taskLabel,
+                                sourceTaskImage: String(taskSnapshot.imageUrl || ''),
+                                taskSnapshot,
                                 archivedAt: awardTs,
                                 excluded: false,
-                                source: 'submission_approval'
+                                source: 'task',
+                                ticketSource: 'TASK'
                             };
                             updates[`${refPath}/ticket`] = awardedTicketValue;
                             updates[`${refPath}/awardedTicketNum`] = awardedTicketValue;

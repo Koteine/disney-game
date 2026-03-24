@@ -220,46 +220,91 @@
             const row = duelRow || {};
             const winnerId = String(row.winnerId || '');
             const loserId = String(row.loserId || '');
-            if (!winnerId) return;
-            const rewardTx = await db.ref(`${DUEL_PATH}/${duelKey}/rewardsGrantedAt`).transaction((v) => {
-                if (Number(v) > 0) return;
-                return getServerNowMs();
-            });
-            if (!rewardTx.committed) return;
+            if (!winnerId) return { winnerTicketGranted: false, winnerItemGranted: false, loserKarmaGranted: false };
+
+            const outcome = {
+                winnerTicketGranted: false,
+                winnerItemGranted: false,
+                loserKarmaGranted: false
+            };
 
             const shopItemKeys = Object.keys(window.SNAKE_SHOP_ITEMS || {});
             const rewardPool = window.TotemsUtils?.filterTotemRewardItems
                 ? window.TotemsUtils.filterTotemRewardItems(TOTEM_REWARD_ITEMS, shopItemKeys)
                 : TOTEM_REWARD_ITEMS.slice();
-            const rewardItemKey = rewardPool[Math.floor(Math.random() * rewardPool.length)];
-            await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction((v) => (Number(v) || 0) + 1);
-            const ticket = await claimSequentialTickets(1);
-            if (ticket?.length) {
-                const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
-                const owner = Number(winnerStateSnap.val()?.charIndex);
-                if (Number.isInteger(owner)) {
-                    await db.ref('tickets_archive').push({
-                        owner,
-                        userId: Number(winnerId),
-                        ticket: String(ticket[0]),
+            if (rewardPool.length) {
+                const itemGrantTx = await db.ref(`${DUEL_PATH}/${duelKey}/reward_claims/${winnerId}/item`).transaction((v) => v || { at: getServerNowMs() });
+                if (itemGrantTx.committed) {
+                    const rewardItemKey = rewardPool[Math.floor(Math.random() * rewardPool.length)];
+                    await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction((v) => (Number(v) || 0) + 1);
+                    await db.ref(`${DUEL_PATH}/${duelKey}/reward_claims/${winnerId}/item/itemKey`).set(String(rewardItemKey));
+                    outcome.winnerItemGranted = true;
+                }
+            }
+
+            const ticketGrantTx = await db.ref(`${DUEL_PATH}/${duelKey}/reward_claims/${winnerId}/ticket`).transaction((v) => v || { at: getServerNowMs() });
+            if (ticketGrantTx.committed) {
+                const ticket = await claimSequentialTickets(1);
+                if (ticket?.length) {
+                    const winnerStateSnap = await db.ref(`whitelist/${winnerId}`).once('value');
+                    const owner = Number(winnerStateSnap.val()?.charIndex);
+                    const ownerSafe = Number.isInteger(owner) ? owner : -1;
+                    const ticketNum = String(ticket[0]);
+                    const ticketPayload = {
+                        num: Number(ticketNum),
+                        ticketNum: Number(ticketNum),
+                        ticket: ticketNum,
+                        userId: String(winnerId),
+                        owner: ownerSafe,
+                        round: Number(currentRoundNum || 0),
+                        cell: 0,
+                        cellIdx: -1,
                         taskIdx: -1,
-                        round: currentRoundNum,
+                        taskLabel: 'Награда за победу в игре «Тотемы»',
+                        source: 'totems_duel',
+                        ticketSource: 'TOTEMS',
+                        createdAt: getServerNowMs()
+                    };
+                    const archiveKey = db.ref('tickets_archive').push().key;
+                    const updates = {};
+                    updates[`tickets/${ticketNum}`] = ticketPayload;
+                    updates[`users/${winnerId}/tickets/${ticketNum}`] = ticketPayload;
+                    updates[`tickets_archive/${archiveKey}`] = {
+                        owner: ownerSafe,
+                        userId: String(winnerId),
+                        ticket: ticketNum,
+                        taskIdx: -1,
+                        round: Number(currentRoundNum || 0),
                         cell: 0,
                         cellIdx: -1,
                         isEventReward: true,
                         eventId: 'totems_duel',
+                        source: 'totems_duel',
+                        ticketSource: 'TOTEMS',
                         taskLabel: 'Награда за победу в игре «Тотемы»',
                         archivedAt: getServerNowMs(),
                         excluded: false
-                    });
+                    };
+                    updates[`${DUEL_PATH}/${duelKey}/reward_claims/${winnerId}/ticket/ticketNum`] = ticketNum;
+                    await db.ref().update(updates);
+                    outcome.winnerTicketGranted = true;
+                } else {
+                    await db.ref(`${DUEL_PATH}/${duelKey}/reward_claims/${winnerId}/ticket`).remove();
                 }
             }
+
             if (loserId) {
-                await db.ref(`player_season_status/${loserId}`).update({
-                    karma_points: firebase.database.ServerValue.increment(1),
-                    updatedAt: getServerNowMs()
-                });
+                const karmaGrantTx = await db.ref(`${DUEL_PATH}/${duelKey}/reward_claims/${loserId}/karma`).transaction((v) => v || { at: getServerNowMs() });
+                if (karmaGrantTx.committed) {
+                    await db.ref(`player_season_status/${loserId}`).update({
+                        karma_points: firebase.database.ServerValue.increment(1),
+                        updatedAt: getServerNowMs()
+                    });
+                    outcome.loserKarmaGranted = true;
+                }
             }
+            await db.ref(`${DUEL_PATH}/${duelKey}/rewardsGrantedAt`).set(getServerNowMs());
+            return outcome;
         }
 
         async function resolveTotemChallengeIfReady(duelKey) {
@@ -295,21 +340,29 @@
             if (!resolveTx.committed) return;
             const resolved = resolveTx.snapshot.val() || {};
 
-            await grantTotemRewardsOnce(duelKey, resolved);
+            const rewardOutcome = await grantTotemRewardsOnce(duelKey, resolved);
             const winnerName = resolved.players?.[winnerId]?.nickname || 'Игрок';
 
             const notifTx = await db.ref(`${DUEL_PATH}/${duelKey}/notificationsPosted`).transaction((v) => v ? v : { at: getServerNowMs() });
             if (notifTx.committed) {
                 if (winnerId) {
+                    const winnerText = window.RewardDeliveryUtils?.buildTotemsWinnerNotification
+                        ? window.RewardDeliveryUtils.buildTotemsWinnerNotification(rewardOutcome)
+                        : 'Победа в «Тотемах»! Проверь полученные награды в профиле.';
                     await db.ref(`system_notifications/${winnerId}`).push({
-                        text: 'Победа в «Тотемах»! Тебе выданы 1 билет и редкий предмет.',
+                        text: winnerText,
                         createdAt: getServerNowMs(),
                         type: 'calligraphy_duel_result'
                     });
                 }
                 if (loserId) {
+                    const loserText = window.RewardDeliveryUtils?.buildTotemsLoserNotification
+                        ? window.RewardDeliveryUtils.buildTotemsLoserNotification(rewardOutcome)
+                        : (rewardOutcome?.loserKarmaGranted
+                            ? '«Тотемы» завершены: ты получаешь +1 кармы.'
+                            : '«Тотемы» завершены: награда кармы не начислена, обратитесь к администратору.');
                     await db.ref(`system_notifications/${loserId}`).push({
-                        text: '«Тотемы» завершены: ты получаешь +1 кармы.',
+                        text: loserText,
                         createdAt: getServerNowMs(),
                         type: 'calligraphy_duel_result'
                     });

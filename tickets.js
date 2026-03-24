@@ -14,6 +14,7 @@ window.__initTicketsModule = function __initTicketsModule() {
             let adminProfileLogRequestId = 0;
             let boardRenderVersion = 0;
             let snakeTicketsByNum = {};
+            const ticketSourceUtils = window.TicketSourceUtils || {};
 
             function clearArchiveSubscriptions() {
                 archiveRefs.forEach(ref => ref.off());
@@ -208,16 +209,25 @@ window.__initTicketsModule = function __initTicketsModule() {
             }
 
             function getTicketSourceLabel(t) {
-                if (t.isEventReward) return '🎨 Событие';
-                if (t.isManualReward) return '🎫 Ручная выдача';
+                if (typeof ticketSourceUtils.getTicketSourceLabel === 'function') {
+                    return ticketSourceUtils.getTicketSourceLabel(t);
+                }
+                if (t.isEventReward) return '🎉 Событие';
+                if (t.isManualReward) return '🎫 Админ';
                 if (t.isManualRevoke) return '🧾 Изъят админом';
                 if (Number.isInteger(t.round) && t.round > 0) return `Раунд ${t.round}`;
                 return 'Иной источник';
             }
 
             function getTicketTaskLabel(t) {
-                if (t.isEventReward) return t.eventId === 'wall_battle' ? 'Награда за событие «Стенка на стенку»' : 'Награда за событие «Эпичный закрас»';
+                const resolvedSource = typeof ticketSourceUtils.resolveTicketSource === 'function'
+                    ? ticketSourceUtils.resolveTicketSource(t)
+                    : '';
+                if (resolvedSource === 'TOTEMS') return 'Награда за победу в игре «Тотемы»';
+                if (resolvedSource === 'EPIC_PAINT') return 'Награда за событие «Эпичный раскрас»';
+                if (resolvedSource === 'WALL_BATTLE') return 'Награда за событие «Стенка на стенку»';
                 if (!t.isArchived && Number.isInteger(Number(t.cellIdx)) && Number(t.cellIdx) >= 0) return getTaskLabelByCell(t);
+                if (t?.taskSnapshot?.imageUrl && !String(t?.taskSnapshot?.text || '').trim()) return 'Задание-картинка';
                 if (typeof t.taskLabel === 'string' && t.taskLabel.trim()) return t.taskLabel;
                 if (Number.isInteger(t.taskIdx) && t.taskIdx >= 0 && Array.isArray(tasks) && tasks[t.taskIdx]) {
                     return tasks[t.taskIdx].text || 'Обычное задание';
@@ -723,10 +733,23 @@ window.__initTicketsModule = function __initTicketsModule() {
             function openTicketTaskDetails(ticketNum) {
                 const row = expandTicketsRows(allTicketsData).find(t => String(t.ticketNum) === String(ticketNum));
                 if (!row) return alert('Данные по билету не найдены.');
-                const task = Number.isInteger(row.taskIdx) && row.taskIdx >= 0 ? tasks[row.taskIdx] : null;
+                const isAdmin = Number(currentUserId) === Number(ADMIN_ID);
+                const isOwner = String(row.userId || '') === String(currentUserId || '') || Number(row.owner) === Number(myIndex);
+                if (!isAdmin && !isOwner) return alert('Просмотр задания этого билета недоступен.');
+                const details = typeof ticketSourceUtils.resolveTaskDetails === 'function'
+                    ? ticketSourceUtils.resolveTaskDetails(row, tasks)
+                    : {
+                        type: Number.isInteger(row.taskIdx) && row.taskIdx >= 0 && tasks[row.taskIdx]?.img ? 'image' : 'text',
+                        text: String(row.taskLabel || ''),
+                        imageUrl: Number.isInteger(row.taskIdx) && row.taskIdx >= 0 ? String(tasks[row.taskIdx]?.img || '') : ''
+                    };
                 const itemLine = row.itemType ? `<div style="margin-top:8px; font-size:13px; color:#6a1b9a;">${window.itemTypes?.[row.itemType]?.emoji || '🎁'} Предмет в клетке: <b>${window.itemTypes?.[row.itemType]?.name || row.itemType}</b></div>` : '';
-                let body = `<div style="text-align:left;"><div style="font-size:12px; color:#666;">🎟 Билет #${row.ticketNum}</div><div style="margin-top:8px; font-size:14px;">${row.taskLabel || 'Описание задания отсутствует'}</div>${itemLine}`;
-                if (task?.img) body += `<img src="${task.img}" style="width:100%; border-radius:10px; margin-top:10px; border:1px solid #eee;">`;
+                const sourceLine = `<div style="margin-top:4px; font-size:12px; color:#666;">Источник: ${escapeHtml(getTicketSourceLabel(row) || '—')}</div>`;
+                const textLine = details?.text
+                    ? `<div style="margin-top:8px; font-size:14px;">${escapeHtml(details.text)}</div>`
+                    : '<div style="margin-top:8px; font-size:14px; color:#777;">Описание задания отсутствует</div>';
+                let body = `<div style="text-align:left;"><div style="font-size:12px; color:#666;">🎟 Билет #${row.ticketNum}</div>${sourceLine}${textLine}${itemLine}`;
+                if (details?.imageUrl) body += `<img src="${escapeHtml(details.imageUrl)}" style="width:100%; border-radius:10px; margin-top:10px; border:1px solid #eee;">`;
                 body += '</div>';
                 document.getElementById('mTitle').innerText = 'Задание билета';
                 document.getElementById('mText').innerHTML = body;
