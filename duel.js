@@ -65,12 +65,6 @@
             return 'Глаз Питона';
         }
 
-        function normalizeSwipe(dx, dy) {
-            if (Math.abs(dx) < 25 && Math.abs(dy) < 25) return '';
-            if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'right' : 'left';
-            return dy > 0 ? 'down' : 'up';
-        }
-
         function sleep(ms) {
             return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
         }
@@ -211,7 +205,7 @@
             if (!startedFeedTx.committed) return;
             const a = duelNow.players?.[String(duelNow.challengerId)]?.nickname || 'Игрок';
             const b = duelNow.players?.[String(duelNow.opponentId)]?.nickname || 'Игрок';
-            await postNews(`${a} и ${b} начали игру «Тотемы»`);
+            await postNews(`${a} и ${b} начали игру «Тотемы»`, { uniqueParts: { type: 'totems_duel_start', sourceId: duelKey, actionId: 'started' }, eventType: 'totems_duel_start', sourceId: duelKey });
         }
 
         function compareTotemResults(attacker, defender) {
@@ -233,7 +227,11 @@
             });
             if (!rewardTx.committed) return;
 
-            const rewardItemKey = TOTEM_REWARD_ITEMS[Math.floor(Math.random() * TOTEM_REWARD_ITEMS.length)];
+            const shopItemKeys = Object.keys(window.SNAKE_SHOP_ITEMS || {});
+            const rewardPool = window.TotemsUtils?.filterTotemRewardItems
+                ? window.TotemsUtils.filterTotemRewardItems(TOTEM_REWARD_ITEMS, shopItemKeys)
+                : TOTEM_REWARD_ITEMS.slice();
+            const rewardItemKey = rewardPool[Math.floor(Math.random() * rewardPool.length)];
             await db.ref(`whitelist/${winnerId}/inventory/${rewardItemKey}`).transaction((v) => (Number(v) || 0) + 1);
             const ticket = await claimSequentialTickets(1);
             if (ticket?.length) {
@@ -320,7 +318,7 @@
 
             const feedTx = await db.ref(`${DUEL_PATH}/${duelKey}/duelResolvedNoticePosted`).transaction((v) => v ? v : { at: getServerNowMs() });
             if (feedTx.committed && winnerName) {
-                await postNews(`${winnerName} победил(а) в игре «Тотемы»`);
+                await postNews(`${winnerName} победил(а) в игре «Тотемы»`, { uniqueParts: { type: 'totems_duel_resolved', sourceId: duelKey, actionId: 'resolved' }, eventType: 'totems_duel_resolved', sourceId: duelKey });
             }
         }
 
@@ -536,72 +534,19 @@
             const renderShedding = async () => {
                 const swipes = Array.isArray(challenge.swipes) ? challenge.swipes : [];
                 inputHost.innerHTML = '';
-                inputHost.appendChild(createInfoBlock(
-                    'Смотри на жесты',
-                    'Сначала игра покажет последовательность свайпов, затем повтори её на площадке ниже.',
-                    'font-size:13px; color:#666; line-height:1.45;'
-                ));
-                const previewRow = document.createElement('div');
-                previewRow.style.display = 'grid';
-                previewRow.style.gridTemplateColumns = `repeat(${Math.max(2, Math.min(swipes.length, 4))}, minmax(0, 1fr))`;
-                previewRow.style.gap = '8px';
-                inputHost.appendChild(previewRow);
-                const previewCards = swipes.map((dir) => {
-                    const card = document.createElement('div');
-                    card.style.border = '2px solid #e1bee7';
-                    card.style.borderRadius = '12px';
-                    card.style.padding = '14px 8px';
-                    card.style.background = '#fff';
-                    card.style.color = '#6a1b9a';
-                    card.style.fontWeight = '700';
-                    card.style.transition = 'transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease';
-                    card.style.textAlign = 'center';
-                    card.innerHTML = `<div style="font-size:28px;">${swipeGlyph[dir] || '⬜'}</div><div style="font-size:12px; margin-top:4px;">${swipeLabels[dir] || dir}</div>`;
-                    previewRow.appendChild(card);
-                    return card;
-                });
-                setStatus('Запоминай направления свайпов...');
-                for (let i = 0; i < previewCards.length; i += 1) {
-                    const card = previewCards[i];
-                    countdown.textContent = `${i + 1}/${previewCards.length}`;
-                    card.style.background = '#f3e5f5';
-                    card.style.transform = 'scale(1.04)';
-                    card.style.boxShadow = '0 10px 24px rgba(106,27,154,0.18)';
-                    await sleep(500);
-                    card.style.background = '#fff';
-                    card.style.transform = 'scale(1)';
-                    card.style.boxShadow = 'none';
-                    await sleep(140);
-                }
-                inputHost.innerHTML = '';
-                inputHost.appendChild(createInfoBlock(
-                    'Повтори жесты',
-                    'Свайпай по большой зоне или жми стрелки ниже.',
-                    'font-size:13px; color:#666; line-height:1.45;'
-                ));
-                const nextHint = document.createElement('div');
-                nextHint.style.fontSize = '12px';
-                nextHint.style.color = '#7b1fa2';
-                nextHint.style.marginBottom = '4px';
-                nextHint.textContent = `Следующий жест: ${swipeLabels[swipes[0]] || '—'}`;
-                inputHost.appendChild(nextHint);
-                const swipePad = document.createElement('div');
-                swipePad.style.height = '120px';
-                swipePad.style.border = '2px dashed #ce93d8';
-                swipePad.style.borderRadius = '16px';
-                swipePad.style.display = 'flex';
-                swipePad.style.alignItems = 'center';
-                swipePad.style.justifyContent = 'center';
-                swipePad.style.fontWeight = '700';
-                swipePad.style.color = '#6a1b9a';
-                swipePad.style.background = 'rgba(243,229,245,0.65)';
-                swipePad.style.userSelect = 'none';
-                swipePad.textContent = 'Свайп здесь';
-                inputHost.appendChild(swipePad);
                 const fallbackGrid = document.createElement('div');
                 fallbackGrid.style.display = 'grid';
                 fallbackGrid.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
                 fallbackGrid.style.gap = '8px';
+                const instruction = document.createElement('div');
+                instruction.style.fontSize = '13px';
+                instruction.style.color = '#6a1b9a';
+                instruction.style.lineHeight = '1.45';
+                instruction.style.fontWeight = '600';
+                instruction.textContent = window.TotemsUtils?.getTotemsSheddingInstruction
+                    ? window.TotemsUtils.getTotemsSheddingInstruction()
+                    : 'Теперь повтори последовательность, которую тебе показали ранее';
+                inputHost.appendChild(instruction);
                 ['up', 'down', 'left', 'right'].forEach((dir) => {
                     const btn = document.createElement('button');
                     btn.className = 'admin-btn';
@@ -613,13 +558,34 @@
                     fallbackGrid.appendChild(btn);
                 });
                 inputHost.appendChild(fallbackGrid);
+                const fallbackButtons = Array.from(fallbackGrid.querySelectorAll('[data-swipe-dir]'));
+                fallbackButtons.forEach((btn) => {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.72';
+                });
+                setStatus('');
+                for (let i = 0; i < swipes.length; i += 1) {
+                    countdown.textContent = `${i + 1}/${swipes.length}`;
+                    const btn = fallbackButtons.find((node) => String(node.getAttribute('data-swipe-dir') || '') === String(swipes[i]));
+                    if (btn) {
+                        btn.style.filter = 'brightness(1.2)';
+                        btn.style.transform = 'scale(1.04)';
+                    }
+                    await sleep(420);
+                    if (btn) {
+                        btn.style.filter = '';
+                        btn.style.transform = '';
+                    }
+                    await sleep(120);
+                }
                 setRemaining();
-                setStatus('Теперь повтори последовательность свайпов.');
+                fallbackButtons.forEach((btn) => {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                });
                 return {
                     swipes,
-                    nextHint,
-                    swipePad,
-                    fallbackButtons: Array.from(fallbackGrid.querySelectorAll('[data-swipe-dir]'))
+                    fallbackButtons
                 };
             };
 
@@ -633,7 +599,6 @@
                 await renderJungleRhythm();
             }
 
-            let swipeStart = null;
             let done = false;
             const limit = Number(challenge.timeLimitMs || 20000);
             startedAt = getServerNowMs();
@@ -705,28 +670,11 @@
                     const expectedDir = String(swipes[progress] || '');
                     if (String(dir) === expectedDir) {
                         progress += 1;
-                        sheddingUi.nextHint.textContent = `Следующий жест: ${swipeLabels[swipes[progress]] || 'готово'}`;
                         setRemaining();
-                        setStatus('Хорошо, жест распознан.');
                     } else {
                         errors += 1;
-                        setStatus(`Промах. Ожидалось: ${swipeLabels[expectedDir] || expectedDir || '—'}.`);
                     }
                     if (progress >= swipes.length) finish(false);
-                };
-
-                const onTouchStart = (evt) => {
-                    const t = evt.touches?.[0];
-                    if (!t) return;
-                    swipeStart = { x: t.clientX, y: t.clientY };
-                };
-                const onTouchEnd = (evt) => {
-                    if (mode !== 'shedding') return;
-                    const t = evt.changedTouches?.[0];
-                    if (!t || !swipeStart) return;
-                    const dir = normalizeSwipe(t.clientX - swipeStart.x, t.clientY - swipeStart.y);
-                    swipeStart = null;
-                    if (dir) onSheddingInput(dir);
                 };
 
                 Object.values(totemButtons).forEach((btn) => {
@@ -739,26 +687,6 @@
                     btn.addEventListener('click', handler);
                     registerCleanup(() => btn.removeEventListener('click', handler));
                 });
-                if (sheddingUi?.swipePad) {
-                    sheddingUi.swipePad.addEventListener('touchstart', onTouchStart, { passive: true });
-                    sheddingUi.swipePad.addEventListener('touchend', onTouchEnd, { passive: true });
-                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('touchstart', onTouchStart));
-                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('touchend', onTouchEnd));
-                    let mouseStart = null;
-                    const onMouseDown = (evt) => {
-                        mouseStart = { x: evt.clientX, y: evt.clientY };
-                    };
-                    const onMouseUp = (evt) => {
-                        if (!mouseStart) return;
-                        const dir = normalizeSwipe(evt.clientX - mouseStart.x, evt.clientY - mouseStart.y);
-                        mouseStart = null;
-                        if (dir) onSheddingInput(dir);
-                    };
-                    sheddingUi.swipePad.addEventListener('mousedown', onMouseDown);
-                    sheddingUi.swipePad.addEventListener('mouseup', onMouseUp);
-                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('mousedown', onMouseDown));
-                    registerCleanup(() => sheddingUi.swipePad.removeEventListener('mouseup', onMouseUp));
-                }
                 (sheddingUi?.fallbackButtons || []).forEach((btn) => {
                     const handler = () => onSheddingInput(String(btn.getAttribute('data-swipe-dir') || ''));
                     btn.addEventListener('click', handler);
@@ -1028,10 +956,18 @@
                     }
                     if (duelResultShownByKey[duelSnap.key]) return;
                     duelResultShownByKey[duelSnap.key] = true;
-                    const winner = String(row.winnerId || '') === me;
-                    if (winner) {
+                    const playerOutcome = window.TotemsUtils?.resolveTotemsPlayerOutcome
+                        ? window.TotemsUtils.resolveTotemsPlayerOutcome({
+                            currentUserId: me,
+                            winnerId: row.winnerId,
+                            loserId: row.loserId
+                        })
+                        : (String(row.winnerId || '') === me ? 'win' : (String(row.loserId || '') === me ? 'lose' : 'observer'));
+                    if (playerOutcome === 'win') {
                         launchCelebrationFireworks();
                         alert('Победа в «Тотемах»!');
+                    } else if (playerOutcome === 'lose') {
+                        alert('Поражение в «Тотемах».');
                     } else {
                         alert('Игра «Тотемы» завершена.');
                     }

@@ -143,9 +143,6 @@ const formatMoscowDateTime = (...args) => (
             if (!emergencyBody) return;
             const controls = emergencyBody.querySelectorAll('input, button, select, textarea');
             controls.forEach((el) => {
-              if (el.id === 'admin-reset-mini-events-btn' && el.dataset.loading === '1') {
-                return;
-              }
               el.disabled = false;
             });
           }
@@ -342,122 +339,6 @@ const formatMoscowDateTime = (...args) => (
             });
             await postNews('🔄 Администратор сбросил(а) текущий раунд.');
             alert('Текущий раунд сброшен. Теперь можно запустить новый раунд вручную.');
-          }
-
-          async function adminResetMiniEvents() {
-            if (!isAdminUser()) return alert('Эта функция доступна только администратору.');
-            const resetBtn = document.getElementById('admin-reset-mini-events-btn');
-            if (resetBtn?.dataset.loading === '1') return;
-            if (!confirm('Сбросить зависшие мини-ивенты и дуэли «Тотемы»?')) return;
-            if (resetBtn) {
-              resetBtn.dataset.loading = '1';
-              resetBtn.setAttribute('aria-busy', 'true');
-              resetBtn.textContent = '⏳ Сброс мини-ивентов...';
-            }
-            const database = await waitForDbReadySafe().catch(() => null);
-            if (!database) {
-              if (resetBtn) {
-                resetBtn.removeAttribute('aria-busy');
-                resetBtn.textContent = '🧹 Сброс мини-ивентов';
-                delete resetBtn.dataset.loading;
-              }
-              return alert('База данных недоступна.');
-            }
-
-            try {
-              const [duelsSnap, snakeClashesSnap, notificationsSnap, seasonSnap, usersSnap, whitelistSnap] = await Promise.all([
-                database.ref('calligraphy_duels').once('value'),
-                database.ref('snake_clashes').once('value'),
-                database.ref('system_notifications').once('value'),
-                database.ref('player_season_status').once('value'),
-                database.ref('users').once('value'),
-                database.ref('whitelist').once('value')
-              ]);
-
-              const updates = {};
-              const now = Date.now();
-              const duelNotificationTypes = new Set([
-                'calligraphy_duel_invite',
-                'calligraphy_duel_wait_notice',
-                'calligraphy_duel_timeout',
-                'calligraphy_duel_declined',
-                'calligraphy_duel_result',
-                'snake_clash_start',
-                'snake_clash_result_win',
-                'snake_clash_result_loss',
-                'snake_clash_draw'
-              ]);
-
-              duelsSnap.forEach((snap) => {
-                const duel = snap.val() || {};
-                const status = String(duel.status || '');
-                if (['resolved', 'declined', 'expired'].includes(status)) return;
-                updates[`calligraphy_duels/${snap.key}/status`] = 'expired';
-                updates[`calligraphy_duels/${snap.key}/expiresAt`] = 0;
-                updates[`calligraphy_duels/${snap.key}/expiredAt`] = now;
-                updates[`calligraphy_duels/${snap.key}/expiredByReset`] = true;
-                updates[`calligraphy_duels/${snap.key}/resetAt`] = now;
-                updates[`calligraphy_duels/${snap.key}/resetBy`] = String(currentUserId || '');
-              });
-
-              snakeClashesSnap.forEach((roundSnap) => {
-                roundSnap.forEach((cellSnap) => {
-                  cellSnap.forEach((pairSnap) => {
-                    const clash = pairSnap.val() || {};
-                    if (String(clash.status || '') !== 'active') return;
-                    const basePath = `snake_clashes/${roundSnap.key}/${cellSnap.key}/${pairSnap.key}`;
-                    updates[`${basePath}/status`] = 'expired';
-                    updates[`${basePath}/expiredAt`] = now;
-                    updates[`${basePath}/expiredByReset`] = true;
-                    updates[`${basePath}/resetAt`] = now;
-                    updates[`${basePath}/resetBy`] = String(currentUserId || '');
-                  });
-                });
-              });
-
-              notificationsSnap.forEach((userSnap) => {
-                userSnap.forEach((notifSnap) => {
-                  const notif = notifSnap.val() || {};
-                  if (!duelNotificationTypes.has(String(notif.type || ''))) return;
-                  updates[`system_notifications/${userSnap.key}/${notifSnap.key}`] = null;
-                });
-              });
-
-              seasonSnap.forEach((userSnap) => {
-                updates[`player_season_status/${userSnap.key}/last_impulse_time`] = 0;
-                updates[`player_season_status/${userSnap.key}/updatedAt`] = now;
-              });
-
-              usersSnap.forEach((userSnap) => {
-                updates[`users/${userSnap.key}/last_impulse_time`] = 0;
-              });
-
-              whitelistSnap.forEach((userSnap) => {
-                updates[`whitelist/${userSnap.key}/last_impulse_time`] = 0;
-              });
-
-              await database.ref().update(updates);
-              postNews('🧹 Администратор сбросил(а) мини-ивенты и дуэли «Тотемы».').catch((err) => {
-                console.warn('Не удалось отправить новость о сбросе мини-ивентов', err);
-              });
-              window.resetMiniEventBadge?.();
-              window.resetDuelWaitNoticeTimer?.();
-
-              window.closeCalligraphyDuelUI?.();
-              window.closeTotemGameOverlay?.();
-              alert('Мини-ивенты и дуэли «Тотемы» успешно сброшены. Кулдауны обнулены.');
-            } catch (error) {
-              console.error('adminResetMiniEvents failed', error);
-              alert(error?.message || 'Не удалось сбросить мини-ивенты. Попробуй ещё раз.');
-            } finally {
-              if (resetBtn) {
-
-                resetBtn.removeAttribute('aria-busy');
-
-                resetBtn.textContent = '🧹 Сброс мини-ивентов';
-                delete resetBtn.dataset.loading;
-              }
-            }
           }
 
           async function resetAllInventories() {
@@ -705,7 +586,6 @@ const formatMoscowDateTime = (...args) => (
             window.executeEmergencyAction = executeEmergencyAction;
             window.adminUndoTicketRevoke = adminUndoTicketRevoke;
             window.adminResetCurrentRound = adminResetCurrentRound;
-            window.adminResetMiniEvents = adminResetMiniEvents;
             window.resetAllInventories = resetAllInventories;
             window.adminLaunchEpicPaintEvent = adminLaunchEpicPaintEvent;
             window.startEpicEvent = startEpicEvent;
@@ -714,38 +594,8 @@ const formatMoscowDateTime = (...args) => (
             window.renderPlayerTicketsList = renderPlayerTicketsList;
           }
 
-          function bindAdminMiniEventResetButton() {
-            const btn = document.getElementById('admin-reset-mini-events-btn');
-            if (!btn || btn.dataset.bound === '1') return;
-            btn.dataset.bound = '1';
-            btn.type = 'button';
-            btn.style.pointerEvents = 'auto';
-            btn.onclick = null;
-            if (btn.dataset.loading !== '1') {
-              btn.removeAttribute('aria-busy');
-            }
-          }
-
-          function ensureMiniResetButtonActive() {
-            const btn = document.getElementById('admin-reset-mini-events-btn');
-            if (!btn) return;
-            btn.style.pointerEvents = 'auto';
-            if (btn.dataset.loading === '1') return;
-            btn.removeAttribute('aria-busy');
-          }
-
-          function ensureMiniResetButtonActive() {
-            const btn = document.getElementById('admin-reset-mini-events-btn');
-            if (!btn) return;
-            btn.style.pointerEvents = 'auto';
-            if (btn.dataset.loading === '1') return;
-            if (btn.disabled) btn.disabled = false;
-            btn.removeAttribute('disabled');
-          }
-
           async function initAdminPage() {
             exposeAdminActions();
-            bindAdminMiniEventResetButton();
             ensureAdminTabVisibility();
 
             if (!isAdminSessionVisible()) {
@@ -764,7 +614,6 @@ const formatMoscowDateTime = (...args) => (
             if (!database) return;
 
             syncEmergencyControlsState();
-            ensureMiniResetButtonActive();
             window.addEventListener('load', () => syncEmergencyControlsState(), { once: true });
 
             const executeBtn = document.getElementById('btn-execute-emergency');
@@ -810,10 +659,8 @@ const formatMoscowDateTime = (...args) => (
             if (window.adminRoundInterval) clearInterval(window.adminRoundInterval);
             window.adminRoundInterval = setInterval(async () => {
               ensureAdminTabVisibility();
-              bindAdminMiniEventResetButton();
-              syncEmergencyControlsState();
-              ensureMiniResetButtonActive();
-              await checkScheduledRounds();
+                syncEmergencyControlsState();
+                await checkScheduledRounds();
             }, 1000);
 
             if (window.adminEventScheduleInterval) clearInterval(window.adminEventScheduleInterval);
@@ -823,12 +670,6 @@ const formatMoscowDateTime = (...args) => (
           }
 
           exposeAdminActions();
-          document.addEventListener('click', (event) => {
-            const btn = event.target?.closest?.('#admin-reset-mini-events-btn');
-            if (!btn) return;
-            event.preventDefault();
-            adminResetMiniEvents();
-          });
 
           if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initAdminPage);

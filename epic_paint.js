@@ -287,7 +287,7 @@
             if (!summaryTx.committed) return;
             if (eventData.id !== EPIC_PAINT_EVENT_ID) {
                 const statusText = isSuccess ? 'успешно завершено' : 'завершено без выполнения цели';
-                await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}).`);
+                await postNews(`🎨 Прошло событие «${eventData.name || eventData.id}» (${statusText}).`, { uniqueParts: { type: 'event_summary', eventId: eventData.id || 'unknown', sourceId: eventData.key, actionId: `summary_${isSuccess ? 'ok' : 'fail'}` }, eventType: 'event_summary', sourceId: eventData.key });
                 return;
             }
             const startAt = eventData.activatedAt || eventData.startAt || Date.now();
@@ -298,7 +298,7 @@
             const rewardsText = isSuccess
                 ? `Награды получили: ${Number(rewardedPlayersCount) || 0}.`
                 : 'Награды не выдавались.';
-            await postNews(`🎨 Прошло событие «Эпичный раскрас» (${statusText}). Начало: ${startText}. Завершение: ${endText}. ${rewardsText}`);
+            await postNews(`🎨 Прошло событие «Эпичный раскрас» (${statusText}). Начало: ${startText}. Завершение: ${endText}. ${rewardsText}`, { uniqueParts: { type: 'event_summary', eventId: EPIC_PAINT_EVENT_ID, sourceId: eventData.key, actionId: `summary_${isSuccess ? 'ok' : 'fail'}` }, eventType: 'event_summary', sourceId: eventData.key });
         }
 
         async function maybeFinalizeEpicPaintSuccess(coverage) {
@@ -463,7 +463,7 @@
             if (!tx.committed) return;
 
             const rewardedPlayersCount = await grantWallBattleRewards(winnerTeam);
-            await postNews(`🏁 «Стенка на стенку» завершена: победила ${winnerTeam === 'red' ? 'красная' : 'синяя'} команда. Победители получили награды.`);
+            await postNews(`🏁 «Стенка на стенку» завершена: победила ${winnerTeam === 'red' ? 'красная' : 'синяя'} команда. Победители получили награды.`, { uniqueParts: { type: 'wall_battle_result', eventId: WALL_BATTLE_EVENT_ID, sourceId: currentGameEventKey, actionId: 'completed' }, eventType: 'wall_battle_result', sourceId: currentGameEventKey });
             await postEpicEventSummary({ ...(tx.snapshot.val() || {}), key: currentGameEventKey, completedAt: Date.now(), activatedAt: currentGameEvent?.activatedAt || currentGameEvent?.startAt }, true, rewardedPlayersCount);
         }
 
@@ -652,7 +652,7 @@
             });
 
             if (tx.committed) {
-                await postNews(`Запущено событие: ${due.name || due.id}`);
+                await postNews(`Запущено событие: ${due.name || due.id}`, { uniqueParts: { type: 'event_started', eventId: due.id || 'unknown', sourceId: due.key || due.id, actionId: 'started' }, eventType: 'event_started', sourceId: due.key || due.id });
                 if (due.id === MUSHU_EVENT_ID) {
                     const target = [20, 25, 30, 35, 40][Math.floor(Math.random() * 5)];
                     const usersSnap = await db.ref('users').once('value');
@@ -750,7 +750,7 @@
                     await db.ref('mushu_event').update({ status: 'failed', failedAt, resultText: '🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟' });
                     const failedEventId = eventRuntimeId;
                     const failedLogTx = await db.ref(`mushu_event/feed_result_posted/${failedEventId}`).transaction((v) => v || { at: failedAt, eventId: failedEventId, status: 'failed' });
-                    if (failedLogTx.committed) await postNews('🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟');
+                    if (failedLogTx.committed) await postNews('🚫 Время вышло. Мушу остался голодным и ушел ворчать в свой храм... 🥟', { uniqueParts: { type: 'mushu_failed', eventId: 'mushu_event', sourceId: eventRuntimeId, actionId: 'failed' }, eventType: 'mushu_failed', sourceId: eventRuntimeId });
                 } else {
                     const summaryLogTx = await db.ref(feedOncePath).transaction((v) => v || { at: nowMs, eventId: eventRuntimeId, status: 'failed' });
                     if (summaryLogTx.committed) {
